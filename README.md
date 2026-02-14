@@ -29,8 +29,17 @@ npm install
 Tạo file `.env` trong thư mục BE:
 ```env
 MONGO_URI=mongodb://localhost:27017/inhere
-PORT=5000
+PORT=9000
 NODE_ENV=development
+JWT_SECRET=replace_with_strong_secret
+JWT_EXPIRES_IN=7d
+OWNER_NAME=System Owner
+OWNER_EMAIL=owner@inhere.local
+OWNER_PHONE=0900000000
+OWNER_PASSWORD=ChangeMe123!
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
 ```
 
 Chạy MongoDB:
@@ -47,7 +56,7 @@ Khởi động server:
 npm run dev
 ```
 
-Backend sẽ chạy tại: http://localhost:5000
+Backend sẽ chạy tại: http://localhost:9000
 
 ### 3. Cài đặt Frontend
 
@@ -58,7 +67,7 @@ npm install
 
 Tạo file `.env` trong thư mục FE:
 ```env
-VITE_API_URL=http://localhost:5000
+VITE_API_BASE_URL=http://localhost:9000/api
 ```
 
 Khởi động development server:
@@ -163,8 +172,22 @@ Base project đã được setup với cấu hình cơ bản. Team có thể b�
 ## 👥 User Roles
 
 - **Owner** - Chủ cửa hàng
-- **Staff** - Nhân viên
 - **Customer** - Khách hàng
+
+## 🔐 Auth & Profile APIs
+
+- `POST /api/auth/signup` - Đăng ký
+- `POST /api/auth/login` - Đăng nhập
+- `POST /api/auth/logout` - Đăng xuất (cần Bearer token)
+- `GET /api/auth/me` - Lấy thông tin user hiện tại
+- `GET /api/users/me` - Lấy profile
+- `PUT /api/users/me` - Cập nhật profile
+- `PUT /api/users/me/change-password` - Đổi mật khẩu
+- `DELETE /api/users/me` - Xóa profile
+
+Ghi chú:
+- `signup` luôn tạo `customer`.
+- `owner` là tài khoản seed sẵn từ biến môi trường.
 
 ## 🤝 Đóng góp
 

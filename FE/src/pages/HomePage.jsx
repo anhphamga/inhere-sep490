@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import MainHeader from '../components/layout/MainHeader';
 import './HomePage.css';
 
 const HomePage = () => {
@@ -17,24 +18,7 @@ const HomePage = () => {
   return (
     <div className="homepage">
       {/* Header Navigation */}
-      <header className="header">
-        <div className="container">
-          <div className="header-content">
-            <h1 className="logo">INHERE HOI AN OUTFIT</h1>
-            <nav className="nav">
-              <a href="#rental">Rental</a>
-              <a href="#buy">Buy</a>
-              <a href="#booking">Booking</a>
-              <a href="#blog">Blog</a>
-              <a href="#contact">Contact</a>
-            </nav>
-            <div className="header-actions">
-              <button className="btn-secondary">Login</button>
-              <button className="btn-primary">BOOK NOW</button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <MainHeader />
 
       {/* Hero Section */}
       <section className="hero">

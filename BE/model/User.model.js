@@ -3,9 +3,9 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
   role: {
     type: String,
-    enum: ['Owner', 'Staff', 'Customer'],
+    enum: ['owner', 'customer'],
     required: true,
-    default: 'Customer'
+    default: 'customer'
   },
   name: {
     type: String,
@@ -23,15 +23,29 @@ const userSchema = new mongoose.Schema({
   },
   passwordHash: {
     type: String,
-    required: true
+    required: true,
+    select: false
   },
   status: {
     type: String,
-    enum: ['Active', 'Locked'],
-    default: 'Active'
+    enum: ['active', 'locked'],
+    default: 'active'
   },
   avatarUrl: {
     type: String,
+    default: null
+  },
+  address: {
+    type: String,
+    default: ''
+  },
+  gender: {
+    type: String,
+    enum: ['male', 'female', 'other', null],
+    default: null
+  },
+  dateOfBirth: {
+    type: Date,
     default: null
   },
   createdAt: {

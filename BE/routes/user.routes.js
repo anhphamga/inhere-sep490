@@ -10,8 +10,18 @@ const router = express.Router();
 
 // Import controller
 const userController = require('../controllers/user.controller');
+const { requireAuth } = require('../middleware/auth.middleware');
+const { uploadAvatar } = require('../middleware/upload.middleware');
 
-// GET /api/users - Lấy danh sách users (TEMPLATE)
-router.get('/', userController.getAllUsers);
+// CRUD profile cá nhân
+router.get('/me', requireAuth, userController.getMyProfile);
+router.put('/me', requireAuth, userController.updateMyProfile);
+router.delete('/me', requireAuth, userController.deleteMyProfile);
+
+// Đổi mật khẩu
+router.put('/me/change-password', requireAuth, userController.changePassword);
+
+// Upload avatar
+router.put('/me/avatar', requireAuth, uploadAvatar, userController.uploadMyAvatar);
 
 module.exports = router;
