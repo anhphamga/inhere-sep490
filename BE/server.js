@@ -2,11 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
+const seedOwnerAccount = require('./utils/seedOwner');
 
 const app = express();
-
-// Connect to MongoDB
-connectDB();
 
 // Middleware
 app.use(cors());
@@ -36,6 +34,18 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 9000;
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+const bootstrap = async () => {
+  try {
+    await connectDB();
+    await seedOwnerAccount();
+
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Server bootstrap failed:', error.message);
+    process.exit(1);
+  }
+};
+
+bootstrap();
