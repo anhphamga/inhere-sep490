@@ -67,24 +67,29 @@ const updateMyProfile = async (req, res) => {
       });
     }
 
-    if (payload.email || payload.phone) {
-      const conflictQuery = [];
-      if (payload.email) {
-        conflictQuery.push({ email: payload.email });
-      }
-      if (payload.phone) {
-        conflictQuery.push({ phone: payload.phone });
-      }
+    const currentUser = await User.findById(req.user.id);
 
-      const conflictingUser = await User.findOne({
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (payload.email) {
+      const normalizedEmail = payload.email.trim().toLowerCase();
+      payload.email = normalizedEmail;
+
+      const emailConflict = await User.findOne({
         _id: { $ne: req.user.id },
-        $or: conflictQuery
+        email: normalizedEmail,
+        authProvider: currentUser.authProvider
       });
 
-      if (conflictingUser) {
+      if (emailConflict) {
         return res.status(409).json({
           success: false,
-          message: 'Email or phone already exists'
+          message: 'Email already exists'
         });
       }
     }
