@@ -13,18 +13,22 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: true,
-    unique: true
+    required: false,
+    default: null
   },
   email: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   passwordHash: {
     type: String,
     required: true,
     select: false
+  },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
   },
   status: {
     type: String,
@@ -55,5 +59,7 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+userSchema.index({ email: 1, authProvider: 1 }, { unique: true });
 
 module.exports = mongoose.model('User', userSchema);

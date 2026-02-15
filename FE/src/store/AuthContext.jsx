@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { getMeApi, loginApi, logoutApi, signupApi } from '../services/auth.service'
+import { getMeApi, googleLoginApi, loginApi, logoutApi, signupApi } from '../services/auth.service'
 import { setAuthToken } from '../api/axiosClient'
 
 const AuthContext = createContext(null)
@@ -68,6 +68,12 @@ export const AuthProvider = ({ children }) => {
     return response.data
   }, [persistSession])
 
+  const loginWithGoogle = useCallback(async (payload) => {
+    const response = await googleLoginApi(payload)
+    persistSession(response.data.token, response.data.user)
+    return response.data
+  }, [persistSession])
+
   const signup = useCallback(async (payload) => {
     const response = await signupApi(payload)
     persistSession(response.data.token, response.data.user)
@@ -77,6 +83,8 @@ export const AuthProvider = ({ children }) => {
   const logout = useCallback(async () => {
     try {
       await logoutApi()
+    } catch {
+      // ignore logout API errors and always clear local session
     } finally {
       clearSession()
     }
@@ -98,11 +106,12 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated: Boolean(token && user),
     login,
+    loginWithGoogle,
     signup,
     logout,
     refreshMe,
     clearSession
-  }), [token, user, loading, login, signup, logout, refreshMe, clearSession])
+  }), [token, user, loading, login, loginWithGoogle, signup, logout, refreshMe, clearSession])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

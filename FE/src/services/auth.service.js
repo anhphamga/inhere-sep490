@@ -10,6 +10,11 @@ export const loginApi = async (payload) => {
   return response.data
 }
 
+export const googleLoginApi = async (payload) => {
+  const response = await axiosClient.post('/auth/google-login', payload)
+  return response.data
+}
+
 export const logoutApi = async () => {
   const response = await axiosClient.post('/auth/logout')
   return response.data
