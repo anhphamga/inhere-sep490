@@ -11,6 +11,10 @@
   padding: 28px;
 }
 
+.auth-with-header {
+  min-height: calc(100vh - 84px);
+}
+
 .auth-layout {
   width: 100%;
   max-width: 1080px;
@@ -177,6 +181,11 @@
 .auth-form button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.auth-form .auth-secondary-btn {
+  background: #eef2ff;
+  color: #312e81;
 }
 
 .auth-secondary-btn {

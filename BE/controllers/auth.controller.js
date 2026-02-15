@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const User = require('../model/User.model');
 const { signAccessToken } = require('../utils/jwt');
 const { hasGoogleClientId, verifyGoogleIdToken } = require('../utils/googleAuth');
+const { hasSmtpConfig, sendResetPasswordEmail } = require('../utils/mailer');
 
 const sanitizeUser = (user) => ({
   id: user._id,
@@ -273,6 +274,125 @@ const googleLogin = async (req, res) => {
   }
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'email is required'
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({
+      email: normalizedEmail,
+      authProvider: 'local'
+    }).select('+passwordResetToken +passwordResetExpires');
+
+    const genericResponse = {
+      success: true,
+      message: 'Nếu email tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi.'
+    };
+
+    if (!user) {
+      return res.status(200).json(genericResponse);
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save();
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetLink = `${frontendUrl}/forgot-password?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(normalizedEmail)}`;
+
+    if (hasSmtpConfig()) {
+      await sendResetPasswordEmail({
+        to: normalizedEmail,
+        name: user.name,
+        resetLink,
+        expiresInMinutes: 15
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      return res.status(200).json({
+        success: true,
+        message: 'SMTP chưa cấu hình. Trả token/link để test ở môi trường dev.',
+        token: rawToken,
+        resetLink
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'SMTP chưa được cấu hình trên server'
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Không thể xử lý yêu cầu quên mật khẩu',
+      error: error.message
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'token and newPassword are required'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters'
+      });
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+    const user = await User.findOne({
+      authProvider: 'local',
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: new Date() }
+    }).select('+passwordHash +passwordResetToken +passwordResetExpires');
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token không hợp lệ hoặc đã hết hạn'
+      });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đặt lại mật khẩu thành công'
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Không thể đặt lại mật khẩu',
+      error: error.message
+    });
+  }
+};
+
 const logout = async (req, res) => {
   return res.status(200).json({
     success: true,
@@ -309,6 +429,8 @@ module.exports = {
   signup,
   login,
   googleLogin,
+  forgotPassword,
+  resetPassword,
   logout,
   getCurrentUser
 };
