@@ -15,6 +15,16 @@ export const googleLoginApi = async (payload) => {
   return response.data
 }
 
+export const forgotPasswordApi = async (payload) => {
+  const response = await axiosClient.post('/auth/forgot-password', payload)
+  return response.data
+}
+
+export const resetPasswordApi = async (payload) => {
+  const response = await axiosClient.post('/auth/reset-password', payload)
+  return response.data
+}
+
 export const logoutApi = async () => {
   const response = await axiosClient.post('/auth/logout')
   return response.data

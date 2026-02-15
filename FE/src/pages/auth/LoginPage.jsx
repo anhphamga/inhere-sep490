@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { getRouteByRole } from '../../utils/auth'
 import { loadGoogleIdentityScript } from '../../utils/googleIdentity'
+import MainHeader from '../../components/layout/MainHeader'
 import './AuthPages.css'
 
 const LoginPage = () => {
@@ -91,74 +92,77 @@ const LoginPage = () => {
   }
 
   return (
-    <div className="auth-shell auth-page">
-      <div className="auth-layout">
-        <section className="auth-showcase">
-          <p className="auth-showcase-badge">INHERE HOI AN OUTFIT</p>
-          <h1>Đăng nhập để tiếp tục đặt thuê trang phục</h1>
-          <p>Quản lý hồ sơ, theo dõi lịch đặt và cập nhật ảnh đại diện của bạn tại một nơi.</p>
-          <ul className="auth-showcase-points">
-            <li>Đăng nhập nhanh bằng email</li>
-            <li>Phân luồng owner và customer</li>
-            <li>Bảo mật tài khoản với đổi mật khẩu</li>
-          </ul>
-        </section>
+    <>
+      <MainHeader />
+      <div className="auth-shell auth-page auth-with-header">
+        <div className="auth-layout">
+          <section className="auth-showcase">
+            <p className="auth-showcase-badge">INHERE HOI AN OUTFIT</p>
+            <h1>Đăng nhập để tiếp tục đặt thuê trang phục</h1>
+            <p>Quản lý hồ sơ, theo dõi lịch đặt và cập nhật ảnh đại diện của bạn tại một nơi.</p>
+            <ul className="auth-showcase-points">
+              <li>Đăng nhập nhanh bằng email</li>
+              <li>Phân luồng owner và customer</li>
+              <li>Bảo mật tài khoản với đổi mật khẩu</li>
+            </ul>
+          </section>
 
-        <section className="auth-card auth-panel">
-          <div className="auth-tabs">
-            <span className="auth-tab auth-tab-active">Đăng nhập</span>
-            <Link to="/signup" className="auth-tab">Đăng ký</Link>
-          </div>
-
-          <h2 className="auth-title">Xin chào trở lại</h2>
-          <p className="auth-subtitle">Nhập tài khoản của bạn để vào hệ thống.</p>
-
-          <form className="auth-form" onSubmit={handleSubmit}>
-            <div className="auth-input-wrap">
-              <label>Email</label>
-              <input
-                type="email"
-                placeholder="Nhập email"
-                value={form.email}
-                onChange={(event) => setForm({ ...form, email: event.target.value })}
-                required
-              />
-            </div>
-            <div className="auth-input-wrap">
-              <label>Mật khẩu</label>
-              <input
-                type="password"
-                placeholder="Nhập mật khẩu"
-                value={form.password}
-                onChange={(event) => setForm({ ...form, password: event.target.value })}
-                required
-              />
-            </div>
-            {error && <div className="error-text">{error}</div>}
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
-            </button>
-
-            <div className="auth-divider">
-              <span>hoặc</span>
+          <section className="auth-card auth-panel">
+            <div className="auth-tabs">
+              <span className="auth-tab auth-tab-active">Đăng nhập</span>
+              <Link to="/signup" className="auth-tab">Đăng ký</Link>
             </div>
 
-            {googleClientId ? (
-              <div className="google-login-wrap" ref={googleButtonRef} />
-            ) : (
-              <p className="google-login-disabled">Thiếu cấu hình Google Client ID</p>
-            )}
+            <h2 className="auth-title">Xin chào trở lại</h2>
+            <p className="auth-subtitle">Nhập tài khoản của bạn để vào hệ thống.</p>
 
-            {googleSubmitting && <div className="auth-google-loading">Đang xác thực Google...</div>}
-          </form>
+            <form className="auth-form" onSubmit={handleSubmit}>
+              <div className="auth-input-wrap">
+                <label>Email</label>
+                <input
+                  type="email"
+                  placeholder="Nhập email"
+                  value={form.email}
+                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  required
+                />
+              </div>
+              <div className="auth-input-wrap">
+                <label>Mật khẩu</label>
+                <input
+                  type="password"
+                  placeholder="Nhập mật khẩu"
+                  value={form.password}
+                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  required
+                />
+              </div>
+              {error && <div className="error-text">{error}</div>}
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
+              </button>
 
-          <div className="auth-links">
-            <Link to="/">Về trang chủ</Link>
-            <Link to="/signup">Chưa có tài khoản?</Link>
-          </div>
-        </section>
+              <div className="auth-divider">
+                <span>hoặc</span>
+              </div>
+
+              {googleClientId ? (
+                <div className="google-login-wrap" ref={googleButtonRef} />
+              ) : (
+                <p className="google-login-disabled">Thiếu cấu hình Google Client ID</p>
+              )}
+
+              {googleSubmitting && <div className="auth-google-loading">Đang xác thực Google...</div>}
+            </form>
+
+            <div className="auth-links">
+              <Link to="/forgot-password">Quên mật khẩu</Link>
+              <Link to="/signup">Chưa có tài khoản?</Link>
+            </div>
+          </section>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

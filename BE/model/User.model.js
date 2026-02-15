@@ -25,6 +25,16 @@ const userSchema = new mongoose.Schema({
     required: true,
     select: false
   },
+  passwordResetToken: {
+    type: String,
+    default: null,
+    select: false
+  },
+  passwordResetExpires: {
+    type: Date,
+    default: null,
+    select: false
+  },
   authProvider: {
     type: String,
     enum: ['local', 'google'],
