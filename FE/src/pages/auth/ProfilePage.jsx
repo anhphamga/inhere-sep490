@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { changePasswordApi, getProfileApi, updateProfileApi, uploadAvatarApi } from '../../services/auth.service'
 import { useAuth } from '../../store/AuthContext'
+import { getRouteByRole } from '../../utils/auth'
 import MainHeader from '../../components/layout/MainHeader'
 import './AuthPages.css'
 
@@ -335,7 +336,7 @@ const ProfilePage = () => {
             {success && <p className="success-text">{success}</p>}
 
             <div className="row-actions">
-              <Link className="auth-secondary-btn" to="/">
+              <Link className="auth-secondary-btn" to={getRouteByRole(user?.role)}>
                 Về trang chủ
               </Link>
               <button className="auth-action-btn" onClick={handleLogout}>
