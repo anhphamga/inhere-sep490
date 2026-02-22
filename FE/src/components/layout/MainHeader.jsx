@@ -4,20 +4,36 @@ import './MainHeader.css'
 
 const MainHeader = () => {
   const { isAuthenticated, logout, user } = useAuth()
+  const isStaff = user?.role === 'staff'
+  const isOwner = user?.role === 'owner'
 
   return (
     <header className="header">
       <div className="container">
         <div className="header-content">
           <h1 className="logo">
-            <Link to="/" className="logo-link">INHERE HOI AN OUTFIT</Link>
+            <Link
+              to={isOwner ? '/owner' : isStaff ? '/staff' : '/'}
+              className="logo-link"
+            >
+              INHERE HOI AN OUTFIT
+            </Link>
           </h1>
           <nav className="nav">
-            <a href="#rental">Rental</a>
-            <a href="#buy">Buy</a>
-            <a href="#booking">Booking</a>
-            <a href="#blog">Blog</a>
-            <a href="#contact">Contact</a>
+            {isOwner || isStaff ? (
+              <>
+                <Link to={isOwner ? '/owner' : '/staff'}>Dashboard</Link>
+                <Link to="/profile">Profile</Link>
+              </>
+            ) : (
+              <>
+                <a href="#rental">Rental</a>
+                <a href="#buy">Buy</a>
+                <a href="#booking">Booking</a>
+                <a href="#blog">Blog</a>
+                <a href="#contact">Contact</a>
+              </>
+            )}
           </nav>
           <div className="header-actions">
             {isAuthenticated ? (
@@ -42,7 +58,7 @@ const MainHeader = () => {
             ) : (
               <Link to="/login" className="btn-secondary">Login</Link>
             )}
-            <button className="btn-primary">BOOK NOW</button>
+            {!(isOwner || isStaff) && <button className="btn-primary">BOOK NOW</button>}
           </div>
         </div>
       </div>
