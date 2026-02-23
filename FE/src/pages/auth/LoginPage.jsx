@@ -4,7 +4,7 @@ import { useAuth } from '../../store/AuthContext'
 import { getRouteByRole } from '../../utils/auth'
 import { loadGoogleIdentityScript } from '../../utils/googleIdentity'
 import MainHeader from '../../components/layout/MainHeader'
-import './AuthPages.css'
+import '../../style/AuthPages.css'
 
 const LoginPage = () => {
   const navigate = useNavigate()
@@ -48,7 +48,8 @@ const LoginPage = () => {
               setGoogleSubmitting(true)
               const data = await loginWithGoogle({ idToken: response.credential })
               const fallbackPath = getRouteByRole(data.user.role)
-              navigate(redirectPath || fallbackPath, { replace: true })
+              const targetPath = data.user.role === 'owner' ? fallbackPath : (redirectPath || fallbackPath)
+              navigate(targetPath, { replace: true })
             } catch (apiError) {
               setError(apiError?.response?.data?.message || 'Google login failed')
             } finally {
@@ -83,7 +84,8 @@ const LoginPage = () => {
     try {
       const data = await login(form)
       const fallbackPath = getRouteByRole(data.user.role)
-      navigate(redirectPath || fallbackPath, { replace: true })
+      const targetPath = data.user.role === 'owner' ? fallbackPath : (redirectPath || fallbackPath)
+      navigate(targetPath, { replace: true })
     } catch (apiError) {
       setError(apiError?.response?.data?.message || 'Login failed')
     } finally {

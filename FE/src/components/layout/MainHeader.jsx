@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
-import './MainHeader.css'
+import '../../style/MainHeader.css'
 
 const MainHeader = () => {
   const { isAuthenticated, logout, user } = useAuth()

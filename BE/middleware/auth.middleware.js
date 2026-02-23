@@ -37,6 +37,18 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
+const requireOwner = (req, res, next) => {
+  if (!req.user || req.user.role !== 'owner') {
+    return res.status(403).json({
+      success: false,
+      message: 'Forbidden'
+    });
+  }
+
+  return next();
+};
+
 module.exports = {
-  requireAuth
+  requireAuth,
+  requireOwner
 };

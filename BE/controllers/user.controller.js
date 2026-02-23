@@ -7,9 +7,26 @@
 
 const bcrypt = require('bcryptjs');
 const User = require('../model/User.model');
+const RentOrder = require('../model/RentOrder.model');
+const SaleOrder = require('../model/SaleOrder.model');
 const { hasCloudinaryConfig, uploadImageBuffer } = require('../utils/cloudinary');
 
 const sanitizeUser = (user) => ({
+  id: user._id,
+  role: user.role,
+  name: user.name,
+  phone: user.phone,
+  email: user.email,
+  status: user.status,
+  avatarUrl: user.avatarUrl,
+  address: user.address,
+  gender: user.gender,
+  dateOfBirth: user.dateOfBirth,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt
+});
+
+const sanitizeCustomer = (user) => ({
   id: user._id,
   role: user.role,
   name: user.name,
@@ -232,11 +249,113 @@ const uploadMyAvatar = async (req, res) => {
   }
 };
 
+const listCustomers = async (req, res) => {
+  try {
+    const filter = { role: 'customer' };
+    const { status } = req.query;
+
+    if (status === 'active' || status === 'locked') {
+      filter.status = status;
+    }
+
+    const customers = await User.find(filter).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Get customer list successfully',
+      data: customers.map(sanitizeCustomer)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting customer list',
+      error: error.message
+    });
+  }
+};
+
+const getCustomerDetail = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const customer = await User.findById(id);
+
+    if (!customer || customer.role !== 'customer') {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
+      });
+    }
+
+    const [rentOrders, saleOrders] = await Promise.all([
+      RentOrder.find({ customerId: customer._id }).sort({ createdAt: -1 }),
+      SaleOrder.find({ customerId: customer._id }).sort({ createdAt: -1 })
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Get customer detail successfully',
+      data: {
+        customer: sanitizeCustomer(customer),
+        rentOrders,
+        saleOrders
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting customer detail',
+      error: error.message
+    });
+  }
+};
+
+const updateCustomerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (status !== 'active' && status !== 'locked') {
+      return res.status(400).json({
+        success: false,
+        message: 'status must be active or locked'
+      });
+    }
+
+    const customer = await User.findOne({ _id: id, role: 'customer' });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
+      });
+    }
+
+    customer.status = status;
+    await customer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Update customer status successfully',
+      data: sanitizeCustomer(customer)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating customer status',
+      error: error.message
+    });
+  }
+};
+
 // Export function
 module.exports = {
   getMyProfile,
   updateMyProfile,
   deleteMyProfile,
   changePassword,
-  uploadMyAvatar
+  uploadMyAvatar,
+  listCustomers,
+  getCustomerDetail,
+  updateCustomerStatus
 };

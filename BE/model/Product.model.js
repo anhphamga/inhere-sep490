@@ -32,6 +32,14 @@ const productSchema = new mongoose.Schema({
   baseSalePrice: {
     type: Number,
     required: true
+  },
+  depositAmount: {
+    type: Number,
+    default: 0
+  },
+  buyoutValue: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true
