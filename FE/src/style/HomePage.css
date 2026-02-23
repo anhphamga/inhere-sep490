@@ -4,8 +4,10 @@
 }
 
 .homepage {
+    background: #f8fafc;
     color: #333;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    line-height: 1.6;
 }
 
 .homepage .container {
@@ -22,4 +24,448 @@
 .homepage .btn-secondary,
 .homepage .btn-link {
     font: inherit;
+}
+
+.homepage .section-title {
+    margin: 0 0 12px;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.homepage .section-subtitle {
+    margin: 0 0 32px;
+    color: #6b7280;
+}
+
+.homepage .btn-primary,
+.homepage .btn-secondary {
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.homepage .btn-primary {
+    background: #111827;
+    color: #fff;
+}
+
+.homepage .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(17, 24, 39, 0.2);
+}
+
+.homepage .btn-secondary {
+    background: #fff;
+    color: #111827;
+    border: 1px solid #d1d5db;
+}
+
+.homepage .btn-secondary:hover {
+    background: #f3f4f6;
+}
+
+.homepage .btn-link {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: #4f46e5;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.homepage .btn-link:hover {
+    color: #3730a3;
+}
+
+.homepage .hero {
+    background: linear-gradient(180deg, #ffffff 0%, #eef2ff 100%);
+    padding: 100px 0;
+}
+
+.homepage .hero-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #e0e7ff;
+    color: #3730a3;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.homepage .hero-title {
+    margin: 20px 0 14px;
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    line-height: 1.2;
+    color: #111827;
+}
+
+.homepage .hero-subtitle {
+    margin: 0;
+    max-width: 700px;
+    color: #4b5563;
+    font-size: 1.1rem;
+}
+
+.homepage .hero-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 26px;
+}
+
+.homepage .hero-promo {
+    margin-top: 20px;
+    font-weight: 700;
+    color: #dc2626;
+}
+
+.homepage .principles-grid,
+.homepage .collections-grid,
+.homepage .bundles-grid,
+.homepage .reviews-grid,
+.homepage .blog-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.homepage .principles-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.homepage .principle-card,
+.homepage .collection-card,
+.homepage .bundle-card,
+.homepage .review-card,
+.homepage .blog-card,
+.homepage .product-card {
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 8px 20px rgba(17, 24, 39, 0.06);
+}
+
+.homepage .principle-card {
+    padding: 20px;
+}
+
+.homepage .principle-card h3 {
+    margin: 0 0 8px;
+    color: #111827;
+}
+
+.homepage .principle-card p {
+    margin: 0;
+    color: #6b7280;
+}
+
+.homepage .collections {
+    background: #fff;
+}
+
+.homepage .collections-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.homepage .collection-card {
+    padding: 16px;
+}
+
+.homepage .collection-card h3 {
+    margin: 14px 0 10px;
+}
+
+.homepage .collection-image,
+.homepage .product-image,
+.homepage .blog-image {
+    width: 100%;
+    border-radius: 12px;
+}
+
+.homepage .collection-image {
+    height: 220px;
+}
+
+.homepage .products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.homepage .product-card {
+    overflow: hidden;
+    position: relative;
+}
+
+.homepage .product-image {
+    height: 240px;
+}
+
+.homepage .product-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 6px 10px;
+    border-radius: 999px;
+}
+
+.homepage .product-badge.best-seller {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.homepage .product-badge.new {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.homepage .product-info {
+    padding: 16px;
+}
+
+.homepage .product-info h3 {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+}
+
+.homepage .price {
+    margin: 0;
+    color: #111827;
+    font-weight: 700;
+}
+
+.homepage .sizes {
+    margin: 6px 0 14px;
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.homepage .booking {
+    background: #fff;
+}
+
+.homepage .booking-form {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.homepage .booking-form input,
+.homepage .booking-form select {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 12px;
+    font: inherit;
+    color: #111827;
+    background: #fff;
+}
+
+.homepage .bundles-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.homepage .bundle-card {
+    padding: 24px;
+    position: relative;
+}
+
+.homepage .bundle-card h3 {
+    margin: 0 0 8px;
+}
+
+.homepage .bundle-price {
+    margin: 0 0 14px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.homepage .bundle-card ul {
+    margin: 0 0 16px;
+    padding-left: 20px;
+    color: #4b5563;
+}
+
+.homepage .popular {
+    border-color: #6366f1;
+}
+
+.homepage .popular-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #3730a3;
+}
+
+.homepage .reviews {
+    background: #fff;
+}
+
+.homepage .reviews-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.homepage .review-card {
+    padding: 22px;
+}
+
+.homepage .review-text {
+    margin: 0 0 18px;
+    color: #374151;
+}
+
+.homepage .reviewer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.homepage .avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #111827;
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+
+.homepage .reviewer-name,
+.homepage .reviewer-country {
+    margin: 0;
+}
+
+.homepage .reviewer-country {
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.homepage .blog-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    margin-bottom: 24px;
+}
+
+.homepage .blog-card {
+    overflow: hidden;
+}
+
+.homepage .blog-image {
+    height: 180px;
+}
+
+.homepage .blog-content {
+    padding: 18px;
+}
+
+.homepage .blog-date {
+    margin: 0 0 8px;
+    color: #6b7280;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.homepage .blog-content h3 {
+    margin: 0 0 10px;
+    font-size: 1.1rem;
+}
+
+.homepage .blog-content p {
+    margin: 0 0 10px;
+    color: #4b5563;
+}
+
+.homepage .footer {
+    background: #111827;
+    color: #e5e7eb;
+    padding: 64px 0 20px;
+}
+
+.homepage .footer-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 24px;
+}
+
+.homepage .footer-col h3,
+.homepage .footer-col h4 {
+    margin: 0 0 10px;
+    color: #fff;
+}
+
+.homepage .footer-tagline {
+    margin: 0 0 10px;
+    color: #9ca3af;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.homepage .footer-col p {
+    margin: 0 0 8px;
+    color: #d1d5db;
+}
+
+.homepage .footer-col ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.homepage .footer-col li {
+    margin-bottom: 8px;
+}
+
+.homepage .footer-col a {
+    color: #d1d5db;
+    text-decoration: none;
+}
+
+.homepage .footer-col a:hover {
+    color: #fff;
+}
+
+.homepage .footer-bottom {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    color: #9ca3af;
+    font-size: 0.92rem;
+}
+
+@media (max-width: 992px) {
+    .homepage section {
+        padding: 60px 0;
+    }
+
+    .homepage .booking-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .homepage section {
+        padding: 48px 0;
+    }
+
+    .homepage .hero-actions {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .homepage .booking-form {
+        grid-template-columns: 1fr;
+    }
 }

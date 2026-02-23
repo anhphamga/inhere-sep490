@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
-import './AuthPages.css'
+import '../../style/AuthPages.css'
 import './StaffPage.css'
 
 const formatDate = (date) => {
@@ -193,78 +193,78 @@ const StaffPage = () => {
         <main className="staff-main">
           {isDashboard ? (
             <>
-          {/* Công việc hôm nay */}
-        <section className="staff-section">
-          <h2 className="staff-section-title">Công việc hôm nay</h2>
-          <div className="staff-today-tasks">
-            {todayTasks.map((t, i) => (
-              <div key={i} className="staff-task-card">
-                <span className="staff-task-value">{t.value}</span>
-                <span className="staff-task-label">
-                  {t.icon} {t.label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Stats */}
-        <section className="staff-section">
-          <h2 className="staff-section-title">Tổng quan</h2>
-          <div className="staff-stats">
-            {stats.map((s, i) => (
-              <div key={i} className="staff-stat-card" style={{ '--card-accent': s.color }}>
-                <span className="staff-stat-icon">{s.icon}</span>
-                <div className="staff-stat-content">
-                  <span className="staff-stat-value">{s.value}</span>
-                  <span className="staff-stat-label">{s.label}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <div className="staff-two-col">
-          {/* Đơn gần nhất */}
-          <section className="staff-section staff-section-half">
-            <h2 className="staff-section-title">Đơn gần nhất</h2>
-            <div className="staff-recent-orders">
-              {recentOrders.length > 0 ? (
-                recentOrders.map((o) => (
-                  <div key={o.id} className="staff-order-item">
-                    <span className="staff-order-id">Đơn #{o.id}</span>
-                    <span className="staff-order-customer">– {o.customer}</span>
-                    <span className="staff-order-time">{o.time}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="staff-empty">Không có đơn hôm nay</p>
-              )}
-            </div>
-          </section>
-
-          {/* Thông báo gần đây */}
-          <section className="staff-section staff-section-half">
-            <h2 className="staff-section-title">Thông báo gần đây</h2>
-            <div className="staff-alerts">
-              {recentAlerts.length > 0 ? (
-                recentAlerts.map((alert) => (
-                  <div
-                    key={alert.id}
-                    className={`staff-alert-item ${alert.unread ? 'unread' : ''}`}
-                  >
-                    <div className="staff-alert-body">
-                      <span className="staff-alert-text">{alert.text}</span>
-                      <span className="staff-alert-time">{alert.time}</span>
+              {/* Công việc hôm nay */}
+              <section className="staff-section">
+                <h2 className="staff-section-title">Công việc hôm nay</h2>
+                <div className="staff-today-tasks">
+                  {todayTasks.map((t, i) => (
+                    <div key={i} className="staff-task-card">
+                      <span className="staff-task-value">{t.value}</span>
+                      <span className="staff-task-label">
+                        {t.icon} {t.label}
+                      </span>
                     </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Stats */}
+              <section className="staff-section">
+                <h2 className="staff-section-title">Tổng quan</h2>
+                <div className="staff-stats">
+                  {stats.map((s, i) => (
+                    <div key={i} className="staff-stat-card" style={{ '--card-accent': s.color }}>
+                      <span className="staff-stat-icon">{s.icon}</span>
+                      <div className="staff-stat-content">
+                        <span className="staff-stat-value">{s.value}</span>
+                        <span className="staff-stat-label">{s.label}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <div className="staff-two-col">
+                {/* Đơn gần nhất */}
+                <section className="staff-section staff-section-half">
+                  <h2 className="staff-section-title">Đơn gần nhất</h2>
+                  <div className="staff-recent-orders">
+                    {recentOrders.length > 0 ? (
+                      recentOrders.map((o) => (
+                        <div key={o.id} className="staff-order-item">
+                          <span className="staff-order-id">Đơn #{o.id}</span>
+                          <span className="staff-order-customer">– {o.customer}</span>
+                          <span className="staff-order-time">{o.time}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="staff-empty">Không có đơn hôm nay</p>
+                    )}
                   </div>
-                ))
-              ) : (
-                <p className="staff-empty">Không có thông báo mới</p>
-              )}
-            </div>
-          </section>
-        </div>
+                </section>
+
+                {/* Thông báo gần đây */}
+                <section className="staff-section staff-section-half">
+                  <h2 className="staff-section-title">Thông báo gần đây</h2>
+                  <div className="staff-alerts">
+                    {recentAlerts.length > 0 ? (
+                      recentAlerts.map((alert) => (
+                        <div
+                          key={alert.id}
+                          className={`staff-alert-item ${alert.unread ? 'unread' : ''}`}
+                        >
+                          <div className="staff-alert-body">
+                            <span className="staff-alert-text">{alert.text}</span>
+                            <span className="staff-alert-time">{alert.time}</span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="staff-empty">Không có thông báo mới</p>
+                    )}
+                  </div>
+                </section>
+              </div>
             </>
           ) : (
             <div className="staff-placeholder">
