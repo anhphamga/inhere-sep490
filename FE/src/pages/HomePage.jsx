@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import MainHeader from '../components/layout/MainHeader';
-import './HomePage.css';
+import '../style/HomePage.css';
 
 const HomePage = () => {
   const [bookingForm, setBookingForm] = useState({
@@ -74,22 +74,22 @@ const HomePage = () => {
           <h2 className="section-title">Featured Collections</h2>
           <div className="collections-grid">
             <div className="collection-card">
-              <div className="collection-image" style={{background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}}></div>
+              <div className="collection-image" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}></div>
               <h3>Ao Dai for Women</h3>
               <button className="btn-link">View Collection</button>
             </div>
             <div className="collection-card">
-              <div className="collection-image" style={{background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'}}></div>
+              <div className="collection-image" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}></div>
               <h3>Viet Phuc / Nhat Binh</h3>
               <button className="btn-link">View Collection</button>
             </div>
             <div className="collection-card">
-              <div className="collection-image" style={{background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'}}></div>
+              <div className="collection-image" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}></div>
               <h3>Men's Costumes</h3>
               <button className="btn-link">View Collection</button>
             </div>
             <div className="collection-card">
-              <div className="collection-image" style={{background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)'}}></div>
+              <div className="collection-image" style={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' }}></div>
               <h3>Accessories</h3>
               <button className="btn-link">View Collection</button>
             </div>
@@ -105,7 +105,7 @@ const HomePage = () => {
           <div className="products-grid">
             <div className="product-card">
               <div className="product-badge best-seller">BEST SELLER</div>
-              <div className="product-image" style={{background: '#ff6b6b'}}></div>
+              <div className="product-image" style={{ background: '#ff6b6b' }}></div>
               <div className="product-info">
                 <h3>Silk Ao Dai - Red Lotus</h3>
                 <p className="price">$15/day</p>
@@ -115,7 +115,7 @@ const HomePage = () => {
             </div>
             <div className="product-card">
               <div className="product-badge new">NEW</div>
-              <div className="product-image" style={{background: '#feca57'}}></div>
+              <div className="product-image" style={{ background: '#feca57' }}></div>
               <div className="product-info">
                 <h3>Vintage Floral Ao Dai</h3>
                 <p className="price">$12/day</p>
@@ -124,7 +124,7 @@ const HomePage = () => {
               </div>
             </div>
             <div className="product-card">
-              <div className="product-image" style={{background: '#48dbfb'}}></div>
+              <div className="product-image" style={{ background: '#48dbfb' }}></div>
               <div className="product-info">
                 <h3>Royal Nhat Binh - Blue</h3>
                 <p className="price">$35/day</p>
@@ -133,7 +133,7 @@ const HomePage = () => {
               </div>
             </div>
             <div className="product-card">
-              <div className="product-image" style={{background: '#54a0ff'}}></div>
+              <div className="product-image" style={{ background: '#54a0ff' }}></div>
               <div className="product-info">
                 <h3>Men's Linen Ao Dai</h3>
                 <p className="price">$18/day</p>
@@ -142,7 +142,7 @@ const HomePage = () => {
               </div>
             </div>
             <div className="product-card">
-              <div className="product-image" style={{background: '#fff'}}></div>
+              <div className="product-image" style={{ background: '#fff' }}></div>
               <div className="product-info">
                 <h3>White Student Ao Dai</h3>
                 <p className="price">$10/day</p>
@@ -161,15 +161,15 @@ const HomePage = () => {
           <h2 className="section-title">Book a Fitting Before You Arrive</h2>
           <p className="section-subtitle">Save time and secure your favorite outfit. Choose a time slot, select your style, and just show up to wear it.</p>
           <form className="booking-form" onSubmit={handleBookingSubmit}>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={bookingForm.date}
-              onChange={(e) => setBookingForm({...bookingForm, date: e.target.value})}
+              onChange={(e) => setBookingForm({ ...bookingForm, date: e.target.value })}
               required
             />
-            <select 
+            <select
               value={bookingForm.time}
-              onChange={(e) => setBookingForm({...bookingForm, time: e.target.value})}
+              onChange={(e) => setBookingForm({ ...bookingForm, time: e.target.value })}
               required
             >
               <option value="">Select Time</option>
@@ -180,12 +180,12 @@ const HomePage = () => {
               <option value="15:00">3:00 PM</option>
               <option value="16:00">4:00 PM</option>
             </select>
-            <input 
-              type="number" 
+            <input
+              type="number"
               placeholder="People"
               min="1"
               value={bookingForm.people}
-              onChange={(e) => setBookingForm({...bookingForm, people: e.target.value})}
+              onChange={(e) => setBookingForm({ ...bookingForm, people: e.target.value })}
               required
             />
             <button type="submit" className="btn-primary">Reserve My Slot</button>
@@ -278,7 +278,7 @@ const HomePage = () => {
           <h2 className="section-title">Hoi An Guide</h2>
           <div className="blog-grid">
             <div className="blog-card">
-              <div className="blog-image" style={{background: '#ffeaa7'}}></div>
+              <div className="blog-image" style={{ background: '#ffeaa7' }}></div>
               <div className="blog-content">
                 <p className="blog-date">FEB 12, 2025</p>
                 <h3>How to Pose Like a Pro in Ao Dai</h3>
@@ -287,7 +287,7 @@ const HomePage = () => {
               </div>
             </div>
             <div className="blog-card">
-              <div className="blog-image" style={{background: '#fab1a0'}}></div>
+              <div className="blog-image" style={{ background: '#fab1a0' }}></div>
               <div className="blog-content">
                 <p className="blog-date">FEB 10, 2025</p>
                 <h3>Guide to Hoi An's Best Photo Spots</h3>
@@ -296,7 +296,7 @@ const HomePage = () => {
               </div>
             </div>
             <div className="blog-card">
-              <div className="blog-image" style={{background: '#dfe6e9'}}></div>
+              <div className="blog-image" style={{ background: '#dfe6e9' }}></div>
               <div className="blog-content">
                 <p className="blog-date">FEB 08, 2025</p>
                 <h3>Choosing the Right Color for Your Skin Tone</h3>

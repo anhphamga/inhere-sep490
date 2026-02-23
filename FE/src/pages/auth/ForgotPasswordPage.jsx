@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import MainHeader from '../../components/layout/MainHeader'
 import { forgotPasswordApi, resetPasswordApi } from '../../services/auth.service'
-import './AuthPages.css'
+import '../../style/AuthPages.css'
 
 const ForgotPasswordPage = () => {
   const location = useLocation()
