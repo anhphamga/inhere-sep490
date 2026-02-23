@@ -18,6 +18,8 @@ import OwnerAlertsScreen from './pages/owner/OwnerAlertsScreen'
 import OwnerOrdersScreen from './pages/owner/OwnerOrdersScreen'
 import OwnerPromotionsScreen from './pages/owner/OwnerPromotionsScreen'
 import OwnerReportsScreen from './pages/owner/OwnerReportsScreen'
+
+import StaffPage from './pages/auth/StaffPage'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -52,6 +54,9 @@ function App() {
           <Route path="shifts" element={<Navigate to="/owner/staff-calendar" replace />} />
           <Route path="vouchers" element={<Navigate to="/owner/promotions" replace />} />
         </Route>
+      </Route>
+      <Route element={<ProtectedRoute roles={["staff"]} />}>
+        <Route path="/staff/*" element={<StaffPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

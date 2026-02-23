@@ -1,0 +1,721 @@
+/* Staff dashboard - layout với sidebar */
+.staff-page {
+  min-height: 100vh;
+  display: flex;
+  background: linear-gradient(120deg, #f8fafc 0%, #eef2ff 50%, #f9fafb 100%);
+}
+
+.staff-sidebar {
+  width: 260px;
+  min-width: 260px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.staff-sidebar-brand {
+  padding: 20px 20px 16px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.staff-sidebar-nav {
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.staff-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #374151;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.staff-sidebar-item:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.staff-sidebar-item.active {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.staff-sidebar-icon {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.staff-sidebar-label {
+  flex: 1;
+}
+
+.staff-sidebar-search {
+  padding: 16px 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.staff-sidebar-search-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.staff-search-sidebar {
+  max-width: none;
+}
+
+.staff-search-sidebar .staff-search-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.staff-sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.staff-sidebar-logout {
+  color: #dc2626;
+}
+
+.staff-sidebar-logout:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.staff-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.staff-header {
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.staff-header-user {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.staff-header-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #e5e7eb;
+  flex-shrink: 0;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.staff-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.staff-avatar-fallback {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.staff-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.staff-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.staff-role {
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.staff-datetime {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.staff-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.staff-header-btn {
+  flex-shrink: 0;
+}
+
+/* Notification dropdown */
+.staff-notification-wrap {
+  position: relative;
+}
+
+.staff-notification-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid #e5e7eb;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.staff-notification-btn:hover {
+  border-color: #4f46e5;
+  background: #eef2ff;
+}
+
+.staff-notification-icon {
+  font-size: 20px;
+}
+
+.staff-notification-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.staff-notification-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  min-width: 320px;
+  max-width: 400px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+}
+
+.staff-dropdown-title {
+  padding: 14px 18px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.staff-dropdown-item {
+  padding: 14px 18px;
+  font-size: 14px;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 0.15s ease;
+}
+
+.staff-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.staff-dropdown-item:hover {
+  background: #f9fafb;
+}
+
+.staff-dropdown-item.unread {
+  background: #eef2ff;
+}
+
+.staff-dropdown-empty {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+  margin: 0;
+  font-size: 14px;
+}
+
+.staff-main {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 20px 24px;
+}
+
+/* Placeholder cho trang chức năng */
+.staff-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 16px;
+  text-align: center;
+}
+
+.staff-placeholder-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.staff-placeholder-desc {
+  font-size: 15px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.staff-section {
+  margin-bottom: -50px;
+}
+
+.staff-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 10px 0;
+}
+
+/* Công việc hôm nay */
+.staff-today-tasks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.staff-task-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.staff-task-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.staff-task-value {
+  display: block;
+  font-size: 36px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.staff-task-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* Stats grid - tăng kích thước số */
+.staff-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.staff-stat-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+  border-left: 4px solid var(--card-accent, #4f46e5);
+}
+
+.staff-stat-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.staff-stat-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.staff-stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-stat-value {
+  font-size: 36px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.1;
+}
+
+.staff-stat-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* Quick actions - header với tìm đơn */
+.staff-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.staff-search-wrap {
+  display: flex;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.staff-search-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.staff-search-input:focus {
+  border-color: #4f46e5;
+}
+
+.staff-search-btn {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.2s ease;
+}
+
+.staff-search-btn:hover {
+  border-color: #4f46e5;
+  background: #eef2ff;
+}
+
+/* Quick actions - hover, pointer, click animation */
+.staff-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.staff-action-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+}
+
+.staff-action-card:hover {
+  border-color: #4f46e5;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.18);
+  color: #312e81;
+  transform: translateY(-3px) scale(1.02);
+}
+
+.staff-action-card:active {
+  transform: translateY(-1px) scale(0.99);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.12);
+}
+
+.staff-action-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.staff-action-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.staff-action-label {
+  font-weight: 600;
+  font-size: 15px;
+  color: #111827;
+}
+
+.staff-action-card:hover .staff-action-label {
+  color: #312e81;
+}
+
+.staff-action-desc {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* Two columns */
+.staff-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.staff-section-half {
+  margin-bottom: 0;
+}
+
+/* Đơn gần nhất */
+.staff-recent-orders {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.staff-order-item {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s ease;
+}
+
+.staff-order-item:last-child {
+  border-bottom: none;
+}
+
+.staff-order-item:hover {
+  background: #f9fafb;
+}
+
+.staff-order-id {
+  font-weight: 600;
+  color: #111827;
+}
+
+.staff-order-customer {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.staff-order-time {
+  margin-left: auto;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+/* Alerts list */
+.staff-alerts {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.staff-alert-item {
+  padding: 14px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 0.15s ease;
+}
+
+.staff-alert-item:last-child {
+  border-bottom: none;
+}
+
+.staff-alert-item:hover {
+  background: #f9fafb;
+}
+
+.staff-alert-item.unread {
+  background: #eef2ff;
+}
+
+.staff-alert-item.unread:hover {
+  background: #e0e7ff;
+}
+
+.staff-alert-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.staff-alert-text {
+  font-size: 14px;
+  color: #374151;
+}
+
+.staff-alert-time {
+  font-size: 12px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* Empty state */
+.staff-empty {
+  padding: 32px 24px;
+  text-align: center;
+  color: #6b7280;
+  margin: 0;
+  font-size: 14px;
+  background: #fff;
+}
+
+/* Close dropdown when click outside - handled by CSS only, JS would need useRef */
+@media (max-width: 768px) {
+  .staff-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .staff-page {
+    flex-direction: column;
+  }
+
+  .staff-sidebar {
+    width: 100%;
+    min-width: 100%;
+    height: auto;
+    position: relative;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .staff-sidebar-brand {
+    width: 100%;
+    padding: 12px 0;
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  .staff-sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    flex: 1;
+    padding: 0;
+  }
+
+  .staff-sidebar-search {
+    flex: 1;
+    min-width: 180px;
+    border: none;
+    padding: 0 8px;
+  }
+
+  .staff-sidebar-footer {
+    flex-direction: row;
+    border: none;
+    padding: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .staff-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .staff-header-actions {
+    width: 100%;
+  }
+
+  .staff-search-wrap {
+    max-width: 100%;
+  }
+
+  .staff-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-today-tasks {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-two-col {
+    grid-template-columns: 1fr;
+  }
+}
