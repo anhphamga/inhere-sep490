@@ -4,7 +4,7 @@ import { changePasswordApi, getProfileApi, updateProfileApi, uploadAvatarApi } f
 import { useAuth } from '../../store/AuthContext'
 import { getRouteByRole } from '../../utils/auth'
 import MainHeader from '../../components/layout/MainHeader'
-import './AuthPages.css'
+import '../../style/AuthPages.css'
 
 const ProfilePage = () => {
   const navigate = useNavigate()
@@ -194,67 +194,67 @@ const ProfilePage = () => {
               <div className="profile-panel">
                 <h2>Thông tin cá nhân</h2>
                 <form className="profile-form" onSubmit={handleProfileUpdate}>
-                <div className="profile-form-row">
-                  <label>Họ và tên</label>
-                  <input
-                    type="text"
-                    value={profileForm.name}
-                    onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })}
-                    required
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Họ và tên</label>
+                    <input
+                      type="text"
+                      value={profileForm.name}
+                      onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })}
+                      required
+                    />
+                  </div>
 
-                <div className="profile-form-row">
-                  <label>Email</label>
-                  <input
-                    type="email"
-                    value={profileForm.email}
-                    onChange={(event) => setProfileForm({ ...profileForm, email: event.target.value })}
-                    required
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Email</label>
+                    <input
+                      type="email"
+                      value={profileForm.email}
+                      onChange={(event) => setProfileForm({ ...profileForm, email: event.target.value })}
+                      required
+                    />
+                  </div>
 
-                <div className="profile-form-row">
-                  <label>Số điện thoại</label>
-                  <input
-                    type="text"
-                    value={profileForm.phone}
-                    onChange={(event) => setProfileForm({ ...profileForm, phone: event.target.value })}
-                    required
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Số điện thoại</label>
+                    <input
+                      type="text"
+                      value={profileForm.phone}
+                      onChange={(event) => setProfileForm({ ...profileForm, phone: event.target.value })}
+                      required
+                    />
+                  </div>
 
-                <div className="profile-form-row">
-                  <label>Địa chỉ</label>
-                  <input
-                    type="text"
-                    value={profileForm.address}
-                    onChange={(event) => setProfileForm({ ...profileForm, address: event.target.value })}
-                    placeholder="Nhập địa chỉ nhận hàng"
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Địa chỉ</label>
+                    <input
+                      type="text"
+                      value={profileForm.address}
+                      onChange={(event) => setProfileForm({ ...profileForm, address: event.target.value })}
+                      placeholder="Nhập địa chỉ nhận hàng"
+                    />
+                  </div>
 
-                <div className="profile-form-row">
-                  <label>Giới tính</label>
-                  <select
-                    value={profileForm.gender}
-                    onChange={(event) => setProfileForm({ ...profileForm, gender: event.target.value })}
-                  >
-                    <option value="">Chưa chọn</option>
-                    <option value="male">Nam</option>
-                    <option value="female">Nữ</option>
-                    <option value="other">Khác</option>
-                  </select>
-                </div>
+                  <div className="profile-form-row">
+                    <label>Giới tính</label>
+                    <select
+                      value={profileForm.gender}
+                      onChange={(event) => setProfileForm({ ...profileForm, gender: event.target.value })}
+                    >
+                      <option value="">Chưa chọn</option>
+                      <option value="male">Nam</option>
+                      <option value="female">Nữ</option>
+                      <option value="other">Khác</option>
+                    </select>
+                  </div>
 
-                <div className="profile-form-row">
-                  <label>Ngày sinh</label>
-                  <input
-                    type="date"
-                    value={profileForm.dateOfBirth}
-                    onChange={(event) => setProfileForm({ ...profileForm, dateOfBirth: event.target.value })}
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Ngày sinh</label>
+                    <input
+                      type="date"
+                      value={profileForm.dateOfBirth}
+                      onChange={(event) => setProfileForm({ ...profileForm, dateOfBirth: event.target.value })}
+                    />
+                  </div>
 
                   <button type="submit" className="auth-action-btn">Lưu</button>
                 </form>
@@ -265,37 +265,37 @@ const ProfilePage = () => {
               <div className="profile-panel">
                 <h2>Đổi mật khẩu</h2>
                 <form className="profile-form" onSubmit={handleChangePassword}>
-                <div className="profile-form-row">
-                  <label>Mật khẩu hiện tại</label>
-                  <input
-                    type="password"
-                    value={passwordForm.currentPassword}
-                    onChange={(event) => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })}
-                    required
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Mật khẩu hiện tại</label>
+                    <input
+                      type="password"
+                      value={passwordForm.currentPassword}
+                      onChange={(event) => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })}
+                      required
+                    />
+                  </div>
 
-                <div className="profile-form-row">
-                  <label>Mật khẩu mới</label>
-                  <input
-                    type="password"
-                    value={passwordForm.newPassword}
-                    minLength={6}
-                    onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })}
-                    required
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Mật khẩu mới</label>
+                    <input
+                      type="password"
+                      value={passwordForm.newPassword}
+                      minLength={6}
+                      onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })}
+                      required
+                    />
+                  </div>
 
-                <div className="profile-form-row">
-                  <label>Xác nhận mật khẩu mới</label>
-                  <input
-                    type="password"
-                    value={passwordForm.confirmNewPassword}
-                    minLength={6}
-                    onChange={(event) => setPasswordForm({ ...passwordForm, confirmNewPassword: event.target.value })}
-                    required
-                  />
-                </div>
+                  <div className="profile-form-row">
+                    <label>Xác nhận mật khẩu mới</label>
+                    <input
+                      type="password"
+                      value={passwordForm.confirmNewPassword}
+                      minLength={6}
+                      onChange={(event) => setPasswordForm({ ...passwordForm, confirmNewPassword: event.target.value })}
+                      required
+                    />
+                  </div>
 
                   <button type="submit" className="auth-action-btn">Đổi mật khẩu</button>
                 </form>
@@ -306,27 +306,27 @@ const ProfilePage = () => {
               <div className="profile-panel">
                 <h2>Ảnh đại diện</h2>
                 <div className="avatar-upload-placeholder">
-                <div className="avatar-preview-circle">
-                  {avatarPreviewUrl ? <img src={avatarPreviewUrl} alt="Avatar preview" className="avatar-preview-img" /> : '👤'}
-                </div>
-                <label className="auth-secondary-btn" htmlFor="avatar-file-input">
-                  Chọn ảnh
-                </label>
-                <input
-                  id="avatar-file-input"
-                  type="file"
-                  accept="image/*"
-                  className="avatar-file-input"
-                  onChange={handleAvatarFileChange}
-                />
-                <button
-                  type="button"
-                  className="auth-action-btn"
-                  onClick={handleAvatarUpload}
-                  disabled={avatarUploading}
-                >
-                  {avatarUploading ? 'Đang upload...' : 'Upload ảnh'}
-                </button>
+                  <div className="avatar-preview-circle">
+                    {avatarPreviewUrl ? <img src={avatarPreviewUrl} alt="Avatar preview" className="avatar-preview-img" /> : '👤'}
+                  </div>
+                  <label className="auth-secondary-btn" htmlFor="avatar-file-input">
+                    Chọn ảnh
+                  </label>
+                  <input
+                    id="avatar-file-input"
+                    type="file"
+                    accept="image/*"
+                    className="avatar-file-input"
+                    onChange={handleAvatarFileChange}
+                  />
+                  <button
+                    type="button"
+                    className="auth-action-btn"
+                    onClick={handleAvatarUpload}
+                    disabled={avatarUploading}
+                  >
+                    {avatarUploading ? 'Đang upload...' : 'Upload ảnh'}
+                  </button>
                   <p className="avatar-upload-hint">Định dạng hỗ trợ: JPG, PNG, WEBP. Dung lượng tối đa 2MB.</p>
                 </div>
               </div>

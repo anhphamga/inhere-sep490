@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import MainHeader from '../../components/layout/MainHeader'
-import './AuthPages.css'
+import '../../style/AuthPages.css'
 
 const SignupPage = () => {
   const navigate = useNavigate()

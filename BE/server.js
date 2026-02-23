@@ -23,10 +23,12 @@ app.get('/', (req, res) => {
 const routes = require('./routes');
 app.use('/api', routes);  // Tất cả API sẽ có prefix /api
 
+
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ 
+  res.status(500).json({
     message: 'Something went wrong!',
     error: process.env.NODE_ENV === 'development' ? err.message : {}
   });
