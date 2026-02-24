@@ -1,23 +1,44 @@
 const mongoose = require('mongoose');
 
 const blogSchema = new mongoose.Schema({
-  authorId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  slug: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  thumbnail: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  category: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  likeCount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  viewCount: {
+    type: Number,
+    default: 0,
+    min: 0
   },
   status: {
     type: String,
-    enum: ['Draft', 'Public'],
-    default: 'Draft'
+    enum: ['draft', 'published', 'Draft', 'Public'],
+    default: 'draft'
   },
   content: {
     type: String,
     required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
   }
 }, {
   timestamps: true

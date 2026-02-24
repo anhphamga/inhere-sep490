@@ -10,14 +10,16 @@ const router = express.Router();
 // Import routes của từng model
 const userRoutes = require('./user.routes');
 const blogRoutes = require('./blog.routes');
-// const productRoutes = require('./product.routes');
+const categoryRoutes = require('./category.routes');
+const productRoutes = require('./product.routes');
 // const orderRoutes = require('./order.routes');
 // ... thêm các routes khác ở đây
 
 // Mount routes với prefix cho từng module
 router.use('/users', userRoutes);
 router.use('/blogs', blogRoutes);
-// router.use('/products', productRoutes);
+router.use('/categories', categoryRoutes);
+router.use('/products', productRoutes);
 // router.use('/orders', orderRoutes);
 // ... thêm prefix tương ứng
 

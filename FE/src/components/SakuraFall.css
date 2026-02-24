@@ -1,0 +1,45 @@
+.sakura-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 999;
+}
+
+.sakura-petal {
+  position: absolute;
+  top: -8%;
+  border-radius: 60% 40% 70% 30%;
+  background: radial-gradient(circle at 30% 30%, #ffd9e6 0%, #ffb9cf 65%, #f09bb8 100%);
+  opacity: 0.78;
+  box-shadow: 0 0 6px rgba(255, 185, 207, 0.6);
+  animation-name: sakura-fall, sakura-sway;
+  animation-timing-function: linear, ease-in-out;
+  animation-iteration-count: infinite, infinite;
+}
+
+@keyframes sakura-fall {
+  0% {
+    transform: translate3d(0, -8vh, 0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate3d(var(--drift, 0px), 110vh, 0) rotate(360deg);
+    opacity: 0.2;
+  }
+}
+
+@keyframes sakura-sway {
+  0% {
+    margin-left: -6px;
+  }
+  50% {
+    margin-left: 6px;
+  }
+  100% {
+    margin-left: -6px;
+  }
+}
