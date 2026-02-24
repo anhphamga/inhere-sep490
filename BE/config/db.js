@@ -1,16 +1,11 @@
-const mongoose = require('mongoose');
-const { syncModelIndexes } = require('../model');
+const mongoose = require("mongoose");
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-
-    await syncModelIndexes();
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    console.log('All indexes synced');
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("✅ MongoDB connected");
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    console.error("❌ MongoDB connection failed:", error.message);
     process.exit(1);
   }
 };
