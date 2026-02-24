@@ -32,6 +32,11 @@ const productSchema = new mongoose.Schema({
   baseSalePrice: {
     type: Number,
     required: true
+  },
+  likeCount: {
+    type: Number,
+    default: 0,
+    min: 0
   }
 }, {
   timestamps: true
