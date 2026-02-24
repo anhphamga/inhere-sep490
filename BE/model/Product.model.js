@@ -33,13 +33,10 @@ const productSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  depositAmount: {
+  likeCount: {
     type: Number,
-    default: 0
-  },
-  buyoutValue: {
-    type: Number,
-    default: 0
+    default: 0,
+    min: 0
   }
 }, {
   timestamps: true
