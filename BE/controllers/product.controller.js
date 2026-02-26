@@ -62,6 +62,12 @@ const normalizeProductKey = (value) => {
         .join('|');
 };
 
+const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildNameCategoryKey = (source) => [source?.name, source?.category]
+    .map((value) => normalizeProductKeyPart(value))
+    .join('|');
+
 const buildProductKey = (source) => [
     source.name,
     source.category,
@@ -608,6 +614,12 @@ const exportOwnerProducts = async (req, res) => {
         }
 
         const products = await Product.find(match).sort({ createdAt: -1 });
+        const productIds = products.map((product) => product._id);
+        const quantityAgg = await ProductInstance.aggregate([
+            { $match: { productId: { $in: productIds } } },
+            { $group: { _id: '$productId', quantity: { $sum: 1 } } }
+        ]);
+        const quantityMap = new Map(quantityAgg.map((item) => [item._id.toString(), item.quantity]));
 
         const productRows = products.map((product) => ({
             name: product.name,
@@ -616,6 +628,7 @@ const exportOwnerProducts = async (req, res) => {
             color: product.color,
             description: product.description || '',
             images: (product.images || []).join(', '),
+            quantity: quantityMap.get(product._id.toString()) || 0,
             baseRentPrice: product.baseRentPrice,
             baseSalePrice: product.baseSalePrice,
             depositAmount: product.depositAmount ?? 0,
@@ -703,7 +716,6 @@ const importOwnerProducts = async (req, res) => {
                 });
             }
 
-            const createdProducts = [];
             const preparedProducts = [];
             const productIndexByKeyMap = new Map();
             const productIndexesByAttrMap = new Map();
@@ -722,7 +734,8 @@ const importOwnerProducts = async (req, res) => {
                     baseRentPrice: row.baseRentPrice ?? row.BaseRentPrice,
                     baseSalePrice: row.baseSalePrice ?? row.BaseSalePrice,
                     depositAmount: row.depositAmount ?? row.DepositAmount ?? 0,
-                    buyoutValue: row.buyoutValue ?? row.BuyoutValue ?? 0
+                    buyoutValue: row.buyoutValue ?? row.BuyoutValue ?? 0,
+                    quantity: row.quantity ?? row.Quantity ?? 0
                 };
 
                 if (!productData.name || !productData.category || !productData.size || !productData.color || productData.baseRentPrice == null || productData.baseSalePrice == null) {
@@ -737,8 +750,16 @@ const importOwnerProducts = async (req, res) => {
                     baseRentPrice: Number(productData.baseRentPrice),
                     baseSalePrice: Number(productData.baseSalePrice),
                     depositAmount: Number(productData.depositAmount || 0),
-                    buyoutValue: Number(productData.buyoutValue || 0)
+                    buyoutValue: Number(productData.buyoutValue || 0),
+                    quantity: Number(productData.quantity || 0)
                 };
+
+                if (!Number.isInteger(normalizedProduct.quantity) || normalizedProduct.quantity < 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'quantity must be a non-negative integer'
+                    });
+                }
 
                 preparedProducts.push(normalizedProduct);
 
@@ -858,29 +879,105 @@ const importOwnerProducts = async (req, res) => {
                 }
             }
 
-            for (const productData of preparedProducts) {
-                const created = await Product.create(productData);
-                createdProducts.push(created);
+            const instanceDocsByProductIndex = new Map();
+            preparedInstanceDocs.forEach((instance) => {
+                if (!instanceDocsByProductIndex.has(instance.productIndex)) {
+                    instanceDocsByProductIndex.set(instance.productIndex, []);
+                }
+                instanceDocsByProductIndex.get(instance.productIndex).push(instance);
+            });
+
+            const createdProducts = [];
+            const affectedProducts = [];
+            const productIdByRowIndex = new Map();
+            const productByNameCategoryKey = new Map();
+
+            for (let index = 0; index < preparedProducts.length; index += 1) {
+                const productData = preparedProducts[index];
+                const nameCategoryKey = buildNameCategoryKey(productData);
+
+                let targetProduct = productByNameCategoryKey.get(nameCategoryKey);
+
+                if (!targetProduct) {
+                    targetProduct = await Product.findOne({
+                        name: { $regex: `^${escapeRegex(productData.name)}$`, $options: 'i' },
+                        category: { $regex: `^${escapeRegex(productData.category)}$`, $options: 'i' }
+                    });
+                }
+
+                if (!targetProduct) {
+                    targetProduct = await Product.create({
+                        name: productData.name,
+                        category: productData.category,
+                        size: productData.size,
+                        color: productData.color,
+                        description: productData.description || '',
+                        images: Array.isArray(productData.images) ? productData.images : [],
+                        baseRentPrice: productData.baseRentPrice,
+                        baseSalePrice: productData.baseSalePrice,
+                        depositAmount: productData.depositAmount ?? 0,
+                        buyoutValue: productData.buyoutValue ?? 0
+                    });
+                    createdProducts.push(targetProduct);
+                }
+
+                productByNameCategoryKey.set(nameCategoryKey, targetProduct);
+                productIdByRowIndex.set(index, targetProduct._id);
             }
 
-            if (preparedInstanceDocs.length > 0) {
-                const instanceDocs = preparedInstanceDocs.map((instance) => ({
-                    productId: createdProducts[instance.productIndex]._id,
-                    conditionLevel: instance.conditionLevel,
-                    conditionScore: instance.conditionScore,
-                    lifecycleStatus: instance.lifecycleStatus,
-                    currentRentPrice: instance.currentRentPrice,
-                    currentSalePrice: instance.currentSalePrice,
-                    note: instance.note
-                }));
+            const allInstanceDocs = [];
 
-                await ProductInstance.insertMany(instanceDocs);
+            for (let index = 0; index < preparedProducts.length; index += 1) {
+                const productData = preparedProducts[index];
+                const productId = productIdByRowIndex.get(index);
+
+                if (!productId) {
+                    continue;
+                }
+
+                const productInstancesFromSheet = instanceDocsByProductIndex.get(index) || [];
+
+                if (productInstancesFromSheet.length > 0) {
+                    productInstancesFromSheet.forEach((instance) => {
+                        allInstanceDocs.push({
+                            productId,
+                            conditionLevel: instance.conditionLevel,
+                            conditionScore: instance.conditionScore,
+                            lifecycleStatus: instance.lifecycleStatus,
+                            currentRentPrice: instance.currentRentPrice,
+                            currentSalePrice: instance.currentSalePrice,
+                            note: instance.note
+                        });
+                    });
+                } else if (productData.quantity > 0) {
+                    for (let quantityIndex = 0; quantityIndex < productData.quantity; quantityIndex += 1) {
+                        allInstanceDocs.push({
+                            productId,
+                            conditionLevel: 'New',
+                            conditionScore: 100,
+                            lifecycleStatus: 'Available',
+                            currentRentPrice: productData.baseRentPrice,
+                            currentSalePrice: productData.baseSalePrice,
+                            note: ''
+                        });
+                    }
+                }
+            }
+
+            if (allInstanceDocs.length > 0) {
+                await ProductInstance.insertMany(allInstanceDocs);
+            }
+
+            const affectedProductIds = Array.from(new Set(Array.from(productIdByRowIndex.values()).map((value) => value.toString())));
+            if (affectedProductIds.length > 0) {
+                const products = await Product.find({ _id: { $in: affectedProductIds } });
+                affectedProducts.push(...products);
             }
 
             return res.status(201).json({
                 success: true,
                 message: 'Import products successfully',
-                data: createdProducts.map(sanitizeProduct)
+                data: affectedProducts.map(sanitizeProduct)
             });
         }
 
@@ -894,6 +991,8 @@ const importOwnerProducts = async (req, res) => {
         }
 
         const createdProducts = [];
+        const affectedProducts = [];
+        const productByNameCategoryKey = new Map();
 
         for (const item of payload) {
             if (!item.name || !item.category || !item.size || !item.color || item.baseRentPrice == null || item.baseSalePrice == null) {
@@ -903,18 +1002,33 @@ const importOwnerProducts = async (req, res) => {
                 });
             }
 
-            const product = await Product.create({
-                name: item.name,
-                category: item.category,
-                size: item.size,
-                color: item.color,
-                description: item.description || '',
-                images: Array.isArray(item.images) ? item.images : [],
-                baseRentPrice: item.baseRentPrice,
-                baseSalePrice: item.baseSalePrice,
-                depositAmount: item.depositAmount ?? 0,
-                buyoutValue: item.buyoutValue ?? 0
-            });
+            const nameCategoryKey = buildNameCategoryKey(item);
+            let product = productByNameCategoryKey.get(nameCategoryKey);
+
+            if (!product) {
+                product = await Product.findOne({
+                    name: { $regex: `^${escapeRegex(item.name)}$`, $options: 'i' },
+                    category: { $regex: `^${escapeRegex(item.category)}$`, $options: 'i' }
+                });
+            }
+
+            if (!product) {
+                product = await Product.create({
+                    name: item.name,
+                    category: item.category,
+                    size: item.size,
+                    color: item.color,
+                    description: item.description || '',
+                    images: Array.isArray(item.images) ? item.images : [],
+                    baseRentPrice: item.baseRentPrice,
+                    baseSalePrice: item.baseSalePrice,
+                    depositAmount: item.depositAmount ?? 0,
+                    buyoutValue: item.buyoutValue ?? 0
+                });
+                createdProducts.push(product);
+            }
+
+            productByNameCategoryKey.set(nameCategoryKey, product);
 
             if (Array.isArray(item.instances) && item.instances.length > 0) {
                 const instanceDocs = item.instances.map((instance) => ({
@@ -928,15 +1042,39 @@ const importOwnerProducts = async (req, res) => {
                 }));
 
                 await ProductInstance.insertMany(instanceDocs);
+            } else {
+                const parsedQuantity = Number(item.quantity || 0);
+
+                if (!Number.isInteger(parsedQuantity) || parsedQuantity < 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'quantity must be a non-negative integer'
+                    });
+                }
+
+                if (parsedQuantity > 0) {
+                    const quantityInstances = Array.from({ length: parsedQuantity }, () => ({
+                        productId: product._id,
+                        conditionLevel: 'New',
+                        conditionScore: 100,
+                        lifecycleStatus: 'Available',
+                        currentRentPrice: product.baseRentPrice,
+                        currentSalePrice: product.baseSalePrice,
+                        note: ''
+                    }));
+
+                    await ProductInstance.insertMany(quantityInstances);
+                }
             }
 
-            createdProducts.push(product);
+            affectedProducts.push(product);
         }
 
         return res.status(201).json({
             success: true,
             message: 'Import products successfully',
-            data: createdProducts.map(sanitizeProduct)
+            data: Array.from(new Map(affectedProducts.map((product) => [product._id.toString(), product])).values()).map(sanitizeProduct),
+            createdCount: createdProducts.length
         });
     } catch (error) {
         return res.status(500).json({
