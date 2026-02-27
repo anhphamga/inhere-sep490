@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import BuyPage from './pages/BuyPage'
 import BookingPage from './pages/BookingPage'
@@ -9,12 +9,7 @@ import SakuraFall from './components/SakuraFall'
 
 function App() {
   return (
-    <BrowserRouter
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
+    <>
       <SakuraFall count={22} />
       <Routes>
         <Route path="/" element={<HomePage />} />
@@ -25,7 +20,7 @@ function App() {
         <Route path="/admin/blogs" element={<AdminBlogsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </>
   )
 }
 
