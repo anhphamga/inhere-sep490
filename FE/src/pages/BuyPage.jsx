@@ -23,6 +23,8 @@ const I18N = {
     next: "Sau",
     page: "Trang",
     currency: "đ",
+    showChildren: "Mở danh mục con",
+    hideChildren: "Thu gọn danh mục con",
   },
   en: {
     titleDefault: "Product Categories",
@@ -43,7 +45,97 @@ const I18N = {
     next: "Next",
     page: "Page",
     currency: "VND",
+    showChildren: "Expand subcategories",
+    hideChildren: "Collapse subcategories",
   },
+};
+
+const toCategoryNode = (item = {}) => ({
+  value: String(item.value || item.rawName || item.displayName || "").trim(),
+  displayName: String(item.displayName || item.name || item.value || "").trim(),
+  count: Math.max(Number(item.count) || 0, 0),
+  slug: String(item.slug || ""),
+  children: Array.isArray(item.children)
+    ? item.children.map((child) => toCategoryNode(child)).filter((child) => child.value)
+    : [],
+});
+
+const normalizeText = (value = "") =>
+  String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .trim();
+
+const mergeUniqueChildren = (children = []) => {
+  const seen = new Set();
+  return children.filter((child) => {
+    if (!child?.value || seen.has(child.value)) return false;
+    seen.add(child.value);
+    return true;
+  });
+};
+
+const buildSidebarTree = (rawCategories = [], lang = "vi") => {
+  const categories = rawCategories.map((item) => toCategoryNode(item)).filter((item) => item.value);
+  const hasChildrenFromApi = categories.some((category) => category.children.length > 0);
+  if (hasChildrenFromApi) {
+    return categories;
+  }
+
+  const isAoDai = (name) => normalizeText(name).startsWith("ao dai");
+  const isAoDaiParent = (name) => {
+    const normalized = normalizeText(name);
+    return normalized === "ao dai cho thue" || normalized === "ao dai";
+  };
+
+  const children = [];
+  const topLevel = [];
+  categories.forEach((category) => {
+    if (isAoDai(category.displayName) && !isAoDaiParent(category.displayName)) {
+      children.push(category);
+      return;
+    }
+    topLevel.push(category);
+  });
+
+  if (children.length === 0) {
+    return categories;
+  }
+
+  const parentIndex = topLevel.findIndex((category) => isAoDaiParent(category.displayName));
+  const parentLabel = lang === "vi" ? "Áo Dài Cho Thuê" : "Ao Dai Rental";
+  const parent = parentIndex >= 0 ? topLevel[parentIndex] : null;
+  if (parentIndex >= 0) {
+    topLevel.splice(parentIndex, 1);
+  }
+
+  const mergedChildren = mergeUniqueChildren([...(parent?.children || []), ...children]).sort((a, b) =>
+    a.displayName.localeCompare(b.displayName, "vi")
+  );
+
+  const groupedParent = {
+    value: parent?.value || "__ao_dai_group__",
+    displayName: parent?.displayName || parentLabel,
+    count: parent?.count || mergedChildren.reduce((sum, item) => sum + item.count, 0),
+    slug: parent?.slug || "ao-dai-cho-thue",
+    children: mergedChildren,
+  };
+
+  return [groupedParent, ...topLevel];
+};
+
+const flattenCategories = (nodes = []) => {
+  const result = [];
+  nodes.forEach((node) => {
+    result.push(node);
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      node.children.forEach((child) => result.push(child));
+    }
+  });
+  return result;
 };
 
 export default function BuyPage() {
@@ -52,6 +144,7 @@ export default function BuyPage() {
   );
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [expanded, setExpanded] = useState({});
   const [selectedCategory, setSelectedCategory] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
@@ -93,6 +186,23 @@ export default function BuyPage() {
     };
   }, []);
 
+  const categoryTree = useMemo(() => buildSidebarTree(categories, lang), [categories, lang]);
+  const allCategoryNodes = useMemo(() => flattenCategories(categoryTree), [categoryTree]);
+  const selectedCategoryInfo = useMemo(
+    () => allCategoryNodes.find((item) => item.value === selectedCategory) || null,
+    [allCategoryNodes, selectedCategory]
+  );
+
+  useEffect(() => {
+    const nextExpanded = {};
+    categoryTree.forEach((node) => {
+      if (node.children.length > 0) {
+        nextExpanded[node.value] = true;
+      }
+    });
+    setExpanded(nextExpanded);
+  }, [categoryTree]);
+
   useEffect(() => {
     let mounted = true;
     const run = async () => {
@@ -133,11 +243,6 @@ export default function BuyPage() {
     setPage(1);
   }, [selectedCategory]);
 
-  const selectedCategoryInfo = useMemo(
-    () => categories.find((c) => c.displayName === selectedCategory) || null,
-    [categories, selectedCategory]
-  );
-
   const display = useMemo(() => {
     const mapped = products.map((item) => {
       const price = Number(item.baseSalePrice || item.baseRentPrice || 0);
@@ -158,6 +263,10 @@ export default function BuyPage() {
     return mapped;
   }, [products, sortBy, t.currency]);
 
+  const toggleGroup = (value) => {
+    setExpanded((prev) => ({ ...prev, [value]: !prev[value] }));
+  };
+
   return (
     <div className="product-page">
       <Header active="buy" lang={lang} setLang={setLang} />
@@ -166,9 +275,10 @@ export default function BuyPage() {
         <div className="site-shell">
           <section className="catalog-hero">
             <div className="catalog-hero-overlay">
-              <h1>{selectedCategory || t.titleDefault}</h1>
+              <h1>{selectedCategoryInfo?.displayName || t.titleDefault}</h1>
               <p>
-                {t.breadcrumbHome} / <strong>{selectedCategory || t.allCategories}</strong>
+                {t.breadcrumbHome} /{" "}
+                <strong>{selectedCategoryInfo?.displayName || t.allCategories}</strong>
               </p>
             </div>
             <div className="catalog-sort-wrap">
@@ -191,19 +301,48 @@ export default function BuyPage() {
               >
                 <span>{t.allCategories}</span>
               </button>
-              {categories.map((category) => (
-                <button
-                  key={category.slug || category.displayName}
-                  className={`catalog-cat-btn ${
-                    selectedCategory === category.displayName ? "active" : ""
-                  }`}
-                  type="button"
-                  onClick={() => setSelectedCategory(category.displayName)}
-                >
-                  <span>{category.displayName}</span>
-                  <small>({category.count || 0})</small>
-                </button>
-              ))}
+              {categoryTree.map((category) => {
+                const hasChildren = category.children.length > 0;
+                const isOpen = Boolean(expanded[category.value]);
+                return (
+                  <div className="catalog-cat-group" key={category.slug || category.value}>
+                    <button
+                      className={`catalog-cat-btn ${selectedCategory === category.value ? "active" : ""}`}
+                      type="button"
+                      onClick={() =>
+                        hasChildren ? toggleGroup(category.value) : setSelectedCategory(category.value)
+                      }
+                      aria-label={hasChildren && !isOpen ? t.showChildren : t.hideChildren}
+                    >
+                      <span>{category.displayName}</span>
+                      <span className="catalog-cat-meta">
+                        <small>({category.count || 0})</small>
+                        {hasChildren && (
+                          <i className={`catalog-caret ${isOpen ? "open" : ""}`} aria-hidden="true" />
+                        )}
+                      </span>
+                    </button>
+
+                    {hasChildren && isOpen && (
+                      <div className="catalog-cat-children">
+                        {category.children.map((child) => (
+                          <button
+                            key={child.slug || child.value}
+                            className={`catalog-cat-btn catalog-cat-child ${
+                              selectedCategory === child.value ? "active" : ""
+                            }`}
+                            type="button"
+                            onClick={() => setSelectedCategory(child.value)}
+                          >
+                            <span>{child.displayName}</span>
+                            <small>({child.count || 0})</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </aside>
 
             <div className="catalog-content">

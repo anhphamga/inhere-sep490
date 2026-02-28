@@ -26,6 +26,39 @@ const readFilesAsDataUrls = (files) =>
     )
   );
 
+const SIZE_PRESET = ["XS", "S", "M", "L", "XL", "XXL", "Free Size"];
+
+const parseSizeValue = (value = "") =>
+  Array.from(
+    new Set(
+      String(value || "")
+        .split(/[,\|;/]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+
+const formatSizeValue = (sizes = []) => sizes.join(", ");
+
+const parseColorValue = (value = "") =>
+  Array.from(
+    new Set(
+      String(value || "")
+        .split(/[,\|;/]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+
+const formatColorValue = (colors = []) => colors.join(", ");
+
+const toCategoryNode = (node = {}) => ({
+  displayName: String(node?.displayName || "").trim(),
+  children: Array.isArray(node?.children)
+    ? node.children.map((child) => toCategoryNode(child)).filter((child) => child.displayName)
+    : [],
+});
+
 export default function AdminProductsPage() {
   const [lang, setLang] = useState(
     typeof window !== "undefined" ? window.localStorage.getItem("lang") || "vi" : "vi"
@@ -36,6 +69,13 @@ export default function AdminProductsPage() {
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [categoryTree, setCategoryTree] = useState([]);
+  const [selectedParentCategory, setSelectedParentCategory] = useState("");
+  const [selectedChildCategory, setSelectedChildCategory] = useState("");
+  const [selectedSizes, setSelectedSizes] = useState([]);
+  const [customSizeInput, setCustomSizeInput] = useState("");
+  const [selectedColors, setSelectedColors] = useState([]);
+  const [customColorInput, setCustomColorInput] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
@@ -67,12 +107,29 @@ export default function AdminProductsPage() {
           baseRentPrice: Number(first.baseRentPrice || 0),
           baseSalePrice: Number(first.baseSalePrice || 0),
           description: first.description || "",
-          images: Array.isArray(first.images)
-            ? first.images
-            : first.imageUrl
-            ? [first.imageUrl]
-            : [],
+          images: Array.isArray(first.images) ? first.images : first.imageUrl ? [first.imageUrl] : [],
         });
+        setSelectedSizes(parseSizeValue(first.size || ""));
+        setSelectedColors(parseColorValue(first.color || ""));
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/categories");
+        const data = res.ok ? await res.json() : { categories: [] };
+        const tree = Array.isArray(data?.categories)
+          ? data.categories.map((item) => toCategoryNode(item)).filter((item) => item.displayName)
+          : [];
+        if (mounted) setCategoryTree(tree);
+      } catch {
+        if (mounted) setCategoryTree([]);
       }
     })();
     return () => {
@@ -85,9 +142,115 @@ export default function AdminProductsPage() {
     [products, selectedId]
   );
 
+  const categoryMeta = useMemo(() => {
+    const childToParent = new Map();
+    const parentToChildren = new Map();
+    const parentOptions = [];
+
+    categoryTree.forEach((parent) => {
+      const parentName = parent.displayName;
+      if (!parentName) return;
+
+      parentOptions.push(parentName);
+      const children = (parent.children || []).map((item) => item.displayName).filter(Boolean);
+      parentToChildren.set(parentName, children);
+      children.forEach((childName) => childToParent.set(childName, parentName));
+    });
+
+    const fromProducts = products.map((item) => String(item.category || "").trim()).filter(Boolean);
+    fromProducts.forEach((name) => {
+      if (!parentOptions.includes(name) && !childToParent.has(name)) {
+        parentOptions.push(name);
+        parentToChildren.set(name, []);
+      }
+    });
+
+    return {
+      parentOptions: Array.from(new Set(parentOptions)).sort((a, b) => a.localeCompare(b, "vi")),
+      parentToChildren,
+      childToParent,
+    };
+  }, [categoryTree, products]);
+
+  const childCategoryOptions = useMemo(() => {
+    const children = categoryMeta.parentToChildren.get(selectedParentCategory) || [];
+    return [...children].sort((a, b) => a.localeCompare(b, "vi"));
+  }, [categoryMeta.parentToChildren, selectedParentCategory]);
+
+  useEffect(() => {
+    const current = String(form.category || "").trim();
+    if (!current) {
+      if (selectedParentCategory !== "") setSelectedParentCategory("");
+      if (selectedChildCategory !== "") setSelectedChildCategory("");
+      return;
+    }
+
+    const inferredParent = categoryMeta.childToParent.get(current) || current;
+    const inferredChild = categoryMeta.childToParent.get(current) ? current : "";
+
+    if (selectedParentCategory !== inferredParent) setSelectedParentCategory(inferredParent);
+    if (selectedChildCategory !== inferredChild) setSelectedChildCategory(inferredChild);
+  }, [form.category, categoryMeta.childToParent, selectedParentCategory, selectedChildCategory]);
+
+  const colorOptions = useMemo(() => {
+    const presetColors = [
+      "Đỏ",
+      "Đỏ đô",
+      "Hồng",
+      "Hồng pastel",
+      "Xanh dương",
+      "Xanh đậm",
+      "Xanh navy",
+      "Xanh lá",
+      "Vàng",
+      "Trắng",
+      "Đen",
+      "Tím",
+      "Nâu",
+      "Kem",
+      "Be",
+      "Ghi",
+    ];
+    const fromProducts = products.map((item) => String(item.color || "").trim()).filter(Boolean);
+    const fromCurrent = parseColorValue(form.color || "");
+    return Array.from(new Set([...presetColors, ...fromProducts, ...selectedColors, ...fromCurrent])).sort(
+      (a, b) => a.localeCompare(b, "vi")
+    );
+  }, [products, form.color, selectedColors]);
+
+  const sizeOptions = useMemo(() => {
+    const fromProducts = products.flatMap((item) => parseSizeValue(item.size || ""));
+    const fromCurrent = parseSizeValue(form.size || "");
+    return Array.from(new Set([...SIZE_PRESET, ...fromProducts, ...selectedSizes, ...fromCurrent])).sort((a, b) =>
+      a.localeCompare(b, "vi")
+    );
+  }, [products, form.size, selectedSizes]);
+
+  useEffect(() => {
+    const normalized = formatSizeValue(selectedSizes);
+    if (normalized !== form.size) {
+      setField("size", normalized);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSizes]);
+
+  useEffect(() => {
+    const normalized = formatColorValue(selectedColors);
+    if (normalized !== form.color) {
+      setField("color", normalized);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedColors]);
+
   const startCreate = () => {
     setSelectedId("");
     setForm(emptyForm);
+    setSelectedParentCategory("");
+    setSelectedChildCategory("");
+    setSelectedSizes([]);
+    setCustomSizeInput("");
+    setSelectedColors([]);
+    setCustomColorInput("");
     setStatus("");
   };
 
@@ -108,9 +271,39 @@ export default function AdminProductsPage() {
       description: p.description || "",
       images: Array.isArray(p.images) ? p.images : [],
     });
+    setSelectedSizes(parseSizeValue(p.size || ""));
+    setCustomSizeInput("");
+    setSelectedColors(parseColorValue(p.color || ""));
+    setCustomColorInput("");
   };
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const toggleSize = (size) => {
+    setSelectedSizes((prev) =>
+      prev.includes(size) ? prev.filter((item) => item !== size) : [...prev, size]
+    );
+  };
+
+  const addCustomSize = () => {
+    const next = customSizeInput.trim();
+    if (!next) return;
+    setSelectedSizes((prev) => (prev.includes(next) ? prev : [...prev, next]));
+    setCustomSizeInput("");
+  };
+
+  const toggleColor = (color) => {
+    setSelectedColors((prev) =>
+      prev.includes(color) ? prev.filter((item) => item !== color) : [...prev, color]
+    );
+  };
+
+  const addCustomColor = () => {
+    const next = customColorInput.trim();
+    if (!next) return;
+    setSelectedColors((prev) => (prev.includes(next) ? prev : [...prev, next]));
+    setCustomColorInput("");
+  };
 
   const addImageUrls = (urls) => {
     const clean = urls.map((u) => String(u || "").trim()).filter(Boolean);
@@ -152,12 +345,7 @@ export default function AdminProductsPage() {
     if (fromIndex === toIndex || fromIndex == null || toIndex == null) return;
     setForm((prev) => {
       const next = [...(prev.images || [])];
-      if (
-        fromIndex < 0 ||
-        toIndex < 0 ||
-        fromIndex >= next.length ||
-        toIndex >= next.length
-      ) {
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= next.length || toIndex >= next.length) {
         return prev;
       }
       const [moved] = next.splice(fromIndex, 1);
@@ -263,16 +451,100 @@ export default function AdminProductsPage() {
               <input value={form.name} onChange={(e) => setField("name", e.target.value)} />
             </label>
             <label>
-              Danh mục
-              <input value={form.category} onChange={(e) => setField("category", e.target.value)} />
+              Danh mục cha
+              <select
+                value={selectedParentCategory}
+                onChange={(e) => {
+                  const parent = e.target.value;
+                  setSelectedParentCategory(parent);
+                  setSelectedChildCategory("");
+                  setField("category", parent);
+                }}
+              >
+                <option value="">-- Chọn danh mục cha --</option>
+                {categoryMeta.parentOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Danh mục con
+              <select
+                value={selectedChildCategory}
+                onChange={(e) => {
+                  const child = e.target.value;
+                  setSelectedChildCategory(child);
+                  setField("category", child || selectedParentCategory);
+                }}
+                disabled={!selectedParentCategory || childCategoryOptions.length === 0}
+              >
+                <option value="">
+                  {selectedParentCategory && childCategoryOptions.length > 0
+                    ? "-- Không chọn danh mục con --"
+                    : "-- Danh mục cha không có con --"}
+                </option>
+                {childCategoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Size
-              <input value={form.size} onChange={(e) => setField("size", e.target.value)} />
+              <div className="size-multi-wrap">
+                <div className="size-multi-grid">
+                  {sizeOptions.map((size) => (
+                    <label key={size} className="size-pill">
+                      <input
+                        type="checkbox"
+                        checked={selectedSizes.includes(size)}
+                        onChange={() => toggleSize(size)}
+                      />
+                      <span>{size}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="size-custom-row">
+                  <input
+                    value={customSizeInput}
+                    onChange={(e) => setCustomSizeInput(e.target.value)}
+                    placeholder="Thêm size tùy chỉnh (ví dụ: 3XL)"
+                  />
+                  <button type="button" onClick={addCustomSize}>
+                    Thêm size
+                  </button>
+                </div>
+              </div>
             </label>
             <label>
               Màu
-              <input value={form.color} onChange={(e) => setField("color", e.target.value)} />
+              <div className="size-multi-wrap">
+                <div className="size-multi-grid">
+                  {colorOptions.map((color) => (
+                    <label key={color} className="size-pill">
+                      <input
+                        type="checkbox"
+                        checked={selectedColors.includes(color)}
+                        onChange={() => toggleColor(color)}
+                      />
+                      <span>{color}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="size-custom-row">
+                  <input
+                    value={customColorInput}
+                    onChange={(e) => setCustomColorInput(e.target.value)}
+                    placeholder="Thêm màu tùy chỉnh (ví dụ: Xanh mint)"
+                  />
+                  <button type="button" onClick={addCustomColor}>
+                    Thêm màu
+                  </button>
+                </div>
+              </div>
             </label>
             <label>
               Giá thuê
@@ -347,7 +619,7 @@ export default function AdminProductsPage() {
           <div className="image-preview-grid">
             {(form.images || []).map((img, idx) => (
               <div
-                key={`${img.slice(0, 24)}-${idx}`}
+                key={`${String(img).slice(0, 24)}-${idx}`}
                 className={`image-preview-item ${
                   dragOverIndex === idx ? "drag-over" : ""
                 } ${dragIndex === idx ? "dragging" : ""}`}
