@@ -206,6 +206,47 @@
   color: #909090;
 }
 
+.catalog-cat-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.catalog-cat-group + .catalog-cat-group .catalog-cat-btn {
+  border-top: 1px solid #f0ebe2;
+}
+
+.catalog-cat-children {
+  border-top: 1px solid #f4ede1;
+  background: #fffaf0;
+}
+
+.catalog-cat-child {
+  padding-left: 24px;
+  font-size: 17px;
+  border-top: 1px dashed #f0e6d2;
+  background: #fffaf0;
+}
+
+.catalog-cat-child:first-child {
+  border-top: 0;
+}
+
+.catalog-caret {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #8f8478;
+  border-bottom: 2px solid #8f8478;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  margin-top: -2px;
+}
+
+.catalog-caret.open {
+  transform: rotate(225deg);
+  margin-top: 2px;
+}
+
 .catalog-cat-btn.active {
   color: #000;
   font-weight: 700;

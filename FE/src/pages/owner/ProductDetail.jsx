@@ -8,37 +8,68 @@ const lifecycleColor = {
     RentedOut: 'bg-blue-500',
     Sold: 'bg-purple-500',
     InMaintenance: 'bg-amber-500',
-    Retired: 'bg-slate-500'
+    Retired: 'bg-slate-500',
+    Rented: 'bg-blue-500',
+    Washing: 'bg-cyan-500',
+    Repair: 'bg-amber-500',
+    Lost: 'bg-rose-500',
 }
 
 const conditionColor = {
     New: 'bg-green-500',
     Good: 'bg-blue-500',
+    Used: 'bg-amber-500',
     Worn: 'bg-amber-500',
-    Damaged: 'bg-red-500'
+    Damaged: 'bg-red-500',
+}
+
+const createDefaultEditForm = (product = null) => ({
+    name: product?.name || '',
+    category: product?.category || '',
+    size: product?.size || '',
+    color: product?.color || '',
+    quantity: '0',
+    baseRentPrice: String(product?.baseRentPrice ?? ''),
+    baseSalePrice: String(product?.baseSalePrice ?? ''),
+    depositAmount: String(product?.depositAmount ?? 0),
+    buyoutValue: String(product?.buyoutValue ?? 0),
+    description: product?.description || '',
+    imageFiles: [],
+})
+
+const parseIntegerOrNaN = (value) => {
+    const parsed = Number(value)
+    return Number.isInteger(parsed) ? parsed : Number.NaN
+}
+
+const parseNumberOrNaN = (value) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : Number.NaN
+}
+
+const flattenCategoryNames = (nodes = [], bag = []) => {
+    nodes.forEach((node) => {
+        const name = String(node?.displayName || '').trim()
+        if (name) {
+            bag.push(name)
+        }
+        if (Array.isArray(node?.children) && node.children.length > 0) {
+            flattenCategoryNames(node.children, bag)
+        }
+    })
+    return bag
 }
 
 export default function ProductDetail({ productId }) {
     const [detail, setDetail] = useState({ product: null, instances: [], totalQuantity: 0, availableQuantity: 0 })
+    const [categoryOptions, setCategoryOptions] = useState([])
     const [selectedImage, setSelectedImage] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [editing, setEditing] = useState(false)
     const [updating, setUpdating] = useState(false)
     const [actionError, setActionError] = useState('')
-    const [editForm, setEditForm] = useState({
-        name: '',
-        category: '',
-        size: '',
-        color: '',
-        quantity: '0',
-        baseRentPrice: '',
-        baseSalePrice: '',
-        depositAmount: '',
-        buyoutValue: '',
-        description: '',
-        imageFiles: []
-    })
+    const [editForm, setEditForm] = useState(createDefaultEditForm())
 
     const loadDetail = useCallback(async () => {
         try {
@@ -46,29 +77,17 @@ export default function ProductDetail({ productId }) {
             setError('')
             const response = await getOwnerProductDetailApi(productId)
             const data = response?.data || {}
+            const product = data.product || null
+
             setDetail({
-                product: data.product || null,
+                product,
                 instances: toArray(data.instances),
                 totalQuantity: Number(data.totalQuantity || 0),
-                availableQuantity: Number(data.availableQuantity || 0)
+                availableQuantity: Number(data.availableQuantity || 0),
             })
-            setSelectedImage(Array.isArray(data?.product?.images) ? (data.product.images[0] || '') : '')
 
-            if (data.product) {
-                setEditForm({
-                    name: data.product.name || '',
-                    category: data.product.category || '',
-                    size: data.product.size || '',
-                    color: data.product.color || '',
-                    quantity: '0',
-                    baseRentPrice: String(data.product.baseRentPrice ?? ''),
-                    baseSalePrice: String(data.product.baseSalePrice ?? ''),
-                    depositAmount: String(data.product.depositAmount ?? 0),
-                    buyoutValue: String(data.product.buyoutValue ?? 0),
-                    description: data.product.description || '',
-                    imageFiles: []
-                })
-            }
+            setSelectedImage(Array.isArray(product?.images) ? product.images[0] || '' : '')
+            setEditForm(createDefaultEditForm(product))
         } catch (apiError) {
             setError(apiError?.response?.data?.message || apiError?.message || 'Không tải được chi tiết sản phẩm')
         } finally {
@@ -79,6 +98,36 @@ export default function ProductDetail({ productId }) {
     useEffect(() => {
         loadDetail()
     }, [loadDetail])
+
+    useEffect(() => {
+        let mounted = true
+
+        const loadCategories = async () => {
+            try {
+                const response = await fetch('/api/categories')
+                const payload = response.ok ? await response.json() : { categories: [] }
+                const names = flattenCategoryNames(toArray(payload?.categories))
+                const options = Array.from(
+                    new Set(
+                        names.filter(Boolean)
+                    )
+                ).sort((a, b) => a.localeCompare(b, 'vi'))
+
+                if (mounted) {
+                    setCategoryOptions(options)
+                }
+            } catch {
+                if (mounted) {
+                    setCategoryOptions([])
+                }
+            }
+        }
+
+        loadCategories()
+        return () => {
+            mounted = false
+        }
+    }, [])
 
     const lifecycleRows = useMemo(() => {
         const map = {}
@@ -98,6 +147,14 @@ export default function ProductDetail({ productId }) {
         return Object.entries(map).sort((a, b) => b[1] - a[1])
     }, [detail.instances])
 
+    const handleToggleEdit = () => {
+        setActionError('')
+        if (editing) {
+            setEditForm(createDefaultEditForm(detail.product))
+        }
+        setEditing((prev) => !prev)
+    }
+
     const handleUpdateProduct = async (event) => {
         event.preventDefault()
 
@@ -106,29 +163,39 @@ export default function ProductDetail({ productId }) {
             category: editForm.category.trim(),
             size: editForm.size.trim(),
             color: editForm.color.trim(),
-            quantity: editForm.quantity === '' ? 0 : Number(editForm.quantity),
+            quantity: editForm.quantity === '' ? 0 : parseIntegerOrNaN(editForm.quantity),
             description: editForm.description.trim(),
-            baseRentPrice: Number(editForm.baseRentPrice),
-            baseSalePrice: Number(editForm.baseSalePrice),
-            depositAmount: Number(editForm.depositAmount),
-            buyoutValue: Number(editForm.buyoutValue),
-            imageFiles: editForm.imageFiles
+            baseRentPrice: parseNumberOrNaN(editForm.baseRentPrice),
+            baseSalePrice: parseNumberOrNaN(editForm.baseSalePrice),
+            depositAmount: parseNumberOrNaN(editForm.depositAmount),
+            buyoutValue: parseNumberOrNaN(editForm.buyoutValue),
+            imageFiles: editForm.imageFiles,
         }
 
         if (!payload.name || !payload.category || !payload.size || !payload.color) {
-            setActionError('Vui lòng nhập đủ name, category, size, color')
+            setActionError('Vui lòng nhập đủ tên, danh mục, size và màu sắc')
             return
         }
 
         if (
-            !Number.isInteger(payload.quantity)
+            Number.isNaN(payload.quantity)
             || payload.quantity < 0
             || Number.isNaN(payload.baseRentPrice)
             || Number.isNaN(payload.baseSalePrice)
             || Number.isNaN(payload.depositAmount)
             || Number.isNaN(payload.buyoutValue)
         ) {
-            setActionError('Số lượng bổ sung phải là số nguyên không âm, các trường giá cần là số hợp lệ')
+            setActionError('Số lượng bổ sung phải là số nguyên không âm, các trường giá phải là số hợp lệ')
+            return
+        }
+
+        if (
+            payload.baseRentPrice < 0
+            || payload.baseSalePrice < 0
+            || payload.depositAmount < 0
+            || payload.buyoutValue < 0
+        ) {
+            setActionError('Các trường giá không được nhỏ hơn 0')
             return
         }
 
@@ -194,19 +261,18 @@ export default function ProductDetail({ productId }) {
                                     <span className="text-xs font-bold text-[#1975d2] bg-[#1975d2]/10 px-3 py-1 rounded-full uppercase tracking-wider inline-block mb-2">
                                         {product.category || 'N/A'}
                                     </span>
-                                    <h2 className="text-4xl lg:text-5xl font-bold text-slate-900 leading-tight wrap-break-word">{product.name || 'N/A'}</h2>
+                                    <h2 className="text-4xl lg:text-5xl font-bold text-slate-900 leading-tight break-words">
+                                        {product.name || 'N/A'}
+                                    </h2>
                                 </div>
 
                                 <div className="shrink-0">
                                     <button
                                         type="button"
                                         className="h-12 px-6 rounded-xl bg-[#1975d2] text-white text-lg font-semibold hover:bg-[#1975d2]/90 shadow-md"
-                                        onClick={() => {
-                                            setActionError('')
-                                            setEditing((prev) => !prev)
-                                        }}
+                                        onClick={handleToggleEdit}
                                     >
-                                        {editing ? 'Cancel Edit' : 'Edit Product'}
+                                        {editing ? 'Hủy chỉnh sửa' : 'Chỉnh sửa sản phẩm'}
                                     </button>
                                 </div>
                             </div>
@@ -263,18 +329,23 @@ export default function ProductDetail({ productId }) {
                                 <h4 className="text-sm font-bold text-slate-900">Cập nhật sản phẩm</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Field label="Tên sản phẩm" value={editForm.name} onChange={(value) => setEditForm((prev) => ({ ...prev, name: value }))} />
-                                    <Field label="Category" value={editForm.category} onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))} />
+                                    <SelectField
+                                        label="Danh mục"
+                                        value={editForm.category}
+                                        options={categoryOptions}
+                                        onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))}
+                                    />
                                     <Field label="Size" value={editForm.size} onChange={(value) => setEditForm((prev) => ({ ...prev, size: value }))} />
                                     <Field label="Màu sắc" value={editForm.color} onChange={(value) => setEditForm((prev) => ({ ...prev, color: value }))} />
                                     <Field type="number" label="Số lượng bổ sung" value={editForm.quantity} onChange={(value) => setEditForm((prev) => ({ ...prev, quantity: value }))} />
                                     <Field type="number" label="Giá thuê" value={editForm.baseRentPrice} onChange={(value) => setEditForm((prev) => ({ ...prev, baseRentPrice: value }))} />
                                     <Field type="number" label="Giá bán" value={editForm.baseSalePrice} onChange={(value) => setEditForm((prev) => ({ ...prev, baseSalePrice: value }))} />
                                     <Field type="number" label="Tiền cọc" value={editForm.depositAmount} onChange={(value) => setEditForm((prev) => ({ ...prev, depositAmount: value }))} />
-                                    <Field type="number" label="Buyout value" value={editForm.buyoutValue} onChange={(value) => setEditForm((prev) => ({ ...prev, buyoutValue: value }))} />
+                                    <Field type="number" label="Giá buyout" value={editForm.buyoutValue} onChange={(value) => setEditForm((prev) => ({ ...prev, buyoutValue: value }))} />
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">Ảnh mới (tuỳ chọn)</label>
+                                    <label className="text-sm font-medium text-slate-700">Ảnh mới (tùy chọn)</label>
                                     <input
                                         id="update-product-images"
                                         type="file"
@@ -297,7 +368,7 @@ export default function ProductDetail({ productId }) {
                                         <span className="text-xs font-medium text-slate-500 shrink-0">Tải lên</span>
                                     </label>
                                     <p className="text-xs text-slate-500">
-                                        Nếu chọn ảnh mới, hệ thống sẽ cập nhật ảnh sản phẩm theo file bạn tải lên.
+                                        Nếu chọn ảnh mới, hệ thống sẽ thay ảnh hiện tại bằng các ảnh bạn tải lên.
                                     </p>
                                 </div>
 
@@ -339,6 +410,31 @@ function Field({ label, value, onChange, type = 'text' }) {
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
             />
+        </div>
+    )
+}
+
+function SelectField({ label, value, onChange, options = [] }) {
+    const normalizedOptions = Array.isArray(options) ? options : []
+    const finalOptions = normalizedOptions.includes(value) || !value
+        ? normalizedOptions
+        : [value, ...normalizedOptions]
+
+    return (
+        <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">{label}</label>
+            <select
+                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40 bg-white"
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+            >
+                <option value="">Chọn danh mục</option>
+                {finalOptions.map((option) => (
+                    <option key={option} value={option}>
+                        {option}
+                    </option>
+                ))}
+            </select>
         </div>
     )
 }

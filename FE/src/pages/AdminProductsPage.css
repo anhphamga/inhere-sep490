@@ -131,12 +131,64 @@
 }
 
 .admin-form-grid input,
+.admin-form-grid select,
 .admin-description textarea,
 .image-url-adder input {
   border: 1px solid #ddd3c4;
   border-radius: 8px;
   padding: 10px;
   font: inherit;
+}
+
+.size-multi-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.size-multi-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.size-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #ddd3c4;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 500;
+  background: #fff;
+}
+
+.size-pill input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.size-custom-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.size-custom-row input {
+  border: 1px solid #ddd3c4;
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+}
+
+.size-custom-row button {
+  border: 1px solid #b08d57;
+  border-radius: 8px;
+  background: #b08d57;
+  color: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .admin-description {
