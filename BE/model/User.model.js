@@ -3,9 +3,9 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
   role: {
     type: String,
-    enum: ['Owner', 'Staff', 'Customer'],
+    enum: ['owner', 'staff', 'customer'],
     required: true,
-    default: 'Customer'
+    default: 'customer'
   },
   name: {
     type: String,
@@ -13,25 +13,53 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: true,
-    unique: true
+    required: false,
+    default: null
   },
   email: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   passwordHash: {
     type: String,
-    required: true
+    required: true,
+    select: false
+  },
+  passwordResetToken: {
+    type: String,
+    default: null,
+    select: false
+  },
+  passwordResetExpires: {
+    type: Date,
+    default: null,
+    select: false
+  },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
   },
   status: {
     type: String,
-    enum: ['Active', 'Locked'],
-    default: 'Active'
+    enum: ['active', 'locked'],
+    default: 'active'
   },
   avatarUrl: {
     type: String,
+    default: null
+  },
+  address: {
+    type: String,
+    default: ''
+  },
+  gender: {
+    type: String,
+    enum: ['male', 'female', 'other', null],
+    default: null
+  },
+  dateOfBirth: {
+    type: Date,
     default: null
   },
   createdAt: {
@@ -41,5 +69,7 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+userSchema.index({ email: 1, authProvider: 1 }, { unique: true });
 
 module.exports = mongoose.model('User', userSchema);
