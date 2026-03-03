@@ -1,4 +1,4 @@
-const bcrypt = require('bcryptjs');
+﻿const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../model/User.model');
 const { signAccessToken } = require('../utils/jwt');
@@ -102,30 +102,47 @@ const signup = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, phone, password } = req.body;
 
-    if (!email || !password) {
+    if ((!email && !phone) || !password) {
       return res.status(400).json({
         success: false,
-        message: 'email and password are required'
+        message: 'email/phone and password are required'
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = await User.findOne({
-      email: normalizedEmail,
+    const hasEmail = typeof email === 'string' && email.trim();
+    const normalizedEmail = hasEmail ? email.trim().toLowerCase() : null;
+    const normalizedPhone = typeof phone === 'string' ? phone.trim() : null;
+
+    const loginQuery = {
       authProvider: 'local'
-    }).select('+passwordHash');
+    };
+
+    if (normalizedEmail) {
+      loginQuery.email = normalizedEmail;
+    } else {
+      loginQuery.phone = normalizedPhone;
+    }
+
+    const user = await User.findOne(loginQuery).select('+passwordHash');
 
     if (!user) {
-      const googleUserExists = await User.exists({
-        email: normalizedEmail,
-        authProvider: 'google'
-      });
+      if (normalizedEmail) {
+        const googleUserExists = await User.exists({
+          email: normalizedEmail,
+          authProvider: 'google'
+        });
+
+        return res.status(401).json({
+          success: false,
+          message: googleUserExists ? 'Email này đăng ký bằng Google. Vui lòng đăng nhập Google.' : 'Invalid email or password'
+        });
+      }
 
       return res.status(401).json({
         success: false,
-        message: googleUserExists ? 'Email này đăng ký bằng Google. Vui lòng đăng nhập Google.' : 'Invalid email or password'
+        message: 'Invalid email or password'
       });
     }
 
@@ -166,7 +183,6 @@ const login = async (req, res) => {
     });
   }
 };
-
 const googleLogin = async (req, res) => {
   try {
     const { idToken } = req.body;
@@ -293,7 +309,7 @@ const forgotPassword = async (req, res) => {
 
     const genericResponse = {
       success: true,
-      message: 'Nếu email tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi.'
+      message: 'Náº¿u email tá»“n táº¡i, hÆ°á»›ng dáº«n Ä‘áº·t láº¡i máº­t kháº©u Ä‘Ã£ Ä‘Æ°á»£c gá»­i.'
     };
 
     if (!user) {
@@ -323,7 +339,7 @@ const forgotPassword = async (req, res) => {
     if (process.env.NODE_ENV !== 'production') {
       return res.status(200).json({
         success: true,
-        message: 'SMTP chưa cấu hình. Trả token/link để test ở môi trường dev.',
+        message: 'SMTP chÆ°a cáº¥u hÃ¬nh. Tráº£ token/link Ä‘á»ƒ test á»Ÿ mÃ´i trÆ°á»ng dev.',
         token: rawToken,
         resetLink
       });
@@ -331,12 +347,12 @@ const forgotPassword = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: 'SMTP chưa được cấu hình trên server'
+      message: 'SMTP chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh trÃªn server'
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Không thể xử lý yêu cầu quên mật khẩu',
+      message: 'KhÃ´ng thá»ƒ xá»­ lÃ½ yÃªu cáº§u quÃªn máº­t kháº©u',
       error: error.message
     });
   }
@@ -371,7 +387,7 @@ const resetPassword = async (req, res) => {
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: 'Token không hợp lệ hoặc đã hết hạn'
+        message: 'Token khÃ´ng há»£p lá»‡ hoáº·c Ä‘Ã£ háº¿t háº¡n'
       });
     }
 
@@ -382,12 +398,12 @@ const resetPassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Đặt lại mật khẩu thành công'
+      message: 'Äáº·t láº¡i máº­t kháº©u thÃ nh cÃ´ng'
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Không thể đặt lại mật khẩu',
+      message: 'KhÃ´ng thá»ƒ Ä‘áº·t láº¡i máº­t kháº©u',
       error: error.message
     });
   }
@@ -434,3 +450,4 @@ module.exports = {
   logout,
   getCurrentUser
 };
+

@@ -1,4 +1,4 @@
-.auth-shell {
+﻿.auth-shell {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -467,6 +467,213 @@
   text-align: center;
 }
 
+/* Login page refresh for Hoi An brand */
+.login-page-shell {
+  background: linear-gradient(145deg, #fff8ea 0%, #fef3d7 46%, #f5ead7 100%);
+  font-family: Inter, 'Segoe UI', Roboto, sans-serif;
+}
+
+.auth-layout-login {
+  max-width: 1180px;
+  grid-template-columns: 55% 45%;
+  gap: 22px;
+}
+
+.login-hero {
+  border-radius: 22px;
+  min-height: 640px;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  box-shadow: 0 16px 44px rgba(82, 52, 12, 0.28);
+  display: grid;
+  align-content: space-between;
+  gap: 20px;
+}
+
+.login-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.login-hero-logo {
+  width: 132px;
+  max-width: 42%;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.18));
+}
+
+.login-hero-copy h1 {
+  font-size: 42px;
+  margin-bottom: 10px;
+}
+
+.login-hero-slogan {
+  font-size: 18px;
+  line-height: 1.5;
+  max-width: 560px;
+  color: #fff3d5;
+}
+
+.login-benefits {
+  list-style: none;
+  padding-left: 0;
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.login-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.benefit-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4b63a;
+  color: #2e1c06;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.login-form-card {
+  background: #fffdfa;
+  border: 1px solid #f0e4c4;
+  border-radius: 22px;
+  box-shadow: 0 16px 34px rgba(74, 48, 10, 0.12);
+  max-width: none;
+  align-self: center;
+}
+
+.login-form-card .auth-title {
+  font-size: 30px;
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+
+.login-form-card .auth-subtitle {
+  margin-bottom: 16px;
+}
+
+.auth-input-icon-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d7c7a2;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0 10px;
+  min-height: 48px;
+}
+
+.auth-input-icon-wrap:focus-within {
+  border-color: #f4b63a;
+  box-shadow: 0 0 0 3px rgba(244, 182, 58, 0.18);
+}
+
+.auth-input-icon {
+  width: 20px;
+  color: #9a7a3d;
+  font-weight: 700;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.auth-input-icon-wrap input {
+  border: none;
+  padding: 11px 0;
+  min-height: 44px;
+  background: transparent;
+}
+
+.auth-input-icon-wrap input:focus {
+  border-color: transparent;
+}
+
+.password-toggle-btn {
+  border: 1px solid #e5d4af;
+  background: #fff8ea;
+  color: #7f5a17;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.remember-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.remember-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.inline-link {
+  color: #915f00;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.login-submit-btn {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f4b63a 0%, #e59f1f 100%);
+  color: #2a1a08;
+  font-weight: 700;
+  transition: filter 0.15s ease;
+}
+
+.login-submit-btn:hover {
+  filter: brightness(1.04);
+}
+
+.social-fallback-btn {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #dfd2b3;
+  background: #fff;
+  color: #374151;
+  font-weight: 600;
+}
+
+.auth-links-center {
+  justify-content: center;
+  gap: 6px;
+}
+
+.auth-terms-note {
+  text-align: center;
+  margin-top: 12px;
+  color: #6b7280;
+}
+
 @media (max-width: 900px) {
   .auth-page {
     padding: 18px;
@@ -498,5 +705,248 @@
 
   .profile-form-row {
     grid-template-columns: 1fr;
+  }
+
+  .auth-layout-login {
+    grid-template-columns: 1fr;
+  }
+
+  .login-hero {
+    min-height: 188px;
+    padding: 18px;
+    border-radius: 16px;
+    align-content: flex-end;
+  }
+
+  .login-hero-top {
+    align-items: flex-start;
+  }
+
+  .login-hero-logo {
+    width: 98px;
+  }
+
+  .login-hero-copy h1 {
+    font-size: 24px;
+    margin-bottom: 6px;
+  }
+
+  .login-hero-slogan {
+    font-size: 14px;
+    max-width: none;
+    margin-bottom: 0;
+  }
+
+  .login-benefits {
+    display: none;
+  }
+
+  .login-form-card {
+    padding: 20px;
+    border-radius: 16px;
+  }
+
+  .login-form-card .auth-title {
+    font-size: 24px;
+  }
+
+  .login-submit-btn,
+  .social-fallback-btn,
+  .auth-input-icon-wrap {
+    min-height: 48px;
+  }
+
+  .auth-links {
+    flex-wrap: wrap;
+  }
+}
+
+/* Profile page refresh */
+.profile-view-shell {
+  align-items: flex-start;
+  background: linear-gradient(145deg, #fffaf0 0%, #fef4de 52%, #f5ebdb 100%);
+}
+
+.profile-view-layout {
+  width: 100%;
+  max-width: 1120px;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+}
+
+.profile-overview-card {
+  background: #fffdf9;
+  border: 1px solid #eddcb3;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(78, 54, 20, 0.12);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.profile-overview-top {
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.profile-overview-top h2 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 22px;
+}
+
+.profile-overview-top p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.profile-overview-avatar {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  border: 2px solid #f4b63a;
+  background: #fff8ea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 34px;
+}
+
+.profile-overview-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-tab-list {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-tab-btn {
+  border: 1px solid #e5d6b3;
+  background: #fff;
+  color: #374151;
+  border-radius: 10px;
+  min-height: 42px;
+  text-align: left;
+  padding: 0 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-tab-btn.active {
+  border-color: #f4b63a;
+  background: #fff5df;
+  color: #8a5a00;
+}
+
+.profile-overview-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-content-card {
+  background: #fff;
+  border: 1px solid #eddcb3;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(78, 54, 20, 0.12);
+  padding: 24px;
+}
+
+.profile-content-header h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 30px;
+}
+
+.profile-content-header p {
+  margin: 8px 0 18px;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.profile-modern-form {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-modern-form label {
+  display: grid;
+  gap: 6px;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.profile-modern-form input,
+.profile-modern-form select {
+  border: 1px solid #d6c8a8;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.profile-modern-form input:focus,
+.profile-modern-form select:focus {
+  border-color: #f4b63a;
+  box-shadow: 0 0 0 3px rgba(244, 182, 58, 0.16);
+}
+
+.profile-modern-form .auth-action-btn {
+  margin-top: 4px;
+  min-height: 46px;
+  background: linear-gradient(180deg, #f4b63a 0%, #e6a325 100%);
+  color: #2d1c08;
+}
+
+.profile-avatar-panel {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  border: 1px dashed #decba2;
+  border-radius: 14px;
+  padding: 18px;
+  background: #fffcf6;
+}
+
+.profile-avatar-preview-lg {
+  width: 116px;
+  height: 116px;
+  border-radius: 50%;
+  border: 2px solid #f4b63a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 40px;
+  background: #fff;
+}
+
+.profile-avatar-upload-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+@media (max-width: 960px) {
+  .profile-view-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-content-card {
+    padding: 18px;
+  }
+
+  .profile-content-header h1 {
+    font-size: 24px;
   }
 }

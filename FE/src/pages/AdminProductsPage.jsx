@@ -1,3 +1,4 @@
+﻿
 import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "../components/Header";
 import "./AdminProductsPage.css";
@@ -5,59 +6,176 @@ import "./AdminProductsPage.css";
 const emptyForm = {
   name: "",
   category: "",
-  size: "",
-  color: "",
   baseRentPrice: 0,
   baseSalePrice: 0,
   description: "",
-  images: [],
+  sizes: [],
+  colorVariants: [],
+  variantPricingMode: "common",
+  commonRentPrice: 0,
+  variantRentPrices: {},
 };
 
-const readFilesAsDataUrls = (files) =>
-  Promise.all(
-    files.map(
-      (file) =>
-        new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        })
-    )
-  );
+const SIZE_PRESET = ["XS", "S", "M", "L", "XL", "XXL", "FREE SIZE"];
 
-const SIZE_PRESET = ["XS", "S", "M", "L", "XL", "XXL", "Free Size"];
+const normalizeText = (value = "") => String(value || "").trim();
+const normalizeSize = (value = "") => normalizeText(value).toUpperCase();
 
-const parseSizeValue = (value = "") =>
+const normalizeImages = (images = []) =>
   Array.from(
     new Set(
-      String(value || "")
-        .split(/[,\|;/]/)
-        .map((item) => item.trim())
+      (Array.isArray(images) ? images : [])
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
         .filter(Boolean)
     )
   );
 
-const formatSizeValue = (sizes = []) => sizes.join(", ");
-
-const parseColorValue = (value = "") =>
+const parseSizes = (value = "") =>
   Array.from(
     new Set(
       String(value || "")
-        .split(/[,\|;/]/)
-        .map((item) => item.trim())
+        .split(/[|,;/]/)
+        .map((item) => normalizeSize(item))
         .filter(Boolean)
     )
   );
-
-const formatColorValue = (colors = []) => colors.join(", ");
 
 const toCategoryNode = (node = {}) => ({
-  displayName: String(node?.displayName || "").trim(),
+  displayName: normalizeText(node?.displayName),
   children: Array.isArray(node?.children)
     ? node.children.map((child) => toCategoryNode(child)).filter((child) => child.displayName)
     : [],
 });
+
+const formatCurrency = (value) => `${Number(value || 0).toLocaleString("vi-VN")}đ`;
+const parseCurrencyInput = (raw = "") => {
+  const digits = String(raw || "").replace(/[^0-9]/g, "");
+  return digits ? Number(digits) : 0;
+};
+
+const buildColorVariantsFromProduct = (product = {}) => {
+  if (Array.isArray(product.colorVariants) && product.colorVariants.length > 0) {
+    return product.colorVariants
+      .map((variant, index) => ({
+        id: `${variant?.color || "color"}-${index}-${Date.now()}`,
+        color: normalizeText(variant?.color),
+        images: normalizeImages(variant?.images),
+      }))
+      .filter((variant) => variant.color);
+  }
+
+  const fallbackImages = normalizeImages(
+    Array.isArray(product.images) ? product.images : product.imageUrl ? [product.imageUrl] : []
+  );
+  if (fallbackImages.length === 0) return [];
+
+  const colors = normalizeText(product.color)
+    .split(/[|,;/]/)
+    .map((item) => normalizeText(item))
+    .filter(Boolean);
+
+  if (colors.length === 0) {
+    return [{ id: `default-${Date.now()}`, color: "Default", images: fallbackImages }];
+  }
+
+  return colors.map((color, index) => ({
+    id: `${color}-${index}-${Date.now()}`,
+    color,
+    images: [...fallbackImages],
+  }));
+};
+
+const buildFormFromProduct = (product = null) => {
+  if (!product) return { ...emptyForm };
+
+  return {
+    name: normalizeText(product.name),
+    category: normalizeText(product.category),
+    baseRentPrice: Number(product.baseRentPrice || 0),
+    baseSalePrice: Number(product.baseSalePrice || 0),
+    description: normalizeText(product.description),
+    sizes:
+      Array.isArray(product.sizes) && product.sizes.length > 0
+        ? product.sizes.map((item) => normalizeSize(item)).filter(Boolean)
+        : parseSizes(product.size),
+    colorVariants: buildColorVariantsFromProduct(product),
+    variantPricingMode: "common",
+    commonRentPrice: Number(product.baseRentPrice || 0),
+    variantRentPrices: {},
+  };
+};
+
+const snapshotForm = (form) =>
+  JSON.stringify({
+    ...form,
+    name: normalizeText(form.name),
+    category: normalizeText(form.category),
+    description: normalizeText(form.description),
+    sizes: Array.from(new Set((form.sizes || []).map(normalizeSize).filter(Boolean))).sort(),
+    colorVariants: (form.colorVariants || [])
+      .map((variant) => ({
+        color: normalizeText(variant.color),
+        images: normalizeImages(variant.images),
+      }))
+      .filter((variant) => variant.color)
+      .sort((a, b) => a.color.localeCompare(b.color, "vi")),
+  });
+
+const validateForm = (form) => {
+  const errors = [];
+  if (!normalizeText(form.name)) errors.push("Chưa nhập tên sản phẩm.");
+  if (!normalizeText(form.category)) errors.push("Chưa chọn danh mục.");
+  if (Number(form.baseSalePrice) < 0 || Number(form.baseRentPrice) < 0 || Number(form.commonRentPrice) < 0) {
+    errors.push("Giá không được âm.");
+  }
+
+  const sizes = (form.sizes || []).map(normalizeSize).filter(Boolean);
+  if (sizes.length !== new Set(sizes).size) errors.push("Size bị trùng.");
+
+  const variants = (form.colorVariants || [])
+    .map((variant) => ({
+      color: normalizeText(variant.color),
+      images: normalizeImages(variant.images),
+    }))
+    .filter((variant) => variant.color);
+
+  if (variants.length === 0) errors.push("Cần ít nhất 1 màu.");
+  const colorKeys = variants.map((variant) => variant.color.toLowerCase());
+  if (colorKeys.length !== new Set(colorKeys).size) errors.push("Màu bị trùng.");
+  const missingImage = variants.find((variant) => variant.images.length === 0);
+  if (missingImage) errors.push(`Màu "${missingImage.color}" phải có ít nhất 1 ảnh.`);
+  if (!(variants[0]?.images?.[0])) errors.push("Cần ít nhất 1 ảnh chính.");
+
+  return errors;
+};
+const buildPayload = (form) => {
+  const sizes = Array.from(new Set((form.sizes || []).map(normalizeSize).filter(Boolean)));
+  const colorVariants = (form.colorVariants || [])
+    .map((variant) => ({
+      color: normalizeText(variant.color),
+      images: normalizeImages(variant.images),
+    }))
+    .filter((variant) => variant.color);
+  const images = normalizeImages(colorVariants.flatMap((variant) => variant.images));
+
+  return {
+    name: normalizeText(form.name),
+    category: normalizeText(form.category),
+    size: sizes.join(", "),
+    sizes,
+    color: colorVariants.map((variant) => variant.color).join(", "),
+    colorVariants,
+    images,
+    baseRentPrice:
+      form.variantPricingMode === "common"
+        ? Number(form.commonRentPrice || 0)
+        : Number(form.baseRentPrice || 0),
+    baseSalePrice: Number(form.baseSalePrice || 0),
+    description: normalizeText(form.description),
+    variantPricingMode: form.variantPricingMode,
+    variantRentPrices: form.variantPricingMode === "custom" ? form.variantRentPrices : {},
+  };
+};
 
 export default function AdminProductsPage() {
   const [lang, setLang] = useState(
@@ -66,20 +184,18 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [form, setForm] = useState(emptyForm);
-  const [imageUrlInput, setImageUrlInput] = useState("");
-  const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [initialSnapshot, setInitialSnapshot] = useState(snapshotForm(emptyForm));
   const [categoryTree, setCategoryTree] = useState([]);
   const [selectedParentCategory, setSelectedParentCategory] = useState("");
   const [selectedChildCategory, setSelectedChildCategory] = useState("");
-  const [selectedSizes, setSelectedSizes] = useState([]);
-  const [customSizeInput, setCustomSizeInput] = useState("");
-  const [selectedColors, setSelectedColors] = useState([]);
-  const [customColorInput, setCustomColorInput] = useState("");
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [dragIndex, setDragIndex] = useState(null);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-  const fileInputRef = useRef(null);
+  const [newSizeInput, setNewSizeInput] = useState("");
+  const [newColorInput, setNewColorInput] = useState("");
+  const [activeVariantId, setActiveVariantId] = useState("");
+  const [activeVariantUrl, setActiveVariantUrl] = useState("");
+  const [dragOverVariantId, setDragOverVariantId] = useState("");
+  const fileInputRef = useRef({});
 
   const isEditing = Boolean(selectedId);
 
@@ -95,23 +211,13 @@ export default function AdminProductsPage() {
     let mounted = true;
     (async () => {
       const list = await loadProducts();
-      if (!mounted) return;
-      if (list.length > 0) {
-        const first = list[0];
-        setSelectedId(first._id);
-        setForm({
-          name: first.name || "",
-          category: first.category || "",
-          size: first.size || "",
-          color: first.color || "",
-          baseRentPrice: Number(first.baseRentPrice || 0),
-          baseSalePrice: Number(first.baseSalePrice || 0),
-          description: first.description || "",
-          images: Array.isArray(first.images) ? first.images : first.imageUrl ? [first.imageUrl] : [],
-        });
-        setSelectedSizes(parseSizeValue(first.size || ""));
-        setSelectedColors(parseColorValue(first.color || ""));
-      }
+      if (!mounted || list.length === 0) return;
+      const first = list[0];
+      const nextForm = buildFormFromProduct(first);
+      setSelectedId(first._id);
+      setForm(nextForm);
+      setInitialSnapshot(snapshotForm(nextForm));
+      setActiveVariantId(nextForm.colorVariants[0]?.id || "");
     })();
     return () => {
       mounted = false;
@@ -137,11 +243,6 @@ export default function AdminProductsPage() {
     };
   }, []);
 
-  const selectedProduct = useMemo(
-    () => products.find((p) => p._id === selectedId) || null,
-    [products, selectedId]
-  );
-
   const categoryMeta = useMemo(() => {
     const childToParent = new Map();
     const parentToChildren = new Map();
@@ -150,19 +251,10 @@ export default function AdminProductsPage() {
     categoryTree.forEach((parent) => {
       const parentName = parent.displayName;
       if (!parentName) return;
-
       parentOptions.push(parentName);
-      const children = (parent.children || []).map((item) => item.displayName).filter(Boolean);
+      const children = (parent.children || []).map((child) => child.displayName).filter(Boolean);
       parentToChildren.set(parentName, children);
       children.forEach((childName) => childToParent.set(childName, parentName));
-    });
-
-    const fromProducts = products.map((item) => String(item.category || "").trim()).filter(Boolean);
-    fromProducts.forEach((name) => {
-      if (!parentOptions.includes(name) && !childToParent.has(name)) {
-        parentOptions.push(name);
-        parentToChildren.set(name, []);
-      }
     });
 
     return {
@@ -170,7 +262,7 @@ export default function AdminProductsPage() {
       parentToChildren,
       childToParent,
     };
-  }, [categoryTree, products]);
+  }, [categoryTree]);
 
   const childCategoryOptions = useMemo(() => {
     const children = categoryMeta.parentToChildren.get(selectedParentCategory) || [];
@@ -178,191 +270,250 @@ export default function AdminProductsPage() {
   }, [categoryMeta.parentToChildren, selectedParentCategory]);
 
   useEffect(() => {
-    const current = String(form.category || "").trim();
+    const current = normalizeText(form.category);
     if (!current) {
-      if (selectedParentCategory !== "") setSelectedParentCategory("");
-      if (selectedChildCategory !== "") setSelectedChildCategory("");
       return;
     }
 
     const inferredParent = categoryMeta.childToParent.get(current) || current;
     const inferredChild = categoryMeta.childToParent.get(current) ? current : "";
-
     if (selectedParentCategory !== inferredParent) setSelectedParentCategory(inferredParent);
     if (selectedChildCategory !== inferredChild) setSelectedChildCategory(inferredChild);
   }, [form.category, categoryMeta.childToParent, selectedParentCategory, selectedChildCategory]);
 
-  const colorOptions = useMemo(() => {
-    const presetColors = [
-      "Đỏ",
-      "Đỏ đô",
-      "Hồng",
-      "Hồng pastel",
-      "Xanh dương",
-      "Xanh đậm",
-      "Xanh navy",
-      "Xanh lá",
-      "Vàng",
-      "Trắng",
-      "Đen",
-      "Tím",
-      "Nâu",
-      "Kem",
-      "Be",
-      "Ghi",
-    ];
-    const fromProducts = products.map((item) => String(item.color || "").trim()).filter(Boolean);
-    const fromCurrent = parseColorValue(form.color || "");
-    return Array.from(new Set([...presetColors, ...fromProducts, ...selectedColors, ...fromCurrent])).sort(
-      (a, b) => a.localeCompare(b, "vi")
-    );
-  }, [products, form.color, selectedColors]);
+  useEffect(() => {
+    const variants = form.colorVariants || [];
+    if (variants.length === 0) {
+      if (activeVariantId !== "") setActiveVariantId("");
+      return;
+    }
+    const exists = variants.some((variant) => variant.id === activeVariantId);
+    if (!exists) setActiveVariantId(variants[0].id);
+  }, [form.colorVariants, activeVariantId]);
+  const hasUnsavedChanges = useMemo(
+    () => snapshotForm(form) !== initialSnapshot,
+    [form, initialSnapshot]
+  );
+
+  const selectedProduct = useMemo(
+    () => products.find((product) => product._id === selectedId) || null,
+    [products, selectedId]
+  );
 
   const sizeOptions = useMemo(() => {
-    const fromProducts = products.flatMap((item) => parseSizeValue(item.size || ""));
-    const fromCurrent = parseSizeValue(form.size || "");
-    return Array.from(new Set([...SIZE_PRESET, ...fromProducts, ...selectedSizes, ...fromCurrent])).sort((a, b) =>
-      a.localeCompare(b, "vi")
+    const fromProducts = products.flatMap((item) =>
+      Array.isArray(item.sizes) && item.sizes.length > 0 ? item.sizes : parseSizes(item.size || "")
     );
-  }, [products, form.size, selectedSizes]);
+    return Array.from(
+      new Set([...SIZE_PRESET, ...fromProducts.map((item) => normalizeSize(item)), ...(form.sizes || [])])
+    ).filter(Boolean);
+  }, [products, form.sizes]);
 
-  useEffect(() => {
-    const normalized = formatSizeValue(selectedSizes);
-    if (normalized !== form.size) {
-      setField("size", normalized);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSizes]);
+  const activeVariant = useMemo(
+    () => (form.colorVariants || []).find((variant) => variant.id === activeVariantId) || null,
+    [form.colorVariants, activeVariantId]
+  );
 
-  useEffect(() => {
-    const normalized = formatColorValue(selectedColors);
-    if (normalized !== form.color) {
-      setField("color", normalized);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedColors]);
+  const previewImage = activeVariant?.images?.[0] || form.colorVariants?.[0]?.images?.[0] || "";
+
+  const matrix = useMemo(
+    () => ({
+      sizes: form.sizes || [],
+      colors: (form.colorVariants || []).map((variant) => variant.color).filter(Boolean),
+    }),
+    [form.sizes, form.colorVariants]
+  );
+
+  const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const startCreate = () => {
     setSelectedId("");
-    setForm(emptyForm);
+    setForm({ ...emptyForm });
+    setInitialSnapshot(snapshotForm(emptyForm));
     setSelectedParentCategory("");
     setSelectedChildCategory("");
-    setSelectedSizes([]);
-    setCustomSizeInput("");
-    setSelectedColors([]);
-    setCustomColorInput("");
+    setNewSizeInput("");
+    setNewColorInput("");
+    setActiveVariantId("");
+    setActiveVariantUrl("");
     setStatus("");
   };
 
   const startEdit = async (id) => {
-    setSelectedId(id);
-    setStatus("");
     const res = await fetch(`/api/products/${id}`);
     const data = res.ok ? await res.json() : { data: null };
-    const p = data?.data;
-    if (!p) return;
-    setForm({
-      name: p.name || "",
-      category: p.category || "",
-      size: p.size || "",
-      color: p.color || "",
-      baseRentPrice: Number(p.baseRentPrice || 0),
-      baseSalePrice: Number(p.baseSalePrice || 0),
-      description: p.description || "",
-      images: Array.isArray(p.images) ? p.images : [],
-    });
-    setSelectedSizes(parseSizeValue(p.size || ""));
-    setCustomSizeInput("");
-    setSelectedColors(parseColorValue(p.color || ""));
-    setCustomColorInput("");
+    const product = data?.data;
+    if (!product) return;
+    const nextForm = buildFormFromProduct(product);
+    setSelectedId(id);
+    setForm(nextForm);
+    setInitialSnapshot(snapshotForm(nextForm));
+    setActiveVariantId(nextForm.colorVariants[0]?.id || "");
+    setActiveVariantUrl("");
+    setStatus("");
   };
-
-  const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const toggleSize = (size) => {
-    setSelectedSizes((prev) =>
-      prev.includes(size) ? prev.filter((item) => item !== size) : [...prev, size]
-    );
-  };
-
-  const addCustomSize = () => {
-    const next = customSizeInput.trim();
-    if (!next) return;
-    setSelectedSizes((prev) => (prev.includes(next) ? prev : [...prev, next]));
-    setCustomSizeInput("");
-  };
-
-  const toggleColor = (color) => {
-    setSelectedColors((prev) =>
-      prev.includes(color) ? prev.filter((item) => item !== color) : [...prev, color]
-    );
-  };
-
-  const addCustomColor = () => {
-    const next = customColorInput.trim();
-    if (!next) return;
-    setSelectedColors((prev) => (prev.includes(next) ? prev : [...prev, next]));
-    setCustomColorInput("");
-  };
-
-  const addImageUrls = (urls) => {
-    const clean = urls.map((u) => String(u || "").trim()).filter(Boolean);
-    if (clean.length === 0) return;
+    const normalized = normalizeSize(size);
+    if (!normalized) return;
     setForm((prev) => ({
       ...prev,
-      images: [...new Set([...(prev.images || []), ...clean])],
+      sizes: prev.sizes.includes(normalized)
+        ? prev.sizes.filter((item) => item !== normalized)
+        : [...prev.sizes, normalized],
     }));
   };
 
-  const onDropFiles = async (files) => {
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (imageFiles.length === 0) return;
-    const dataUrls = await readFilesAsDataUrls(imageFiles);
-    addImageUrls(dataUrls);
-  };
-
-  const onDrop = async (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files || []);
-    await onDropFiles(files);
-  };
-
-  const onChooseFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
-    await onDropFiles(files);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const removeImage = (idx) => {
-    setForm((prev) => ({
-      ...prev,
-      images: prev.images.filter((_, i) => i !== idx),
-    }));
-  };
-
-  const moveImage = (fromIndex, toIndex) => {
-    if (fromIndex === toIndex || fromIndex == null || toIndex == null) return;
+  const addNewSize = () => {
+    const next = normalizeSize(newSizeInput);
+    if (!next) return;
     setForm((prev) => {
-      const next = [...(prev.images || [])];
-      if (fromIndex < 0 || toIndex < 0 || fromIndex >= next.length || toIndex >= next.length) {
+      if ((prev.sizes || []).includes(next)) {
+        setStatus(`Size ${next} da ton tai.`);
         return prev;
       }
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      return { ...prev, images: next };
+      return { ...prev, sizes: [...(prev.sizes || []), next] };
     });
+    setNewSizeInput("");
+  };
+
+  const addColorVariant = () => {
+    const nextColor = normalizeText(newColorInput);
+    if (!nextColor) return;
+    setForm((prev) => {
+      const exists = (prev.colorVariants || []).some(
+        (variant) => normalizeText(variant.color).toLowerCase() === nextColor.toLowerCase()
+      );
+      if (exists) {
+        setStatus(`Mau ${nextColor} da ton tai.`);
+        return prev;
+      }
+      const id = `${nextColor}-${Date.now()}`;
+      const next = [...(prev.colorVariants || []), { id, color: nextColor, images: [] }];
+      setActiveVariantId(id);
+      return { ...prev, colorVariants: next };
+    });
+    setNewColorInput("");
+  };
+
+  const updateVariant = (variantId, patch) => {
+    setForm((prev) => {
+      if (Object.prototype.hasOwnProperty.call(patch, "color")) {
+        const nextColor = normalizeText(patch.color);
+        const hasDuplicate = (prev.colorVariants || []).some(
+          (variant) =>
+            variant.id !== variantId
+            && normalizeText(variant.color).toLowerCase() === nextColor.toLowerCase()
+        );
+        if (nextColor && hasDuplicate) {
+          setStatus(`Mau ${nextColor} da ton tai.`);
+          return prev;
+        }
+      }
+
+      return {
+        ...prev,
+        colorVariants: (prev.colorVariants || []).map((variant) =>
+          variant.id === variantId ? { ...variant, ...patch } : variant
+        ),
+      };
+    });
+  };
+
+  const removeColorVariant = (variantId) => {
+    setForm((prev) => ({
+      ...prev,
+      colorVariants: (prev.colorVariants || []).filter((variant) => variant.id !== variantId),
+    }));
+  };
+
+  const addVariantImages = (variantId, urls) => {
+    const clean = normalizeImages(urls);
+    if (clean.length === 0) return;
+    const current = (form.colorVariants || []).find((variant) => variant.id === variantId);
+    updateVariant(variantId, { images: normalizeImages([...(current?.images || []), ...clean]) });
+  };
+  const handleVariantFiles = async (variantId, files) => {
+    const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+    const urls = await Promise.all(
+      imageFiles.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+    addVariantImages(variantId, urls);
+  };
+
+  const handleVariantDragOver = (variantId, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (dragOverVariantId !== variantId) setDragOverVariantId(variantId);
+  };
+
+  const handleVariantDragLeave = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverVariantId("");
+  };
+
+  const handleVariantDrop = async (variantId, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverVariantId("");
+    await handleVariantFiles(variantId, event.dataTransfer?.files || []);
+  };
+
+  const removeVariantImage = (variantId, index) => {
+    const current = (form.colorVariants || []).find((variant) => variant.id === variantId);
+    updateVariant(variantId, { images: (current?.images || []).filter((_, idx) => idx !== index) });
+  };
+
+  const moveVariantImage = (variantId, fromIndex, toIndex) => {
+    if (fromIndex === toIndex || fromIndex == null || toIndex == null) return;
+    const current = ((form.colorVariants || []).find((variant) => variant.id === variantId)?.images || []).slice();
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= current.length || toIndex >= current.length) return;
+    const [moved] = current.splice(fromIndex, 1);
+    current.splice(toIndex, 0, moved);
+    updateVariant(variantId, { images: current });
+  };
+
+  const setVariantRentPrice = (size, color, value) => {
+    const key = `${size}__${color}`;
+    setForm((prev) => ({
+      ...prev,
+      variantRentPrices: {
+        ...(prev.variantRentPrices || {}),
+        [key]: Number(value || 0),
+      },
+    }));
+  };
+
+  const saveDraft = () => {
+    try {
+      localStorage.setItem("admin-product-draft", JSON.stringify(form));
+      setStatus("Đã lưu nháp.");
+    } catch {
+      setStatus("Không thể lưu nháp.");
+    }
   };
 
   const saveProduct = async () => {
     try {
       setSaving(true);
       setStatus("");
-      const payload = {
-        ...form,
-        baseRentPrice: Number(form.baseRentPrice || 0),
-        baseSalePrice: Number(form.baseSalePrice || 0),
-      };
+      if (selectedParentCategory && childCategoryOptions.length > 0 && !selectedChildCategory) {
+        throw new Error("Vui long chon danh muc con.");
+      }
+      const errors = validateForm(form);
+      if (errors.length > 0) throw new Error(errors.join(" "));
+
+      const payload = buildPayload(form);
       const res = await fetch(isEditing ? `/api/products/${selectedId}` : "/api/products", {
         method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -370,15 +521,22 @@ export default function AdminProductsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Save failed");
+
       const list = await loadProducts();
       const id = data?.data?._id || selectedId;
       if (id) {
-        const exists = list.find((p) => p._id === id);
-        if (exists) await startEdit(id);
+        const exists = list.find((product) => product._id === id);
+        if (exists) {
+          const nextForm = buildFormFromProduct(data?.data || exists);
+          setSelectedId(id);
+          setForm(nextForm);
+          setInitialSnapshot(snapshotForm(nextForm));
+          setActiveVariantId(nextForm.colorVariants[0]?.id || "");
+        }
       }
       setStatus(isEditing ? "Đã cập nhật sản phẩm." : "Đã tạo sản phẩm mới.");
-    } catch (err) {
-      setStatus(`Lỗi: ${err.message}`);
+    } catch (error) {
+      setStatus(`Lỗi: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -394,11 +552,15 @@ export default function AdminProductsPage() {
       const res = await fetch(`/api/products/${selectedId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Delete failed");
-      await loadProducts();
-      startCreate();
+      const list = await loadProducts();
+      if (list.length > 0) {
+        await startEdit(list[0]._id);
+      } else {
+        startCreate();
+      }
       setStatus("Đã xóa sản phẩm.");
-    } catch (err) {
-      setStatus(`Lỗi: ${err.message}`);
+    } catch (error) {
+      setStatus(`Lỗi: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -411,246 +573,188 @@ export default function AdminProductsPage() {
         <aside className="admin-sidebar">
           <div className="admin-sidebar-head">
             <h2>Sản phẩm</h2>
-            <button type="button" onClick={startCreate}>
-              + Tạo mới
-            </button>
+            <button type="button" onClick={startCreate}>+ Tạo mới</button>
           </div>
           <div className="admin-product-list">
-            {products.map((p) => (
+            {products.map((product) => (
               <button
-                key={p._id}
-                className={`admin-product-item ${selectedId === p._id ? "active" : ""}`}
-                onClick={() => startEdit(p._id)}
+                key={product._id}
+                className={`admin-product-item ${selectedId === product._id ? "active" : ""}`}
+                onClick={() => startEdit(product._id)}
                 type="button"
               >
-                <strong>{p.name}</strong>
-                <span>{p.category}</span>
+                <strong>{product.name}</strong>
+                <span>{product.category}</span>
               </button>
             ))}
           </div>
         </aside>
 
         <section className="admin-editor">
-          <div className="admin-editor-head">
-            <h1>{isEditing ? `Chỉnh sửa: ${selectedProduct?.name || ""}` : "Tạo sản phẩm mới"}</h1>
+          <div className="admin-sticky-bar">
+            <div>
+              <h1>{isEditing ? `Chỉnh sửa: ${selectedProduct?.name || ""}` : "Tạo sản phẩm mới"}</h1>
+              {hasUnsavedChanges ? <p className="unsaved-flag">Bạn chưa lưu thay đổi</p> : <p>Đã đồng bộ</p>}
+            </div>
             <div className="admin-actions">
-              {isEditing && (
-                <button className="danger" type="button" onClick={deleteProduct} disabled={saving}>
-                  Xóa
-                </button>
-              )}
-              <button type="button" onClick={saveProduct} disabled={saving}>
-                {saving ? "Đang lưu..." : "Lưu"}
-              </button>
+              <button type="button" className="ghost" onClick={startCreate}>Quay lại</button>
+              <button type="button" className="ghost" onClick={saveDraft} disabled={saving}>Lưu nháp</button>
+              <button type="button" onClick={saveProduct} disabled={saving}>{saving ? "Đang lưu..." : "Lưu"}</button>
+              {isEditing && <button className="danger" type="button" onClick={deleteProduct} disabled={saving}>Xóa</button>}
             </div>
           </div>
-
-          <div className="admin-form-grid">
-            <label>
-              Tên sản phẩm
-              <input value={form.name} onChange={(e) => setField("name", e.target.value)} />
-            </label>
-            <label>
-              Danh mục cha
-              <select
-                value={selectedParentCategory}
-                onChange={(e) => {
-                  const parent = e.target.value;
-                  setSelectedParentCategory(parent);
-                  setSelectedChildCategory("");
-                  setField("category", parent);
-                }}
-              >
-                <option value="">-- Chọn danh mục cha --</option>
-                {categoryMeta.parentOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Danh mục con
-              <select
-                value={selectedChildCategory}
-                onChange={(e) => {
-                  const child = e.target.value;
-                  setSelectedChildCategory(child);
-                  setField("category", child || selectedParentCategory);
-                }}
-                disabled={!selectedParentCategory || childCategoryOptions.length === 0}
-              >
-                <option value="">
-                  {selectedParentCategory && childCategoryOptions.length > 0
-                    ? "-- Không chọn danh mục con --"
-                    : "-- Danh mục cha không có con --"}
-                </option>
-                {childCategoryOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Size
-              <div className="size-multi-wrap">
-                <div className="size-multi-grid">
-                  {sizeOptions.map((size) => (
-                    <label key={size} className="size-pill">
-                      <input
-                        type="checkbox"
-                        checked={selectedSizes.includes(size)}
-                        onChange={() => toggleSize(size)}
-                      />
-                      <span>{size}</span>
+          <div className="editor-two-columns">
+            <div className="column-left">
+              <section className="admin-card">
+                <h3>Phần 1: Thông tin cơ bản</h3>
+                <div className="admin-form-grid one-col">
+                  <label>Tên sản phẩm<input value={form.name} onChange={(e) => setField("name", e.target.value)} /></label>
+                  <div className="admin-form-grid two-col">
+                    <label>
+                      Danh mục cha
+                      <select
+                        value={selectedParentCategory}
+                        onChange={(e) => {
+                          const parent = e.target.value;
+                          const nextChildren = categoryMeta.parentToChildren.get(parent) || [];
+                          setSelectedParentCategory(parent);
+                          setSelectedChildCategory("");
+                          setField("category", nextChildren.length > 0 ? "" : parent);
+                        }}
+                      >
+                        <option value="">-- Chọn danh mục cha --</option>
+                        {categoryMeta.parentOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select>
                     </label>
-                  ))}
-                </div>
-                <div className="size-custom-row">
-                  <input
-                    value={customSizeInput}
-                    onChange={(e) => setCustomSizeInput(e.target.value)}
-                    placeholder="Thêm size tùy chỉnh (ví dụ: 3XL)"
-                  />
-                  <button type="button" onClick={addCustomSize}>
-                    Thêm size
-                  </button>
-                </div>
-              </div>
-            </label>
-            <label>
-              Màu
-              <div className="size-multi-wrap">
-                <div className="size-multi-grid">
-                  {colorOptions.map((color) => (
-                    <label key={color} className="size-pill">
-                      <input
-                        type="checkbox"
-                        checked={selectedColors.includes(color)}
-                        onChange={() => toggleColor(color)}
-                      />
-                      <span>{color}</span>
+                    <label>
+                      Danh mục con
+                      <select value={selectedChildCategory} onChange={(e) => { const child = e.target.value; setSelectedChildCategory(child); setField("category", child || selectedParentCategory); }} disabled={!selectedParentCategory || childCategoryOptions.length === 0}>
+                        <option value="">{selectedParentCategory && childCategoryOptions.length > 0 ? "-- Không chọn danh mục con --" : "-- Danh mục cha không có con --"}</option>
+                        {childCategoryOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select>
                     </label>
-                  ))}
-                </div>
-                <div className="size-custom-row">
-                  <input
-                    value={customColorInput}
-                    onChange={(e) => setCustomColorInput(e.target.value)}
-                    placeholder="Thêm màu tùy chỉnh (ví dụ: Xanh mint)"
-                  />
-                  <button type="button" onClick={addCustomColor}>
-                    Thêm màu
-                  </button>
-                </div>
-              </div>
-            </label>
-            <label>
-              Giá thuê
-              <input
-                type="number"
-                value={form.baseRentPrice}
-                onChange={(e) => setField("baseRentPrice", e.target.value)}
-              />
-            </label>
-            <label>
-              Giá bán
-              <input
-                type="number"
-                value={form.baseSalePrice}
-                onChange={(e) => setField("baseSalePrice", e.target.value)}
-              />
-            </label>
-          </div>
+                  </div>
 
-          <label className="admin-description">
-            Mô tả
-            <textarea
-              rows={4}
-              value={form.description}
-              onChange={(e) => setField("description", e.target.value)}
-            />
-          </label>
-
-          <div
-            className={`image-dropzone ${isDragOver ? "drag-over" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragOver(true);
-            }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={onDrop}
-          >
-            <p>Kéo thả ảnh vào đây</p>
-            <p>hoặc</p>
-            <div className="image-dropzone-actions">
-              <button type="button" onClick={() => fileInputRef.current?.click()}>
-                Chọn ảnh từ máy
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                hidden
-                onChange={onChooseFiles}
-              />
+                  <div className="admin-form-grid two-col">
+                    <label>Giá bán cơ bản<input value={Number(form.baseSalePrice || 0).toLocaleString("vi-VN")} onChange={(e) => setField("baseSalePrice", parseCurrencyInput(e.target.value))} /><small>{formatCurrency(form.baseSalePrice)}</small></label>
+                    <label>Giá thuê cơ bản<input value={Number(form.baseRentPrice || 0).toLocaleString("vi-VN")} onChange={(e) => setField("baseRentPrice", parseCurrencyInput(e.target.value))} /><small>{formatCurrency(form.baseRentPrice)}</small></label>
+                  </div>
+                  <label>Mô tả<textarea rows={4} value={form.description} onChange={(e) => setField("description", e.target.value)} /></label>
+                </div>
+              </section>
             </div>
-          </div>
 
-          <div className="image-url-adder">
-            <input
-              value={imageUrlInput}
-              onChange={(e) => setImageUrlInput(e.target.value)}
-              placeholder="Dán URL ảnh và bấm Thêm URL"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                addImageUrls([imageUrlInput]);
-                setImageUrlInput("");
-              }}
-            >
-              Thêm URL
-            </button>
-          </div>
+            <div className="column-right">
+              <section className="admin-card">
+                <h3>Phần 2: Biến thể (Size - Màu)</h3>
+                <div className="section-block">
+                  <h4>Size</h4>
+                  <label>
+                    Chọn nhiều size
+                    <select multiple size={Math.min(8, sizeOptions.length || 4)} value={form.sizes} onChange={(e) => setField("sizes", Array.from(new Set(Array.from(e.target.selectedOptions).map((opt) => normalizeSize(opt.value)))))}>
+                      {sizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
+                    </select>
+                  </label>
+                  <div className="inline-row"><input value={newSizeInput} onChange={(e) => setNewSizeInput(e.target.value)} placeholder="Thêm size mới" /><button type="button" onClick={addNewSize}>Thêm size mới</button></div>
+                  <div className="chip-wrap">{(form.sizes || []).map((size) => <button key={size} type="button" className="chip" onClick={() => toggleSize(size)}>{size} x</button>)}</div>
+                </div>
 
-          <div className="image-preview-grid">
-            {(form.images || []).map((img, idx) => (
-              <div
-                key={`${String(img).slice(0, 24)}-${idx}`}
-                className={`image-preview-item ${
-                  dragOverIndex === idx ? "drag-over" : ""
-                } ${dragIndex === idx ? "dragging" : ""}`}
-                draggable
-                onDragStart={() => {
-                  setDragIndex(idx);
-                  setDragOverIndex(idx);
-                }}
-                onDragEnter={() => {
-                  if (dragIndex == null) return;
-                  setDragOverIndex(idx);
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  moveImage(dragIndex, idx);
-                  setDragIndex(null);
-                  setDragOverIndex(null);
-                }}
-                onDragEnd={() => {
-                  setDragIndex(null);
-                  setDragOverIndex(null);
-                }}
-              >
-                <img src={img} alt={`img-${idx}`} />
-                {idx === 0 && <span className="cover-badge">Ảnh đại diện</span>}
-                <button type="button" onClick={() => removeImage(idx)}>
-                  X
-                </button>
-              </div>
-            ))}
+                <div className="section-block">
+                  <h4>Màu</h4>
+                  <div className="inline-row"><input value={newColorInput} onChange={(e) => setNewColorInput(e.target.value)} placeholder="Nhập tên màu" /><button type="button" onClick={addColorVariant}>Thêm màu</button></div>
+
+                  <div className="color-cards">
+                    {(form.colorVariants || []).map((variant) => (
+                      <article key={variant.id} className={`color-card ${variant.id === activeVariantId ? "active" : ""}`} onClick={() => setActiveVariantId(variant.id)}>
+                        <div className="color-card-head">
+                          <input value={variant.color} onChange={(e) => updateVariant(variant.id, { color: normalizeText(e.target.value) })} placeholder="Ten mau" onClick={(e) => e.stopPropagation()} />
+                          <span>{(variant.images || []).length} ảnh</span>
+                        </div>
+                        <div className="image-preview-grid compact">{(variant.images || []).slice(0, 6).map((img, idx) => <div key={`${variant.id}-${idx}`} className="image-preview-item"><img src={img} alt={`${variant.color}-${idx}`} /></div>)}</div>
+                        <div
+                          className={`variant-dropzone ${dragOverVariantId === variant.id ? "active" : ""}`}
+                          onClick={(e) => { e.stopPropagation(); fileInputRef.current[variant.id]?.click(); }}
+                          onDragOver={(e) => handleVariantDragOver(variant.id, e)}
+                          onDragLeave={handleVariantDragLeave}
+                          onDrop={(e) => handleVariantDrop(variant.id, e)}
+                        >
+                          Kéo thả ảnh vào đây hoặc bấm để chọn ảnh
+                        </div>
+                        <div className="color-card-actions">
+                          <input ref={(el) => { fileInputRef.current[variant.id] = el; }} type="file" accept="image/*" multiple hidden onChange={(e) => handleVariantFiles(variant.id, e.target.files)} />
+                          <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current[variant.id]?.click(); }}>Thêm ảnh</button>
+                          <button type="button" className="danger" onClick={(e) => { e.stopPropagation(); removeColorVariant(variant.id); }}>Xóa màu</button>
+                        </div>
+
+                        {variant.id === activeVariantId && (
+                          <div className="variant-editor">
+                            <div className="inline-row"><input value={activeVariantUrl} onChange={(e) => setActiveVariantUrl(e.target.value)} placeholder="Dán link ảnh cho màu này" /><button type="button" onClick={() => { addVariantImages(variant.id, [activeVariantUrl]); setActiveVariantUrl(""); }}>Thêm link</button></div>
+                            <div className="image-preview-grid">
+                              {(variant.images || []).map((img, idx) => (
+                                <div key={`${variant.id}-full-${idx}`} className="image-preview-item draggable">
+                                  <img src={img} alt={`${variant.color}-preview-${idx}`} />
+                                  {idx === 0 && <span className="cover-badge">Ảnh chính</span>}
+                                  <div className="row-mini-actions">
+                                    {idx > 0 && <button type="button" onClick={() => moveVariantImage(variant.id, idx, idx - 1)}>↑</button>}
+                                    {idx < (variant.images || []).length - 1 && <button type="button" onClick={() => moveVariantImage(variant.id, idx, idx + 1)}>↓</button>}
+                                    <button type="button" onClick={() => removeVariantImage(variant.id, idx)}>X</button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              </section>
+              <section className="admin-card">
+                <h3>Phần 3: Bảng biến thể</h3>
+                <div className="pricing-toggle">
+                  <label><input type="radio" checked={form.variantPricingMode === "common"} onChange={() => setField("variantPricingMode", "common")} />Giá thuê chung</label>
+                  <label><input type="radio" checked={form.variantPricingMode === "custom"} onChange={() => setField("variantPricingMode", "custom")} />Giá riêng cho từng biến thể</label>
+                </div>
+
+                {form.variantPricingMode === "common" ? (
+                  <label>Giá thuê chung<input value={Number(form.commonRentPrice || 0).toLocaleString("vi-VN")} onChange={(e) => setField("commonRentPrice", parseCurrencyInput(e.target.value))} /><small>{formatCurrency(form.commonRentPrice)}</small></label>
+                ) : (
+                  <div className="variant-table-wrap">
+                    <table className="variant-table">
+                      <thead><tr><th>Size</th>{matrix.colors.map((color) => <th key={color}>{color}</th>)}</tr></thead>
+                      <tbody>
+                        {matrix.sizes.map((size) => (
+                          <tr key={size}>
+                            <td>{size}</td>
+                            {matrix.colors.map((color) => {
+                              const key = `${size}__${color}`;
+                              return (
+                                <td key={key}>
+                                  <input value={Number(form.variantRentPrices?.[key] || 0).toLocaleString("vi-VN")} onChange={(e) => setVariantRentPrice(size, color, parseCurrencyInput(e.target.value))} />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="admin-card preview-card">
+                <h3>Preview sản phẩm</h3>
+                <div className="preview-body">
+                  {previewImage ? <img src={previewImage} alt={form.name || "preview"} /> : <div className="preview-empty">Chưa có ảnh</div>}
+                  <div>
+                    <p className="preview-name">{form.name || "Tên sản phẩm"}</p>
+                    <p>Danh mục: {form.category || "-"}</p>
+                    <p>Giá bán: {formatCurrency(form.baseSalePrice)}</p>
+                    <p>Màu đang xem: {activeVariant?.color || "-"} ({activeVariant?.images?.length || 0} ảnh)</p>
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
 
           {status && <p className="admin-status">{status}</p>}

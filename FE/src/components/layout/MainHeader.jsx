@@ -1,3 +1,4 @@
+﻿import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import '../../style/MainHeader.css'
@@ -6,6 +7,21 @@ const MainHeader = () => {
   const { isAuthenticated, logout, user } = useAuth()
   const isStaff = user?.role === 'staff'
   const isOwner = user?.role === 'owner'
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!menuRef.current?.contains(event.target)) {
+        setMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [])
 
   return (
     <header className="header">
@@ -19,6 +35,7 @@ const MainHeader = () => {
               INHERE HOI AN OUTFIT
             </Link>
           </h1>
+
           <nav className="nav">
             {isOwner || isStaff ? (
               <>
@@ -35,29 +52,61 @@ const MainHeader = () => {
               </>
             )}
           </nav>
+
           <div className="header-actions">
             {isAuthenticated ? (
-              <>
-                <Link to="/profile" className="profile-icon-btn" aria-label="Go to profile" title="Profile">
+              <div className="profile-menu-wrap" ref={menuRef}>
+                <button
+                  type="button"
+                  className="profile-icon-btn"
+                  aria-label="Mở menu tài khoản"
+                  title="Tài khoản"
+                  onClick={() => setMenuOpen((prev) => !prev)}
+                >
                   {user?.avatarUrl ? (
                     <img src={user.avatarUrl} alt="Avatar" className="header-avatar-img" />
                   ) : (
                     '👤'
                   )}
-                </Link>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={async () => {
-                    await logout()
-                  }}
-                >
-                  Logout
                 </button>
-              </>
+
+                {menuOpen && (
+                  <div className="profile-dropdown">
+                    {(isOwner || isStaff) && (
+                      <Link
+                        to={isOwner ? '/owner' : '/staff'}
+                        className="profile-dropdown-item"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        Dashboard
+                      </Link>
+                    )}
+
+                    <Link
+                      to="/profile"
+                      className="profile-dropdown-item"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Xem thông tin
+                    </Link>
+
+                    <button
+                      type="button"
+                      className="profile-dropdown-item profile-dropdown-danger"
+                      onClick={async () => {
+                        setMenuOpen(false)
+                        await logout()
+                      }}
+                    >
+                      Đăng xuất
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <Link to="/login" className="btn-secondary">Login</Link>
             )}
+
             {!(isOwner || isStaff) && <button className="btn-primary">BOOK NOW</button>}
           </div>
         </div>

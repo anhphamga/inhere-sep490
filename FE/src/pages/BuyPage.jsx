@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Header from "../components/Header";
 import "./ProductPages.css";
+import { useTranslationDisplay } from "../hooks/useTranslationDisplay";
 
 const I18N = {
   vi: {
@@ -155,8 +156,10 @@ export default function BuyPage() {
     limit: 24,
   });
   const [loading, setLoading] = useState(true);
+  const [translatedTextMap, setTranslatedTextMap] = useState({});
 
   const t = I18N[lang] || I18N.vi;
+  const { translateFields } = useTranslationDisplay(lang);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -192,6 +195,50 @@ export default function BuyPage() {
     () => allCategoryNodes.find((item) => item.value === selectedCategory) || null,
     [allCategoryNodes, selectedCategory]
   );
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      if (lang !== "en") {
+        if (mounted) setTranslatedTextMap({});
+        return;
+      }
+
+      const rawTexts = [
+        ...categoryTree.flatMap((cat) => [cat.displayName, ...(cat.children || []).map((c) => c.displayName)]),
+        ...products.flatMap((item) => [item?.name, item?.category]),
+      ]
+        .map((text) => String(text || "").trim())
+        .filter(Boolean);
+
+      const uniqueTexts = Array.from(new Set(rawTexts));
+      if (uniqueTexts.length === 0) {
+        if (mounted) setTranslatedTextMap({});
+        return;
+      }
+
+      const fields = uniqueTexts.map((text, index) => ({ id: `buy_${index}`, text }));
+      const translated = await translateFields(fields, { source: "vi", target: "en" });
+      if (!mounted) return;
+
+      const nextMap = {};
+      uniqueTexts.forEach((text, index) => {
+        nextMap[text] = translated[`buy_${index}`] || text;
+      });
+      setTranslatedTextMap(nextMap);
+    };
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, [lang, categoryTree, products, translateFields]);
+
+  const translateDisplay = (text) => {
+    const raw = String(text || "").trim();
+    if (!raw) return "";
+    if (lang !== "en") return raw;
+    return translatedTextMap[raw] || raw;
+  };
 
   useEffect(() => {
     const nextExpanded = {};
@@ -275,10 +322,10 @@ export default function BuyPage() {
         <div className="site-shell">
           <section className="catalog-hero">
             <div className="catalog-hero-overlay">
-              <h1>{selectedCategoryInfo?.displayName || t.titleDefault}</h1>
+              <h1>{translateDisplay(selectedCategoryInfo?.displayName) || t.titleDefault}</h1>
               <p>
                 {t.breadcrumbHome} /{" "}
-                <strong>{selectedCategoryInfo?.displayName || t.allCategories}</strong>
+                <strong>{translateDisplay(selectedCategoryInfo?.displayName) || t.allCategories}</strong>
               </p>
             </div>
             <div className="catalog-sort-wrap">
@@ -314,7 +361,7 @@ export default function BuyPage() {
                       }
                       aria-label={hasChildren && !isOpen ? t.showChildren : t.hideChildren}
                     >
-                      <span>{category.displayName}</span>
+                      <span>{translateDisplay(category.displayName)}</span>
                       <span className="catalog-cat-meta">
                         <small>({category.count || 0})</small>
                         {hasChildren && (
@@ -334,7 +381,7 @@ export default function BuyPage() {
                             type="button"
                             onClick={() => setSelectedCategory(child.value)}
                           >
-                            <span>{child.displayName}</span>
+                            <span>{translateDisplay(child.displayName)}</span>
                             <small>({child.count || 0})</small>
                           </button>
                         ))}
@@ -348,7 +395,10 @@ export default function BuyPage() {
             <div className="catalog-content">
               <p className="catalog-desc">
                 {selectedCategoryInfo
-                  ? t.descByCategory(selectedCategoryInfo.displayName, selectedCategoryInfo.count)
+                  ? t.descByCategory(
+                      translateDisplay(selectedCategoryInfo.displayName),
+                      selectedCategoryInfo.count
+                    )
                   : t.descDefault}
               </p>
 
@@ -367,7 +417,7 @@ export default function BuyPage() {
                     <div className="catalog-body">
                       <h3 className="catalog-name">
                         <Link className="catalog-name-link" to={`/products/${p.id}`}>
-                          {p.name}
+                          {translateDisplay(p.name)}
                         </Link>
                       </h3>
                       <p className="catalog-price">{p.priceText}</p>

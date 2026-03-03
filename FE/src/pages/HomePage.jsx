@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../store/AuthContext";
 import "./HomePage.css";
 import logo from "../assets/logo/logo.png";
 import banner1 from "../assets/banner/banner 1.png";
@@ -12,7 +13,8 @@ const I18N = {
     "meta.desc":
       "INHERE chuyên thuê & mua trang phục Hội An: áo dài, Việt phục, Nhật Bình, phụ kiện, combo chụp ảnh, đặt lịch thử đồ.",
     "header.hotline": "Hotline",
-    "header.cart": "Giỏ hàng",
+    "header.cart": "Gi\u1ecf h\u00e0ng",
+    "header.login": "\u0110\u0103ng nh\u1eadp",
 
     "nav.rent": "Thuê trang phục",
     "nav.buy": "Mua trang phục",
@@ -167,6 +169,7 @@ const I18N = {
       "INHERE offers Hoi An outfit rentals and purchases: Ao Dai, Viet attire, Nhat Binh, accessories, photo packages, fitting appointments.",
     "header.hotline": "Hotline",
     "header.cart": "Cart",
+    "header.login": "Login",
 
     "nav.rent": "Rent Outfits",
     "nav.buy": "Buy Outfits",
@@ -517,6 +520,7 @@ const PRODUCT_CATEGORIES = [
 const Homepage = ({ initialSection = "" }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAuthenticated, user, logout } = useAuth();
   const [lang, setLang] = useState(
     typeof window !== "undefined"
       ? window.localStorage.getItem("lang") || "vi"
@@ -541,6 +545,8 @@ const Homepage = ({ initialSection = "" }) => {
   const [categoryVisibleCount, setCategoryVisibleCount] = useState(3);
   const slideIntervalRef = useRef(null);
   const categorySlideIntervalRef = useRef(null);
+  const accountMenuRef = useRef(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   // Banners từ file local - dùng useMemo để cập nhật khi lang thay đổi
   const heroBanners = useMemo(
@@ -575,6 +581,19 @@ const Homepage = ({ initialSection = "" }) => {
       clearInterval(slideIntervalRef.current);
       slideIntervalRef.current = null;
     }
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!accountMenuRef.current?.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
   }, []);
 
   const nextSlide = useCallback(() => {
@@ -1110,12 +1129,61 @@ const Homepage = ({ initialSection = "" }) => {
               <span>{t(lang, "header.hotline")}</span>
             </a>
             <a className="iconbtn" href="#cart">
-              <span>🛒</span>
+              <span>Cart</span>
               <span>{t(lang, "header.cart")}</span>
             </a>
+            {isAuthenticated ? (
+              <div className="account-menu-wrap" ref={accountMenuRef}>
+                <button
+                  className="iconbtn account-avatar-btn"
+                  type="button"
+                  onClick={() => setAccountMenuOpen((prev) => !prev)}
+                  aria-label={lang === "vi" ? "Mở menu tài khoản" : "Open account menu"}
+                >
+                  {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt="Avatar" className="account-avatar-img" />
+                  ) : (
+                    <span className="account-avatar-fallback">👤</span>
+                  )}
+                </button>
+
+                {accountMenuOpen && (
+                  <div className="account-dropdown">
+                    <button
+                      type="button"
+                      className="account-dropdown-item"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        navigate("/profile");
+                      }}
+                    >
+                      {lang === "vi" ? "Xem thông tin" : "View profile"}
+                    </button>
+                    <button
+                      type="button"
+                      className="account-dropdown-item danger"
+                      onClick={async () => {
+                        setAccountMenuOpen(false);
+                        await logout();
+                        navigate("/", { replace: true });
+                      }}
+                    >
+                      {lang === "vi" ? "Đăng xuất" : "Logout"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                className="iconbtn login-btn"
+                type="button"
+                onClick={() => navigate("/login")}
+              >
+                <span>{t(lang, "header.login")}</span>
+              </button>
+            )}
           </div>
         </div>
-
         {/* NAVBAR */}
         <nav className="nav" aria-label="Primary navigation">
           <div className="container nav-row">
