@@ -1,4 +1,4 @@
-import ReportsList from './ReportsList'
+import ReportsList from '../../components/owner/ReportsList'
 
 const OwnerReportsScreen = () => {
     return <ReportsList />

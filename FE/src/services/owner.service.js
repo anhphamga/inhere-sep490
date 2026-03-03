@@ -1,4 +1,4 @@
-import axiosClient from '../api/axiosClient'
+import axiosClient from '../config/axios'
 
 export const getOwnerDashboardSummaryApi = async () => {
     const response = await axiosClient.get('/owner/analytics/summary')

@@ -17,8 +17,8 @@ import {
     Shirt,
     Users
 } from 'lucide-react'
-import { cn } from '../lib/utils'
-import './owner.css'
+import { cn } from '../../utils/ui.utils'
+import '../../style/features/owner/owner.css'
 
 const navItems = [
     { to: '/owner/dashboard', label: 'Dashboard', icon: LayoutDashboard },

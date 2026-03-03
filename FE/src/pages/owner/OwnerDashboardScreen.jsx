@@ -6,8 +6,8 @@ import {
     getOwnerRevenueAnalyticsApi,
     getOwnerTopProductsApi
 } from '../../services/owner.service'
-import { currencyFormatter, numberFormatter, toArray } from './owner.utils'
-import OwnerRefreshButton from './OwnerRefreshButton'
+import { currencyFormatter, numberFormatter, toArray } from '../../utils/owner.utils'
+import OwnerRefreshButton from '../../components/ui/OwnerRefreshButton'
 
 const OwnerDashboardScreen = () => {
     const [data, setData] = useState({

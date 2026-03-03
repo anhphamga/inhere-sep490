@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../store/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 import logoImage from '../../assets/logo/logo.png'
 import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'

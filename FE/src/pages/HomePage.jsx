@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../store/AuthContext";
-import "./HomePage.css";
+import { useAuth } from "../hooks/useAuth";
+import "../style/pages/HomePage.css";
 import logo from "../assets/logo/logo.png";
 import banner1 from "../assets/banner/banner 1.png";
 import banner2 from "../assets/banner/banner2 (1).png";
@@ -728,7 +728,7 @@ const Homepage = ({ initialSection = "" }) => {
         if (isMounted && apiCategories.length > 0) {
           setCategories(apiCategories);
         }
-      } catch (error) {
+      } catch {
         if (isMounted) {
           setCategoriesError(
             lang === "vi"
@@ -767,7 +767,7 @@ const Homepage = ({ initialSection = "" }) => {
         if (isMounted) {
           setBlogs(blogData);
         }
-      } catch (error) {
+      } catch {
         if (isMounted) {
           setBlogsError(
             lang === "vi"
@@ -980,9 +980,9 @@ const Homepage = ({ initialSection = "" }) => {
   const displayedRentProducts =
     topRentProducts.length > 0
       ? topRentProducts
-          .filter((item) => hasRealImage(item.imageUrl))
-          .slice(0, HOMEPAGE_PRODUCT_LIMIT)
-          .map((item) => ({
+        .filter((item) => hasRealImage(item.imageUrl))
+        .slice(0, HOMEPAGE_PRODUCT_LIMIT)
+        .map((item) => ({
           id: item._id,
           name: item.name,
           meta:
@@ -998,11 +998,11 @@ const Homepage = ({ initialSection = "" }) => {
   const displayedBuyProducts =
     buyProducts.length > 0
       ? buyProducts
-          .filter((item) => hasRealImage(item.imageUrl))
-          .filter((item) => isTraditionalCostume(item))
-          .filter((item) => Number(item.baseRentPrice || 0) > 0)
-          .slice(0, HOMEPAGE_PRODUCT_LIMIT)
-          .map((item) => ({
+        .filter((item) => hasRealImage(item.imageUrl))
+        .filter((item) => isTraditionalCostume(item))
+        .filter((item) => Number(item.baseRentPrice || 0) > 0)
+        .slice(0, HOMEPAGE_PRODUCT_LIMIT)
+        .map((item) => ({
           id: item._id,
           name: item.name,
           meta:
@@ -1016,19 +1016,19 @@ const Homepage = ({ initialSection = "" }) => {
   const displayedFittingProducts =
     fittingProducts.length > 0
       ? fittingProducts
-          .filter((item) => hasRealImage(item.imageUrl))
-          .filter((item) => isDressRental(item))
-          .filter((item) => Number(item.baseRentPrice || 0) > 0)
-          .slice(0, HOMEPAGE_PRODUCT_LIMIT)
-          .map((item) => ({
+        .filter((item) => hasRealImage(item.imageUrl))
+        .filter((item) => isDressRental(item))
+        .filter((item) => Number(item.baseRentPrice || 0) > 0)
+        .slice(0, HOMEPAGE_PRODUCT_LIMIT)
+        .map((item) => ({
           id: item._id,
           name: item.name,
           meta:
             lang === "vi"
               ? `${item.category} • Thuê từ ${formatCurrency(item.baseRentPrice)}/ngày`
               : `${item.category} • From ${formatCurrency(item.baseRentPrice)}/day`,
-            imageUrl: item.imageUrl,
-          }))
+          imageUrl: item.imageUrl,
+        }))
       : [];
 
   const fallbackBlogPosts = [
@@ -1040,32 +1040,32 @@ const Homepage = ({ initialSection = "" }) => {
   const displayedBlogs =
     blogs.length > 0
       ? blogs.slice(0, 6).map((item, index) => {
-          const rawContent = String(item?.content || "").trim();
-          const lines = rawContent
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean);
-          const title =
-            String(item?.title || "").trim() ||
-            lines[0] ||
-            (lang === "vi"
-              ? `Bài viết ${index + 1}`
-              : `Post ${index + 1}`);
-          const body = lines.slice(1).join(" ") || rawContent;
-          const excerpt =
-            body.length > 180 ? `${body.slice(0, 177)}...` : body;
+        const rawContent = String(item?.content || "").trim();
+        const lines = rawContent
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const title =
+          String(item?.title || "").trim() ||
+          lines[0] ||
+          (lang === "vi"
+            ? `Bài viết ${index + 1}`
+            : `Post ${index + 1}`);
+        const body = lines.slice(1).join(" ") || rawContent;
+        const excerpt =
+          body.length > 180 ? `${body.slice(0, 177)}...` : body;
 
-          return {
-            id: item?._id || `blog-${index + 1}`,
-            title,
-            thumbnail: String(item?.thumbnail || "").trim(),
-            excerpt:
-              excerpt ||
-              (lang === "vi"
-                ? "Nội dung đang được cập nhật."
-                : "Content is being updated."),
-          };
-        })
+        return {
+          id: item?._id || `blog-${index + 1}`,
+          title,
+          thumbnail: String(item?.thumbnail || "").trim(),
+          excerpt:
+            excerpt ||
+            (lang === "vi"
+              ? "Nội dung đang được cập nhật."
+              : "Content is being updated."),
+        };
+      })
       : fallbackBlogPosts;
 
   const displayedCategories = useMemo(() => {

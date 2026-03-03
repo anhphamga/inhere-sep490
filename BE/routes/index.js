@@ -13,7 +13,8 @@ const authRoutes = require('./auth.routes');
 const blogRoutes = require('./blog.routes');
 const categoryRoutes = require('./category.routes');
 const productRoutes = require('./product.routes');
-const translateRoutes = require('./translateRoutes');
+const ownerRoutes = require('./owner.routes');
+const bannerRoutes = require('./banner.routes');
 // const orderRoutes = require('./order.routes');
 // ... thêm các routes khác ở đây
 
@@ -23,7 +24,8 @@ router.use('/auth', authRoutes);
 router.use('/blogs', blogRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);
-router.use('/translate', translateRoutes);
+router.use('/owner', ownerRoutes);
+router.use('/banners', bannerRoutes);
 // router.use('/orders', orderRoutes);
 // ... thêm prefix tương ứng
 

@@ -1,9 +1,9 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { changePasswordApi, getProfileApi, updateProfileApi, uploadAvatarApi } from '../../services/auth.service'
-import { useAuth } from '../../store/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 import { getRouteByRole } from '../../utils/auth'
-import MainHeader from '../../components/layout/MainHeader'
+import MainHeader from '../../layouts/MainHeader'
 import '../../style/AuthPages.css'
 
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024

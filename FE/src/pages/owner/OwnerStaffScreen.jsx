@@ -1,4 +1,4 @@
-import StaffList from './StaffList'
+import StaffList from '../../components/owner/StaffList'
 import { useNavigate } from 'react-router-dom'
 
 const OwnerStaffScreen = () => {

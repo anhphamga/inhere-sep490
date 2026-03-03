@@ -1,4 +1,4 @@
-import MembershipPlans from './MembershipPlans'
+import MembershipPlans from '../../components/owner/MembershipPlans'
 
 const OwnerMembershipScreen = () => {
     return <MembershipPlans />

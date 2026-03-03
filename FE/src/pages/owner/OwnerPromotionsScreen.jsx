@@ -1,4 +1,4 @@
-import PromotionsList from './PromotionsList'
+import PromotionsList from '../../components/owner/PromotionsList'
 
 const OwnerPromotionsScreen = () => {
     return <PromotionsList />

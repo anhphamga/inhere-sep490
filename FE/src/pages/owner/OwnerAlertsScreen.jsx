@@ -1,4 +1,4 @@
-import AlertsList from './AlertsList'
+import AlertsList from '../../components/owner/AlertsList'
 
 const OwnerAlertsScreen = () => {
     return <AlertsList />

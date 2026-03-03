@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../store/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 import { getRouteByRole } from '../../utils/auth'
 import { loadGoogleIdentityScript } from '../../utils/googleIdentity'
 import logoImage from '../../assets/logo/logo.png'
@@ -54,7 +54,8 @@ const LoginPage = () => {
               setGoogleSubmitting(true)
               const data = await loginWithGoogle({ idToken: response.credential })
               const fallbackPath = getRouteByRole(data.user.role)
-              const targetPath = data.user.role === 'owner' ? fallbackPath : (redirectPath || fallbackPath)
+              const enforceRoleDashboard = data.user.role === 'owner' || data.user.role === 'staff'
+              const targetPath = enforceRoleDashboard ? fallbackPath : (redirectPath || fallbackPath)
               navigate(targetPath, { replace: true })
             } catch (apiError) {
               setError(apiError?.response?.data?.message || 'Đăng nhập Google thất bại')
@@ -135,7 +136,8 @@ const LoginPage = () => {
 
       const data = await login(payload, { rememberMe: form.rememberMe })
       const fallbackPath = getRouteByRole(data.user.role)
-      const targetPath = data.user.role === 'owner' ? fallbackPath : (redirectPath || fallbackPath)
+      const enforceRoleDashboard = data.user.role === 'owner' || data.user.role === 'staff'
+      const targetPath = enforceRoleDashboard ? fallbackPath : (redirectPath || fallbackPath)
       navigate(targetPath, { replace: true })
     } catch (apiError) {
       setError(normalizeLoginError(apiError))

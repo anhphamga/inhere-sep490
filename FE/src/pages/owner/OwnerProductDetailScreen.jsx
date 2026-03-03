@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import ProductDetail from './ProductDetail'
+import ProductDetail from '../../components/owner/ProductDetail'
 
 const OwnerProductDetailScreen = () => {
     const { productId } = useParams()
