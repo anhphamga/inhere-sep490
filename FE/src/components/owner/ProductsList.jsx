@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Download, ImagePlus, LayoutGrid, LayoutList, Plus, Trash2, Upload, X } from 'lucide-react'
 import {
@@ -9,10 +9,108 @@ import {
     importOwnerProductsApi
 } from '../../services/owner.service'
 import { currencyFormatter, toArray } from '../../utils/owner.utils'
+import AddProductModal from './AddProductModal'
 
 const lifecycleOptions = ['', 'Available', 'Rented', 'Washing', 'Repair', 'Lost']
 const initialFilters = { category: '', size: '', color: '', lifecycleStatus: '' }
 const pageSize = 10
+const commonSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREE SIZE']
+const commonColors = ['Red', 'Pink', 'Yellow', 'Blue', 'Green', 'Black', 'White', 'Cream', 'Brown', 'Purple']
+
+const toDisplayText = (value) => {
+    if (value === null || value === undefined) {
+        return ''
+    }
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return String(value).trim()
+    }
+
+    if (Array.isArray(value)) {
+        return value.map((item) => toDisplayText(item)).find(Boolean) || ''
+    }
+
+    if (typeof value === 'object') {
+        const preferredKeys = ['vi', 'en', 'name', 'label', 'value']
+        for (const key of preferredKeys) {
+            const normalized = toDisplayText(value[key])
+            if (normalized) {
+                return normalized
+            }
+        }
+    }
+
+    return ''
+}
+
+const normalizeCategoryTree = (nodes = []) => {
+    return nodes
+        .map((node) => ({
+            name: String(node?.displayName || '').trim(),
+            children: toArray(node?.children)
+                .map((child) => String(child?.displayName || '').trim())
+                .filter(Boolean),
+        }))
+        .filter((item) => item.name)
+}
+
+const uniqValues = (values = []) => {
+    const seen = new Set()
+    const result = []
+
+    values.forEach((item) => {
+        const normalized = String(item || '').trim()
+        if (!normalized) {
+            return
+        }
+        const key = normalized.toLowerCase()
+        if (seen.has(key)) {
+            return
+        }
+        seen.add(key)
+        result.push(normalized)
+    })
+
+    return result
+}
+
+const normalizeSizeToken = (value) => String(value || '').trim().toUpperCase()
+
+const buildVariantMatrix = (sizes = [], colors = [], seed = []) => {
+    const seedMap = new Map(
+        (Array.isArray(seed) ? seed : []).map((item) => [`${item.size}::${item.color}`, item])
+    )
+
+    const rows = []
+    sizes.forEach((size) => {
+        colors.forEach((color) => {
+            const key = `${size}::${color}`
+            const prev = seedMap.get(key)
+            rows.push({
+                size,
+                color,
+                rentPrice: prev?.rentPrice ?? '',
+                salePrice: prev?.salePrice ?? '',
+                quantity: prev?.quantity ?? '',
+            })
+        })
+    })
+
+    return rows
+}
+
+const flattenCategoryNames = (tree = []) => {
+    const names = []
+    tree.forEach((node) => {
+        if (node?.name) {
+            names.push(node.name)
+        }
+        if (Array.isArray(node?.children) && node.children.length > 0) {
+            names.push(...node.children)
+        }
+    })
+    return uniqValues(names)
+}
 
 export default function ProductsList({ onSelectProduct }) {
     const location = useLocation()
@@ -29,11 +127,20 @@ export default function ProductsList({ onSelectProduct }) {
     const [currentPage, setCurrentPage] = useState(1)
     const [deletingProductId, setDeletingProductId] = useState('')
     const [selectedProductIds, setSelectedProductIds] = useState([])
+    const [categoryTree, setCategoryTree] = useState([])
+    const [parentCategory, setParentCategory] = useState('')
+    const [childCategory, setChildCategory] = useState('')
+    const [createSizeValues, setCreateSizeValues] = useState([])
+    const [createColorValues, setCreateColorValues] = useState([])
+    const [createColorBlocks, setCreateColorBlocks] = useState([])
+    const [createColorDraft, setCreateColorDraft] = useState('')
+    const [createTab, setCreateTab] = useState('basic')
+    const [createPricingMode, setCreatePricingMode] = useState('common')
+    const [createVariantMatrix, setCreateVariantMatrix] = useState([])
+    const [createDirty, setCreateDirty] = useState(false)
     const [createForm, setCreateForm] = useState({
         name: '',
         category: '',
-        size: '',
-        color: '',
         quantity: '1',
         baseRentPrice: '',
         baseSalePrice: '',
@@ -59,7 +166,7 @@ export default function ProductsList({ onSelectProduct }) {
             const response = await getOwnerProductsApi(params)
             setProducts(toArray(response?.data))
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Không tải được danh sách sản phẩm')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to load products list.')
         } finally {
             setLoading(false)
         }
@@ -69,9 +176,34 @@ export default function ProductsList({ onSelectProduct }) {
         loadProducts(initialFilters)
     }, [loadProducts])
 
-    const categoryOptions = useMemo(() => [...new Set(products.map((item) => item.category).filter(Boolean))], [products])
-    const sizeOptions = useMemo(() => [...new Set(products.map((item) => item.size).filter(Boolean))], [products])
-    const colorOptions = useMemo(() => [...new Set(products.map((item) => item.color).filter(Boolean))], [products])
+    useEffect(() => {
+        let mounted = true
+
+        const loadCategories = async () => {
+            try {
+                const response = await fetch('/api/categories')
+                const payload = response.ok ? await response.json() : { categories: [] }
+                if (!mounted) {
+                    return
+                }
+                setCategoryTree(normalizeCategoryTree(toArray(payload?.categories)))
+            } catch {
+                if (mounted) {
+                    setCategoryTree([])
+                }
+            }
+        }
+
+        loadCategories()
+        return () => {
+            mounted = false
+        }
+    }, [])
+
+    const categoryOptions = useMemo(() => flattenCategoryNames(categoryTree), [categoryTree])
+    const sizeOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.size)).filter(Boolean))], [products])
+    const colorOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.color)).filter(Boolean))], [products])
+    const selectedParentChildren = categoryTree.find((item) => item.name === parentCategory)?.children || []
 
     const filteredProducts = useMemo(() => {
         const searchParams = new URLSearchParams(location.search)
@@ -82,10 +214,10 @@ export default function ProductsList({ onSelectProduct }) {
         }
 
         return products.filter((item) => {
-            const name = String(item?.name || '').toLowerCase()
-            const category = String(item?.category || '').toLowerCase()
-            const color = String(item?.color || '').toLowerCase()
-            const size = String(item?.size || '').toLowerCase()
+            const name = toDisplayText(item?.name).toLowerCase()
+            const category = toDisplayText(item?.category).toLowerCase()
+            const color = toDisplayText(item?.color).toLowerCase()
+            const size = toDisplayText(item?.size).toLowerCase()
             const id = String(item?.id || item?._id || '').toLowerCase()
 
             return (
@@ -144,12 +276,98 @@ export default function ProductsList({ onSelectProduct }) {
         await loadProducts(nextFilters)
     }
 
+    const markCreateDirty = () => setCreateDirty(true)
+
+    const updateCreateSizes = (nextValues) => {
+        const normalized = uniqValues(nextValues.map((item) => normalizeSizeToken(item)).filter(Boolean))
+        setCreateSizeValues(normalized)
+        setCreateVariantMatrix((prev) => buildVariantMatrix(normalized, createColorValues, prev))
+        markCreateDirty()
+    }
+
+    const updateCreateColors = (nextValues) => {
+        const normalized = uniqValues(nextValues.map((item) => String(item || '').trim()).filter(Boolean))
+        setCreateColorValues(normalized)
+        setCreateVariantMatrix((prev) => buildVariantMatrix(createSizeValues, normalized, prev))
+        markCreateDirty()
+    }
+
+    const addCreateColorBlock = () => {
+        const name = String(createColorDraft || '').trim()
+        if (!name) return
+        if (createColorBlocks.some((block) => block.name.toLowerCase() === name.toLowerCase())) {
+            setCreateError('Color already exists.')
+            return
+        }
+
+        const nextBlocks = [...createColorBlocks, { name, images: [], urlDraft: '' }]
+        setCreateColorBlocks(nextBlocks)
+        setCreateColorDraft('')
+        setCreateError('')
+        updateCreateColors(nextBlocks.map((item) => item.name))
+    }
+
+    const removeCreateColorBlock = (name) => {
+        const nextBlocks = createColorBlocks.filter((item) => item.name !== name)
+        setCreateColorBlocks(nextBlocks)
+        updateCreateColors(nextBlocks.map((item) => item.name))
+    }
+
+    const addCreateColorImageUrl = (name) => {
+        setCreateColorBlocks((prev) => prev.map((block) => {
+            if (block.name !== name) return block
+            const nextUrl = String(block.urlDraft || '').trim()
+            if (!nextUrl) return block
+            if (block.images.some((img) => img.url === nextUrl)) return { ...block, urlDraft: '' }
+            return {
+                ...block,
+                images: [...block.images, { id: `${Date.now()}-${Math.random()}`, url: nextUrl, file: null }],
+                urlDraft: '',
+            }
+        }))
+        markCreateDirty()
+    }
+
+    const removeCreateColorImage = (name, imageId) => {
+        setCreateColorBlocks((prev) => prev.map((block) => {
+            if (block.name !== name) return block
+            return { ...block, images: block.images.filter((image) => image.id !== imageId) }
+        }))
+        markCreateDirty()
+    }
+
+    const addCreateColorFiles = (name, files = []) => {
+        const prepared = Array.from(files || [])
+            .filter((file) => file?.type?.startsWith('image/'))
+            .map((file) => ({
+                id: `${Date.now()}-${Math.random()}`,
+                url: URL.createObjectURL(file),
+                file,
+            }))
+
+        if (prepared.length === 0) return
+
+        setCreateColorBlocks((prev) => prev.map((block) => {
+            if (block.name !== name) return block
+            return { ...block, images: [...block.images, ...prepared] }
+        }))
+
+        setCreateForm((prev) => ({ ...prev, imageFiles: [...prev.imageFiles, ...prepared.map((item) => item.file)] }))
+        markCreateDirty()
+    }
+
+    const handleDropMainImages = (event) => {
+        event.preventDefault()
+        const files = Array.from(event.dataTransfer?.files || []).filter((file) => file?.type?.startsWith('image/'))
+        if (files.length === 0) return
+        setCreateForm((prev) => ({ ...prev, imageFiles: [...prev.imageFiles, ...files] }))
+        markCreateDirty()
+    }
+
     const resetCreateForm = () => {
         setCreateForm({
             name: '',
             category: '',
-            size: '',
-            color: '',
             quantity: '1',
             baseRentPrice: '',
             baseSalePrice: '',
@@ -158,6 +376,16 @@ export default function ProductsList({ onSelectProduct }) {
             imageFiles: [],
             description: ''
         })
+        setParentCategory('')
+        setChildCategory('')
+        setCreateSizeValues([])
+        setCreateColorValues([])
+        setCreateColorBlocks([])
+        setCreateColorDraft('')
+        setCreateTab('basic')
+        setCreatePricingMode('common')
+        setCreateVariantMatrix([])
+        setCreateDirty(false)
         setCreateError('')
     }
 
@@ -175,30 +403,52 @@ export default function ProductsList({ onSelectProduct }) {
 
             const payload = {
                 name: createForm.name.trim(),
-                category: createForm.category.trim(),
-                size: createForm.size.trim(),
-                color: createForm.color.trim(),
+                category: String(childCategory || parentCategory || '').trim(),
+                size: uniqValues(createSizeValues).join(', '),
+                color: uniqValues(createColorValues).join(', '),
+                categoryParent: parentCategory,
+                categoryChild: childCategory,
+                sizes: uniqValues(createSizeValues),
+                colorVariants: createColorBlocks.map((block) => ({
+                    name: block.name,
+                    images: block.images.filter((img) => !img.file).map((img) => img.url),
+                })),
                 quantity: Number(createForm.quantity),
                 baseRentPrice: Number(createForm.baseRentPrice),
                 baseSalePrice: Number(createForm.baseSalePrice),
                 depositAmount: createForm.depositAmount === '' ? 0 : Number(createForm.depositAmount),
                 buyoutValue: createForm.buyoutValue === '' ? 0 : Number(createForm.buyoutValue),
                 imageFiles: createForm.imageFiles,
-                description: createForm.description.trim()
+                description: createForm.description.trim(),
+                pricingMode: createPricingMode,
+                commonRentPrice: createForm.baseRentPrice === '' ? 0 : Number(createForm.baseRentPrice),
+                variantMatrix: createVariantMatrix.map((item) => ({
+                    size: item.size,
+                    color: item.color,
+                    rentPrice: item.rentPrice === '' ? 0 : Number(item.rentPrice),
+                    salePrice: item.salePrice === '' ? Number(createForm.baseSalePrice || 0) : Number(item.salePrice),
+                    quantity: item.quantity === '' ? 0 : Number(item.quantity),
+                })),
+                isDraft: false,
             }
 
             if (!payload.name || !payload.category || !payload.size || !payload.color) {
-                setCreateError('Vui lòng nhập đủ name, category, size, color')
+                setCreateError('Please provide name, category, size, and color.')
+                return
+            }
+
+            if ((payload.imageFiles || []).length === 0 && payload.colorVariants.every((item) => (item.images || []).length === 0)) {
+                setCreateError('At least one product image is required.')
                 return
             }
 
             if (createForm.baseRentPrice === '' || createForm.baseSalePrice === '') {
-                setCreateError('Vui lòng nhập giá thuê và giá bán cơ bản')
+                setCreateError('Please provide base rent price and base sale price.')
                 return
             }
 
             if (createForm.quantity === '' || !Number.isInteger(payload.quantity) || payload.quantity <= 0) {
-                setCreateError('Số lượng phải là số nguyên dương')
+                setCreateError('Quantity must be a positive integer.')
                 return
             }
 
@@ -208,7 +458,17 @@ export default function ProductsList({ onSelectProduct }) {
                 || Number.isNaN(payload.depositAmount)
                 || Number.isNaN(payload.buyoutValue)
             ) {
-                setCreateError('Giá thuê và giá bán phải là số hợp lệ')
+                setCreateError('Price fields must be valid numbers.')
+                return
+            }
+
+            if (
+                payload.baseRentPrice < 0
+                || payload.baseSalePrice < 0
+                || payload.depositAmount < 0
+                || payload.buyoutValue < 0
+            ) {
+                setCreateError('Price values cannot be negative.')
                 return
             }
 
@@ -222,7 +482,7 @@ export default function ProductsList({ onSelectProduct }) {
                 onSelectProduct(createdId)
             }
         } catch (apiError) {
-            setCreateError(apiError?.response?.data?.message || apiError?.message || 'Không tạo được sản phẩm')
+            setCreateError(apiError?.response?.data?.message || apiError?.message || 'Unable to create product.')
         } finally {
             setCreating(false)
         }
@@ -244,7 +504,7 @@ export default function ProductsList({ onSelectProduct }) {
             await importOwnerProductsApi(file)
             await loadProducts(filters)
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Không import được sản phẩm')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to import products.')
         } finally {
             setImporting(false)
             event.target.value = ''
@@ -270,14 +530,14 @@ export default function ProductsList({ onSelectProduct }) {
             link.remove()
             window.URL.revokeObjectURL(url)
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Không export được sản phẩm')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to export products.')
         } finally {
             setExporting(false)
         }
     }
 
     const handleDeleteProduct = async (productId) => {
-        const confirmed = window.confirm('Bạn có chắc muốn xoá sản phẩm này?')
+        const confirmed = window.confirm('Are you sure you want to delete this product?')
         if (!confirmed) {
             return
         }
@@ -288,7 +548,7 @@ export default function ProductsList({ onSelectProduct }) {
             await deleteOwnerProductApi(productId)
             await loadProducts(filters)
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Không xoá được sản phẩm')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to delete product.')
         } finally {
             setDeletingProductId('')
         }
@@ -316,7 +576,7 @@ export default function ProductsList({ onSelectProduct }) {
     }
 
     if (loading) {
-        return <div className="owner-card owner-loading">Đang tải danh sách sản phẩm...</div>
+        return <div className="owner-card owner-loading">Loading products...</div>
     }
 
     return (
@@ -331,8 +591,8 @@ export default function ProductsList({ onSelectProduct }) {
                             onChange={(event) => handleFilterChange('category', event.target.value)}
                         >
                             <option value="">All Category</option>
-                            {categoryOptions.map((option) => (
-                                <option key={option} value={option}>{option}</option>
+                            {categoryOptions.map((option, index) => (
+                                <option key={`category-${option}-${index}`} value={option}>{option}</option>
                             ))}
                         </select>
 
@@ -342,8 +602,8 @@ export default function ProductsList({ onSelectProduct }) {
                             onChange={(event) => handleFilterChange('size', event.target.value)}
                         >
                             <option value="">size</option>
-                            {sizeOptions.map((option) => (
-                                <option key={option} value={option}>{option}</option>
+                            {sizeOptions.map((option, index) => (
+                                <option key={`size-${option}-${index}`} value={option}>{option}</option>
                             ))}
                         </select>
 
@@ -353,8 +613,8 @@ export default function ProductsList({ onSelectProduct }) {
                             onChange={(event) => handleFilterChange('color', event.target.value)}
                         >
                             <option value="">Color</option>
-                            {colorOptions.map((option) => (
-                                <option key={option} value={option}>{option}</option>
+                            {colorOptions.map((option, index) => (
+                                <option key={`color-${option}-${index}`} value={option}>{option}</option>
                             ))}
                         </select>
 
@@ -446,11 +706,11 @@ export default function ProductsList({ onSelectProduct }) {
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Image</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Product Name</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Size</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Màu</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá thuê</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá bán</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Số lượng</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Color</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Rent Price</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sale Price</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Quantity</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Action</th>
                                 </tr>
                             </thead>
@@ -459,7 +719,11 @@ export default function ProductsList({ onSelectProduct }) {
                                     const productId = product._id || product.id
                                     const totalQuantity = Number(product.totalQuantity || 0)
                                     const availableQuantity = Number(product.availableQuantity || 0)
-                                    const productStatus = availableQuantity > 0 ? 'Còn hàng' : 'Hết hàng'
+                                    const productStatus = availableQuantity > 0 ? 'In stock' : 'Out of stock'
+                                    const productName = toDisplayText(product.name) || 'N/A'
+                                    const productCategory = toDisplayText(product.category) || 'N/A'
+                                    const productSize = toDisplayText(product.size) || 'N/A'
+                                    const productColor = toDisplayText(product.color) || 'N/A'
 
                                     return (
                                         <tr
@@ -478,23 +742,23 @@ export default function ProductsList({ onSelectProduct }) {
                                             <td className="px-6 py-4">
                                                 <img
                                                     src={product?.images?.[0] || 'https://picsum.photos/seed/product-default/200/300'}
-                                                    alt={product.name || 'Product'}
+                                                    alt={productName}
                                                     className="w-12 h-12 rounded-lg object-cover bg-slate-100"
                                                 />
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
-                                                    <span className="font-semibold text-slate-900">{product.name || 'N/A'}</span>
-                                                    <span className="text-xs text-slate-400 mt-0.5">{product.category || 'N/A'}</span>
+                                                    <span className="font-semibold text-slate-900">{productName}</span>
+                                                    <span className="text-xs text-slate-400 mt-0.5">{productCategory}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-sm">{product.size || 'N/A'}</td>
-                                            <td className="px-6 py-4 text-sm">{product.color || 'N/A'}</td>
+                                            <td className="px-6 py-4 text-sm">{productSize}</td>
+                                            <td className="px-6 py-4 text-sm">{productColor}</td>
                                             <td className="px-6 py-4 text-sm font-semibold">{currencyFormatter.format(Number(product.baseRentPrice || 0))}</td>
                                             <td className="px-6 py-4 text-sm font-semibold">{currencyFormatter.format(Number(product.baseSalePrice || 0))}</td>
                                             <td className="px-6 py-4 text-sm">{totalQuantity}</td>
                                             <td className="px-6 py-4 text-sm">
-                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'Còn hàng' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'In stock' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                                                     {productStatus}
                                                 </span>
                                             </td>
@@ -518,7 +782,7 @@ export default function ProductsList({ onSelectProduct }) {
                                 {paginatedProducts.length === 0 ? (
                                     <tr>
                                         <td className="px-6 py-6 text-sm text-slate-500" colSpan={10}>
-                                            Không có sản phẩm phù hợp.
+                                            No matching products.
                                         </td>
                                     </tr>
                                 ) : null}
@@ -537,16 +801,16 @@ export default function ProductsList({ onSelectProduct }) {
                             <div className="relative aspect-3/4 overflow-hidden bg-slate-100">
                                 <img
                                     src={product?.images?.[0] || 'https://picsum.photos/seed/product-grid/400/600'}
-                                    alt={product.name || 'Product'}
+                                    alt={toDisplayText(product.name) || 'Product'}
                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                                 />
                             </div>
                             <div className="p-5">
-                                <h3 className="font-bold text-slate-900 line-clamp-1">{product.name || 'N/A'}</h3>
-                                <p className="text-sm text-slate-500 mb-2">{product.category || 'N/A'}</p>
-                                <p className="text-sm text-slate-500 mb-3">{product.size || 'N/A'} • {product.color || 'N/A'}</p>
+                                <h3 className="font-bold text-slate-900 line-clamp-1">{toDisplayText(product.name) || 'N/A'}</h3>
+                                <p className="text-sm text-slate-500 mb-2">{toDisplayText(product.category) || 'N/A'}</p>
+                                <p className="text-sm text-slate-500 mb-3">{toDisplayText(product.size) || 'N/A'} â€¢ {toDisplayText(product.color) || 'N/A'}</p>
                                 <div className="flex flex-col">
-                                    <span className="text-xs text-slate-400 font-medium">Giá thuê</span>
+                                    <span className="text-xs text-slate-400 font-medium">Rent Price</span>
                                     <span className="text-lg font-bold text-[#1975d2]">{currencyFormatter.format(Number(product.baseRentPrice || 0))}</span>
                                 </div>
                             </div>
@@ -597,209 +861,19 @@ export default function ProductsList({ onSelectProduct }) {
             </div>
 
             {openCreateModal ? (
-                <div
-                    className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
-                    onClick={handleCloseCreateModal}
-                >
-                    <div
-                        className="w-full max-w-4xl bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden flex flex-col"
-                        style={{ maxHeight: 'calc(100vh - 3rem)' }}
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between">
-                            <div>
-                                <h3 className="font-semibold text-slate-900">Thêm sản phẩm mới</h3>
-                                <p className="text-sm text-slate-500 mt-0.5">Nhập thông tin cơ bản để tạo sản phẩm trong kho.</p>
-                            </div>
-                            <button
-                                type="button"
-                                className="p-1.5 text-slate-500 hover:text-slate-700"
-                                onClick={handleCloseCreateModal}
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        <form className="flex-1 flex flex-col overflow-hidden" onSubmit={handleCreateProduct}>
-                            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                                <section className="rounded-xl border border-slate-200 p-4">
-                                    <h4 className="text-sm font-semibold text-slate-800 mb-3">Thông tin cơ bản</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Tên sản phẩm</label>
-                                            <input
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: Váy dạ hội ren"
-                                                value={createForm.name}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, name: event.target.value }))}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Category</label>
-                                            <input
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: Evening Dress"
-                                                value={createForm.category}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, category: event.target.value }))}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Size</label>
-                                            <input
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: S / M / L"
-                                                value={createForm.size}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, size: event.target.value }))}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Màu sắc</label>
-                                            <input
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: Đỏ đô"
-                                                value={createForm.color}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, color: event.target.value }))}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Số lượng sản phẩm</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                step="1"
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: 5"
-                                                value={createForm.quantity}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, quantity: event.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                </section>
-
-                                <section className="rounded-xl border border-slate-200 p-4">
-                                    <h4 className="text-sm font-semibold text-slate-800 mb-3">Giá & tài chính</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Giá thuê cơ bản</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: 250000"
-                                                value={createForm.baseRentPrice}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, baseRentPrice: event.target.value }))}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Giá bán cơ bản</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: 900000"
-                                                value={createForm.baseSalePrice}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, baseSalePrice: event.target.value }))}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Tiền cọc (tuỳ chọn)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: 300000"
-                                                value={createForm.depositAmount}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, depositAmount: event.target.value }))}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Buyout value (tuỳ chọn)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Ví dụ: 1200000"
-                                                value={createForm.buyoutValue}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, buyoutValue: event.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                </section>
-
-                                <section className="rounded-xl border border-slate-200 p-4">
-                                    <h4 className="text-sm font-semibold text-slate-800 mb-3">Media & mô tả</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Ảnh sản phẩm (tuỳ chọn)</label>
-                                            <input
-                                                id="create-product-images"
-                                                type="file"
-                                                accept="image/*"
-                                                multiple
-                                                className="hidden"
-                                                onChange={(event) => {
-                                                    const files = Array.from(event.target.files || [])
-                                                    setCreateForm((prev) => ({ ...prev, imageFiles: files }))
-                                                }}
-                                            />
-                                            <label
-                                                htmlFor="create-product-images"
-                                                className="w-full h-11 border border-slate-200 rounded-lg px-3 text-sm text-slate-700 cursor-pointer hover:border-[#1975d2]/50 hover:bg-slate-50 flex items-center justify-between gap-2"
-                                            >
-                                                <span className="inline-flex items-center gap-2 min-w-0">
-                                                    <ImagePlus className="w-4 h-4 text-[#1975d2] shrink-0" />
-                                                    <span className="truncate">{createForm.imageFiles.length > 0 ? `Đã chọn ${createForm.imageFiles.length} ảnh` : 'Chọn ảnh sản phẩm'}</span>
-                                                </span>
-                                                <span className="text-xs font-medium text-slate-500 shrink-0">Tải lên</span>
-                                            </label>
-                                            {createForm.imageFiles.length > 0 ? (
-                                                <p className="text-xs text-slate-500">Đã chọn {createForm.imageFiles.length} ảnh</p>
-                                            ) : null}
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium text-slate-700">Mô tả</label>
-                                            <textarea
-                                                rows={4}
-                                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1975d2]/40"
-                                                placeholder="Mô tả ngắn về chất liệu, kiểu dáng, lưu ý bảo quản..."
-                                                value={createForm.description}
-                                                onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                </section>
-
-                                {createError ? <div className="owner-alert">{createError}</div> : null}
-                            </div>
-
-                            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
-                                <button
-                                    type="button"
-                                    className="h-10 px-4 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
-                                    onClick={handleCloseCreateModal}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="h-10 px-4 rounded-lg bg-[#1975d2] text-white text-sm font-semibold hover:bg-[#1975d2]/90 disabled:opacity-60"
-                                    disabled={creating}
-                                >
-                                    {creating ? 'Creating...' : 'Create Product'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+                <AddProductModal
+                    categoryTree={categoryTree}
+                    onClose={handleCloseCreateModal}
+                    onCreated={async (createdId) => {
+                        await loadProducts(filters)
+                        if (createdId) {
+                            onSelectProduct(createdId)
+                        }
+                    }}
+                />
             ) : null}
         </div>
     )
 }
+
+

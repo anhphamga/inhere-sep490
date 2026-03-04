@@ -1,35 +1,39 @@
 const mongoose = require('mongoose');
 
-const colorVariantSchema = new mongoose.Schema(
-  {
-    color: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    images: {
-      type: [String],
-      required: true,
-      validate: {
-        validator(value) {
-          return Array.isArray(value) && value.length > 0;
-        },
-        message: 'Each color variant must have at least one image',
-      },
-      default: undefined,
-    },
-  },
-  { _id: false }
-);
+const hasText = (value) => {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return String(value.vi || value.en || '').trim().length > 0;
+  }
+  return false;
+};
 
 const productSchema = new mongoose.Schema({
   name: {
-    type: String,
-    required: true
+    type: mongoose.Schema.Types.Mixed,
+    required: true,
+    validate: {
+      validator: hasText,
+      message: 'name is required',
+    },
   },
   category: {
-    type: String,
-    required: true
+    type: mongoose.Schema.Types.Mixed,
+    required: true,
+    validate: {
+      validator: hasText,
+      message: 'category is required',
+    },
+  },
+  categoryPath: {
+    parent: {
+      type: String,
+      default: ''
+    },
+    child: {
+      type: String,
+      default: ''
+    }
   },
   size: {
     type: String,
@@ -43,21 +47,16 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  description: {
-    type: String,
-    default: ''
-  },
-  images: {
-    type: [String],
-    default: []
-  },
   colorVariants: {
-    type: [colorVariantSchema],
+    type: [{
+      name: { type: String, required: true },
+      images: { type: [String], default: [] }
+    }],
     default: []
   },
-  variantPricingMode: {
+  pricingMode: {
     type: String,
-    enum: ['common', 'custom'],
+    enum: ['common', 'per_variant'],
     default: 'common'
   },
   commonRentPrice: {
@@ -65,10 +64,27 @@ const productSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
-  variantRentPrices: {
-    type: Map,
-    of: Number,
-    default: {}
+  variantMatrix: {
+    type: [{
+      size: { type: String, required: true },
+      color: { type: String, required: true },
+      rentPrice: { type: Number, default: 0, min: 0 },
+      salePrice: { type: Number, default: 0, min: 0 },
+      quantity: { type: Number, default: 0, min: 0 }
+    }],
+    default: []
+  },
+  isDraft: {
+    type: Boolean,
+    default: false
+  },
+  description: {
+    type: mongoose.Schema.Types.Mixed,
+    default: ''
+  },
+  images: {
+    type: [String],
+    default: []
   },
   baseRentPrice: {
     type: Number,

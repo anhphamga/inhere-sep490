@@ -147,7 +147,9 @@ export default function ProductDetailPage() {
   const colors = useMemo(() => {
     if (!product) return [];
     const fromVariants = Array.isArray(product.colorVariants)
-      ? product.colorVariants.map((variant) => String(variant?.color || "").trim()).filter(Boolean)
+      ? product.colorVariants
+          .map((variant) => String(variant?.name || variant?.color || "").trim())
+          .filter(Boolean)
       : [];
     if (fromVariants.length > 0) return uniq(fromVariants);
     const fromString = uniq(parseList(product.color));
@@ -161,7 +163,7 @@ export default function ProductDetailPage() {
 
     if (Array.isArray(product.colorVariants) && product.colorVariants.length > 0) {
       product.colorVariants.forEach((variant) => {
-        const color = String(variant?.color || "").trim();
+        const color = String(variant?.name || variant?.color || "").trim();
         if (!color) return;
         const images = Array.isArray(variant?.images)
           ? variant.images.map(String).filter(Boolean)
