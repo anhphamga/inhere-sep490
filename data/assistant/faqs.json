@@ -1,0 +1,50 @@
+﻿[
+  {
+    "question": {
+      "vi": "Shop có cho thuê áo dài theo ngày không?",
+      "en": "Do you offer ao dai rental by day?"
+    },
+    "answer": {
+      "vi": "Có. Bạn có thể thuê theo ngày và trả tại cửa hàng hoặc qua đơn vị vận chuyển theo chính sách hiện hành.",
+      "en": "Yes. You can rent by day and return at the store or via delivery partner under current policy."
+    },
+    "intent": "policy_question",
+    "tags": ["rental", "policy"],
+    "priority": 100,
+    "status": "active",
+    "createdAt": { "$date": "2026-03-05T09:00:00Z" },
+    "updatedAt": { "$date": "2026-03-05T09:00:00Z" }
+  },
+  {
+    "question": {
+      "vi": "Làm sao kiểm tra tình trạng đơn thuê?",
+      "en": "How can I check my rental order status?"
+    },
+    "answer": {
+      "vi": "Bạn cung cấp mã đơn, trợ lý sẽ tra cứu trạng thái: đặt cọc, đang thuê, đã trả hoặc quá hạn.",
+      "en": "Share your order code and the assistant will check: deposited, renting, returned, or overdue."
+    },
+    "intent": "check_order_status",
+    "tags": ["order", "status"],
+    "priority": 95,
+    "status": "active",
+    "createdAt": { "$date": "2026-03-05T09:00:00Z" },
+    "updatedAt": { "$date": "2026-03-05T09:00:00Z" }
+  },
+  {
+    "question": {
+      "vi": "Shop có hỗ trợ chọn size không?",
+      "en": "Do you support size recommendation?"
+    },
+    "answer": {
+      "vi": "Có. Trợ lý có thể gợi ý size dựa trên chiều cao, cân nặng và kiểu dáng bạn muốn.",
+      "en": "Yes. The assistant can suggest size based on height, weight, and preferred fit."
+    },
+    "intent": "recommend_product",
+    "tags": ["size", "recommendation"],
+    "priority": 85,
+    "status": "active",
+    "createdAt": { "$date": "2026-03-05T09:00:00Z" },
+    "updatedAt": { "$date": "2026-03-05T09:00:00Z" }
+  }
+]
