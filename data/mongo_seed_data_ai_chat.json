@@ -1,0 +1,103 @@
+﻿{
+  "chat_faqs": [
+    {
+      "question": { "vi": "Shop có cho thuê áo dài theo ngày không?", "en": "Do you offer ao dai rental by day?" },
+      "answer": { "vi": "Có. Bạn có thể thuê theo ngày và trả tại cửa hàng hoặc qua đơn vị vận chuyển theo chính sách hiện hành.", "en": "Yes. You can rent by day and return at the store or via delivery partner under current policy." },
+      "intent": "policy_question",
+      "tags": ["rental", "policy"],
+      "priority": 100,
+      "status": "active",
+      "createdAt": { "$date": "2026-03-05T09:00:00Z" },
+      "updatedAt": { "$date": "2026-03-05T09:00:00Z" }
+    },
+    {
+      "question": { "vi": "Làm sao kiểm tra tình trạng đơn thuê?", "en": "How can I check my rental order status?" },
+      "answer": { "vi": "Bạn cung cấp mã đơn, trợ lý sẽ tra cứu trạng thái: đặt cọc, đang thuê, đã trả hoặc quá hạn.", "en": "Share your order code and the assistant will check: deposited, renting, returned, or overdue." },
+      "intent": "check_order_status",
+      "tags": ["order", "status"],
+      "priority": 95,
+      "status": "active",
+      "createdAt": { "$date": "2026-03-05T09:00:00Z" },
+      "updatedAt": { "$date": "2026-03-05T09:00:00Z" }
+    }
+  ],
+  "chat_policies": [
+    {
+      "policyKey": "rental_duration",
+      "title": { "vi": "Chính sách thời gian thuê", "en": "Rental duration policy" },
+      "content": { "vi": "Đơn thuê tính theo ngày. Quá hạn có thể phát sinh phụ phí theo quy định cửa hàng.", "en": "Rental orders are calculated by day. Late returns may incur extra fees under store policy." },
+      "effectiveFrom": { "$date": "2026-01-01T00:00:00Z" },
+      "status": "active"
+    },
+    {
+      "policyKey": "deposit_policy",
+      "title": { "vi": "Chính sách đặt cọc", "en": "Deposit policy" },
+      "content": { "vi": "Một số mẫu yêu cầu đặt cọc. Số tiền cọc được hoàn theo điều kiện đơn hàng sau khi trả sản phẩm.", "en": "Some items require a deposit. The deposit is refunded under order conditions after return." },
+      "effectiveFrom": { "$date": "2026-01-01T00:00:00Z" },
+      "status": "active"
+    }
+  ],
+  "chat_intents": [
+    {
+      "intent": "check_order_status",
+      "description": "Tra cứu trạng thái đơn thuê/mua từ mã đơn",
+      "sampleUtterances": ["kiểm tra đơn RENT_0001", "đơn của tôi đang ở trạng thái nào", "check my order status"],
+      "requiredEntities": ["orderCode"],
+      "toolName": "getOrderStatus",
+      "confidenceThreshold": 0.72,
+      "status": "active"
+    },
+    {
+      "intent": "policy_question",
+      "description": "Trả lời câu hỏi về chính sách cửa hàng",
+      "sampleUtterances": ["chính sách đặt cọc thế nào", "nếu trả trễ thì sao", "what is your return policy"],
+      "requiredEntities": [],
+      "toolName": "searchPolicies",
+      "confidenceThreshold": 0.6,
+      "status": "active"
+    }
+  ],
+  "assistant_prompts": [
+    {
+      "assistantName": "InHere Assistant",
+      "version": "v1",
+      "systemPrompt": {
+        "vi": "Bạn là trợ lý CSKH của InHere. Trả lời ngắn gọn, đúng dữ liệu nội bộ, không suy đoán khi thiếu thông tin.",
+        "en": "You are InHere customer assistant. Be concise, grounded in internal data, and avoid guessing when data is missing."
+      },
+      "safetyRules": [
+        "Không cung cấp dữ liệu cá nhân của khách hàng khác.",
+        "Không đưa cam kết tài chính vượt chính sách hiện có.",
+        "Khi thiếu dữ liệu, yêu cầu thêm thông tin hoặc chuyển nhân viên hỗ trợ."
+      ],
+      "responseStyle": { "tone": "professional", "maxSentences": 6, "citeSources": true },
+      "status": "active",
+      "updatedAt": { "$date": "2026-03-05T09:00:00Z" }
+    }
+  ],
+  "knowledge_chunks": [
+    {
+      "chunkId": "policy_rental_duration_vi",
+      "sourceType": "policy",
+      "sourceKey": "rental_duration",
+      "lang": "vi",
+      "title": "Chính sách thời gian thuê",
+      "content": "Đơn thuê tính theo ngày. Quá hạn có thể phát sinh phụ phí theo quy định cửa hàng.",
+      "tags": ["rental", "late_fee"],
+      "embeddingStatus": "pending",
+      "updatedAt": { "$date": "2026-03-05T09:00:00Z" }
+    }
+  ],
+  "tool_permissions": [
+    {
+      "role": "customer",
+      "allowedTools": ["searchPolicies", "recommendProducts", "getPublicProductInfo"],
+      "blockedTools": ["getInternalRevenue", "getUserPrivateData"]
+    },
+    {
+      "role": "owner",
+      "allowedTools": ["searchPolicies", "recommendProducts", "getOrderStatus", "getInventorySnapshot", "getInternalRevenue"],
+      "blockedTools": []
+    }
+  ]
+}
