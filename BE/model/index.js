@@ -1,12 +1,6 @@
 const Alert = require('./Alert.model');
-const AiFaq = require('./AiFaq.model');
-const AiIntent = require('./AiIntent.model');
-const AiPolicy = require('./AiPolicy.model');
 const Blog = require('./Blog.model');
 const Category = require('./Category.model');
-const ChatConversation = require('./ChatConversation.model');
-const ChatMessage = require('./ChatMessage.model');
-const ChatUnanswered = require('./ChatUnanswered.model');
 const Collateral = require('./Collateral.model');
 const Deposit = require('./Deposit.model');
 const FittingBooking = require('./FittingBooking.model');
@@ -27,14 +21,8 @@ const Voucher = require('./Voucher.model');
 const syncModelIndexes = async () => {
     await Promise.all([
         Alert.syncIndexes(),
-        AiFaq.syncIndexes(),
-        AiIntent.syncIndexes(),
-        AiPolicy.syncIndexes(),
         Blog.syncIndexes(),
         Category.syncIndexes(),
-        ChatConversation.syncIndexes(),
-        ChatMessage.syncIndexes(),
-        ChatUnanswered.syncIndexes(),
         Collateral.syncIndexes(),
         Deposit.syncIndexes(),
         FittingBooking.syncIndexes(),
@@ -56,14 +44,8 @@ const syncModelIndexes = async () => {
 
 module.exports = {
     Alert,
-    AiFaq,
-    AiIntent,
-    AiPolicy,
     Blog,
     Category,
-    ChatConversation,
-    ChatMessage,
-    ChatUnanswered,
     Collateral,
     Deposit,
     FittingBooking,
