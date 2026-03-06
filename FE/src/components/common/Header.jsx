@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import logo from "../../assets/logo/logo.png";
+import { useRentalCart } from "../../contexts/RentalCartContext";
 
 const I18N = {
   vi: {
     hotline: "Hotline",
     cart: "Giỏ hàng",
+    rentalHistory: "Lịch sử thuê",
     navRent: "Thuê trang phục",
     navBuy: "Mua trang phục",
     navBooking: "Đặt lịch thử đồ",
@@ -18,6 +20,7 @@ const I18N = {
   en: {
     hotline: "Hotline",
     cart: "Cart",
+    rentalHistory: "Rental History",
     navRent: "Rent Outfits",
     navBuy: "Buy Outfits",
     navBooking: "Fitting Booking",
@@ -33,6 +36,7 @@ export default function Header({ active = "", lang, setLang }) {
   const [innerLang, setInnerLang] = useState(
     typeof window !== "undefined" ? window.localStorage.getItem("lang") || "vi" : "vi"
   );
+  const { itemCount } = useRentalCart() || { itemCount: 0 };
 
   const currentLang = lang || innerLang;
   const onSetLang = setLang || setInnerLang;
@@ -74,9 +78,14 @@ export default function Header({ active = "", lang, setLang }) {
           <a className="site-pill" href="/#contact">
             • {t.hotline}
           </a>
-          <a className="site-pill" href="/#cart">
-            🛒 {t.cart}
-          </a>
+          <Link to="/rental/history" className="site-pill" title={t.rentalHistory}>
+            📋 {t.rentalHistory}
+          </Link>
+          {itemCount > 0 && (
+            <Link to="/rental/checkout" className="site-pill bg-pink-600 text-white" title={t.cart}>
+              🛒 {itemCount}
+            </Link>
+          )}
         </div>
       </div>
 

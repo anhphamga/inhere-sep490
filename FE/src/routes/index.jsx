@@ -23,6 +23,11 @@ import OwnerShiftsScreen from '../pages/owner/OwnerShiftsScreen'
 import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen'
 import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen'
 import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen'
+import OwnerInventoryScreen from '../pages/owner/OwnerInventoryScreen'
+// Rental pages
+import RentalCheckoutPage from '../pages/RentalCheckoutPage'
+import RentalHistoryPage from '../pages/RentalHistoryPage'
+import RentalDetailPage from '../pages/RentalDetailPage'
 
 const AppRoutes = () => {
     return (
@@ -33,6 +38,13 @@ const AppRoutes = () => {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/products/:id" element={<ProductDetailPage />} />
+
+            {/* Rental Routes */}
+            <Route path="/rental/checkout" element={<RentalCheckoutPage />} />
+            <Route path="/rental/history" element={<RentalHistoryPage />} />
+            <Route path="/rental/:id" element={<RentalDetailPage />} />
+
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />
             </Route>
@@ -44,6 +56,7 @@ const AppRoutes = () => {
                     <Route path="users/:userId" element={<OwnerUserDetailScreen />} />
                     <Route path="products" element={<OwnerProductsScreen />} />
                     <Route path="products/:productId" element={<OwnerProductDetailScreen />} />
+                    <Route path="inventory" element={<OwnerInventoryScreen />} />
                     <Route path="staff" element={<OwnerStaffScreen />} />
                     <Route path="staff-calendar" element={<OwnerShiftsScreen />} />
                     <Route path="staff-analytics" element={<OwnerAnalyticsScreen />} />
@@ -57,7 +70,6 @@ const AppRoutes = () => {
             <Route element={<PrivateRoute roles={['staff']} />}>
                 <Route path="/staff/*" element={<StaffPage />} />
             </Route>
-            <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     )

@@ -13,7 +13,7 @@ const rentOrderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'Waiting'],
+    enum: ['Draft', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'Waiting', 'Completed', 'Cancelled'],
     default: 'Draft'
   },
   rentStartDate: {

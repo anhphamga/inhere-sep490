@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import Header from "../../components/common/Header";
 import ProductGallery from "../../components/product-detail/ProductGallery";
 import ProductInfo from "../../components/product-detail/ProductInfo";
@@ -7,6 +7,7 @@ import VariantSelector from "../../components/product-detail/VariantSelector";
 import ProductActions from "../../components/product-detail/ProductActions";
 import ProductDescription from "../../components/product-detail/ProductDescription";
 import RelatedProducts from "../../components/product-detail/RelatedProducts";
+import { useRentalCart } from "../../contexts/RentalCartContext";
 
 const I18N = {
   vi: {
@@ -81,6 +82,8 @@ const formatCurrency = (value, lang = "vi") => {
 
 export default function ProductDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { addItem, itemCount } = useRentalCart();
   const [lang, setLang] = useState(
     typeof window !== "undefined" ? window.localStorage.getItem("lang") || "vi" : "vi"
   );
@@ -93,6 +96,11 @@ export default function ProductDetailPage() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState("");
   const [toast, setToast] = useState("");
+  
+  // Date selection modal state
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [rentStartDate, setRentStartDate] = useState("");
+  const [rentEndDate, setRentEndDate] = useState("");
 
   const t = I18N[lang] || I18N.vi;
 
@@ -296,10 +304,38 @@ export default function ProductDetailPage() {
       showToast(t.toastError);
       return;
     }
+    // Hiển thị modal chọn ngày trước
+    setShowDateModal(true);
+  };
+
+  const handleConfirmRent = async () => {
+    if (!rentStartDate || !rentEndDate) {
+      showToast('Vui lòng chọn ngày thuê');
+      return;
+    }
+    
+    if (new Date(rentStartDate) > new Date(rentEndDate)) {
+      showToast('Ngày kết thúc phải lớn hơn ngày bắt đầu');
+      return;
+    }
+
     setLoadingAction("rent");
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      // Thêm sản phẩm vào giỏ thuê với thông tin ngày
+      addItem(product, {
+        color: selectedColor,
+        size: selectedSize,
+        rentPrice: currentRentPrice,
+        productInstanceId: null,
+        rentStartDate,
+        rentEndDate
+      });
       showToast(t.toastRent);
+      // Đóng modal và chuyển đến trang checkout
+      setShowDateModal(false);
+      navigate('/rental/checkout');
+    } catch (error) {
+      showToast('Có lỗi xảy ra');
     } finally {
       setLoadingAction("");
     }
@@ -429,6 +465,76 @@ export default function ProductDetailPage() {
       {toast && (
         <div className="fixed right-4 top-20 z-50 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
           {toast}
+        </div>
+      )}
+
+      {/* Date Selection Modal */}
+      {showDateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-xl font-bold">Chọn ngày thuê</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Ngày bắt đầu
+                </label>
+                <input
+                  type="date"
+                  value={rentStartDate}
+                  onChange={(e) => setRentStartDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Ngày kết thúc
+                </label>
+                <input
+                  type="date"
+                  value={rentEndDate}
+                  onChange={(e) => setRentEndDate(e.target.value)}
+                  min={rentStartDate || new Date().toISOString().split('T')[0]}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+
+              {rentStartDate && rentEndDate && (
+                <div className="rounded-lg bg-pink-50 p-3 text-sm">
+                  <p className="font-medium text-pink-700">
+                    Số ngày thuê: {Math.ceil((new Date(rentEndDate) - new Date(rentStartDate)) / (1000 * 60 * 60 * 24)) + 1} ngày
+                  </p>
+                  <p className="text-pink-600">
+                    Tổng tiền: {((Math.ceil((new Date(rentEndDate) - new Date(rentStartDate)) / (1000 * 60 * 60 * 24)) + 1) * currentRentPrice).toLocaleString('vi-VN')}đ
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDateModal(false);
+                  setRentStartDate('');
+                  setRentEndDate('');
+                }}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRent}
+                disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate}
+                className="flex-1 rounded-lg bg-pink-600 px-4 py-2 font-medium text-white hover:bg-pink-700 disabled:bg-pink-300"
+              >
+                {loadingAction === "rent" ? "Đang xử lý..." : "Xác nhận"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
