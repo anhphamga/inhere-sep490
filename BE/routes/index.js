@@ -15,6 +15,7 @@ const categoryRoutes = require('./category.routes');
 const productRoutes = require('./product.routes');
 const ownerRoutes = require('./owner.routes');
 const bannerRoutes = require('./banner.routes');
+const rentOrderRoutes = require('./rent-order.routes');
 // const orderRoutes = require('./order.routes');
 // ... thêm các routes khác ở đây
 
@@ -26,6 +27,7 @@ router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);
 router.use('/owner', ownerRoutes);
 router.use('/banners', bannerRoutes);
+router.use('/rent-orders', rentOrderRoutes);
 // router.use('/orders', orderRoutes);
 // ... thêm prefix tương ứng
 

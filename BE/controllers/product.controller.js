@@ -962,6 +962,288 @@ const exportOwnerProducts = async (req, res) => {
   }
 };
 
+// ============================================
+// PRODUCT INSTANCE APIs (Quản lý tồn kho)
+// ============================================
+
+// Lấy danh sách ProductInstance với filter
+const getProductInstances = async (req, res) => {
+  try {
+    const {
+      productId,
+      conditionLevel,
+      lifecycleStatus,
+      page = 1,
+      limit = 20,
+      search
+    } = req.query;
+
+    const filter = {};
+
+    if (productId) {
+      filter.productId = productId;
+    }
+
+    if (conditionLevel) {
+      filter.conditionLevel = conditionLevel;
+    }
+
+    if (lifecycleStatus) {
+      filter.lifecycleStatus = lifecycleStatus;
+    }
+
+    // Search theo product name
+    let productIds = null;
+    if (search) {
+      const products = await Product.find({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { 'name.en': { $regex: search, $options: 'i' } },
+          { 'name.vi': { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
+      productIds = products.map(p => p._id);
+      filter.productId = { $in: productIds };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [instances, total] = await Promise.all([
+      ProductInstance.find(filter)
+        .populate('productId', 'name images category')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      ProductInstance.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: instances,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get product instances error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Lấy chi tiết một ProductInstance
+const getProductInstanceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const instance = await ProductInstance.findById(id)
+      .populate('productId', 'name images category baseRentPrice baseSalePrice');
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: instance
+    });
+  } catch (error) {
+    console.error('Get product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy chi tiết sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Cập nhật ProductInstance (giá, trạng thái, tình trạng)
+const updateProductInstance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      conditionLevel,
+      conditionScore,
+      lifecycleStatus,
+      currentRentPrice,
+      currentSalePrice,
+      note
+    } = req.body;
+
+    const instance = await ProductInstance.findById(id);
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      });
+    }
+
+    // Cập nhật các trường được gửi lên
+    if (conditionLevel) instance.conditionLevel = conditionLevel;
+    if (conditionScore !== undefined) instance.conditionScore = conditionScore;
+    if (lifecycleStatus) instance.lifecycleStatus = lifecycleStatus;
+    if (currentRentPrice !== undefined) instance.currentRentPrice = currentRentPrice;
+    if (currentSalePrice !== undefined) instance.currentSalePrice = currentSalePrice;
+    if (note !== undefined) instance.note = note;
+
+    await instance.save();
+
+    // Populate để trả về
+    const updatedInstance = await ProductInstance.findById(id)
+      .populate('productId', 'name images category');
+
+    res.json({
+      success: true,
+      message: 'Cập nhật sản phẩm thành công',
+      data: updatedInstance
+    });
+  } catch (error) {
+    console.error('Update product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Tạo mới ProductInstance
+const createProductInstance = async (req, res) => {
+  try {
+    const {
+      productId,
+      conditionLevel,
+      currentRentPrice,
+      currentSalePrice,
+      note
+    } = req.body;
+
+    if (!productId || !currentRentPrice || !currentSalePrice) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp đầy đủ thông tin'
+      });
+    }
+
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm cha'
+      });
+    }
+
+    const instance = new ProductInstance({
+      productId,
+      conditionLevel: conditionLevel || 'New',
+      conditionScore: 100,
+      lifecycleStatus: 'Available',
+      currentRentPrice,
+      currentSalePrice,
+      note: note || ''
+    });
+
+    await instance.save();
+
+    const populatedInstance = await ProductInstance.findById(instance._id)
+      .populate('productId', 'name images category');
+
+    res.status(201).json({
+      success: true,
+      message: 'Tạo sản phẩm thành công',
+      data: populatedInstance
+    });
+  } catch (error) {
+    console.error('Create product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tạo sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Xóa ProductInstance
+const deleteProductInstance = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const instance = await ProductInstance.findById(id);
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      });
+    }
+
+    // Chỉ cho phép xóa nếu sản phẩm đang ở trạng thái Available
+    if (instance.lifecycleStatus !== 'Available') {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể xóa sản phẩm đang được thuê hoặc đang xử lý'
+      });
+    }
+
+    await ProductInstance.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: 'Xóa sản phẩm thành công'
+    });
+  } catch (error) {
+    console.error('Delete product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xóa sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Lấy danh sách instance còn available (dùng cho customer thuê)
+const getAvailableInstances = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const { conditionLevel } = req.query;
+
+    const filter = {
+      productId,
+      lifecycleStatus: 'Available'
+    };
+
+    if (conditionLevel) {
+      filter.conditionLevel = conditionLevel;
+    }
+
+    const instances = await ProductInstance.find(filter)
+      .populate('productId', 'name images')
+      .sort({ conditionScore: -1 });
+
+    res.json({
+      success: true,
+      data: instances
+    });
+  } catch (error) {
+    console.error('Get available instances error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách sản phẩm có sẵn',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getProducts,
   listOwnerProducts,
@@ -979,4 +1261,11 @@ module.exports = {
   deleteOwnerProduct,
   importOwnerProducts,
   exportOwnerProducts,
+  // Product Instance APIs
+  getProductInstances,
+  getProductInstanceById,
+  updateProductInstance,
+  createProductInstance,
+  deleteProductInstance,
+  getAvailableInstances,
 };
