@@ -8,12 +8,23 @@ const collateralSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['ID', 'Cash', 'CCCD', 'GPLX'],
+    enum: ['CCCD', 'GPLX', 'CAVET', 'CASH'],
     required: true
   },
   documentNumber: {
     type: String,
-    required: true
+    default: '',
+    required: function requiredDocumentNumber() {
+      return this.type !== 'CASH';
+    }
+  },
+  cashAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+    required: function requiredCashAmount() {
+      return this.type === 'CASH';
+    }
   },
   documentImageUrl: {
     type: String,
@@ -29,8 +40,8 @@ const collateralSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Returned', 'Deducted'],
-    default: null
+    enum: ['Held', 'Returned', 'Deducted'],
+    default: 'Held'
   }
 }, {
   timestamps: true

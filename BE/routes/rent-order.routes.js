@@ -16,7 +16,10 @@ router.post('/:id/deposit', authenticate, rentOrderController.payDeposit);
 router.put('/:id/cancel', authenticate, rentOrderController.cancelRentOrder);
 router.put('/:id/confirm', authenticate, authorize('Staff', 'Owner'), rentOrderController.confirmRentOrder);
 router.put('/:id/pickup', authenticate, authorize('Staff', 'Owner'), rentOrderController.confirmPickup);
+router.put('/:id/waiting-return', authenticate, authorize('Staff', 'Owner'), rentOrderController.markWaitingReturn);
 router.put('/:id/return', authenticate, authorize('Staff', 'Owner'), rentOrderController.confirmReturn);
+router.put('/:id/no-show', authenticate, authorize('Staff', 'Owner'), rentOrderController.markNoShow);
+router.put('/:id/finalize', authenticate, authorize('Staff', 'Owner'), rentOrderController.finalizeRentOrder);
 router.put('/:id/complete-washing', authenticate, authorize('Staff', 'Owner'), rentOrderController.completeWashing);
 
 module.exports = router;

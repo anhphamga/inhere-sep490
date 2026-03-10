@@ -17,7 +17,7 @@ const depositSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Held', 'Refunded'],
+    enum: ['Held', 'Refunded', 'Forfeited'],
     default: 'Held'
   },
   paidAt: {

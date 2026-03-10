@@ -16,6 +16,8 @@ const productRoutes = require('./product.routes');
 const ownerRoutes = require('./owner.routes');
 const bannerRoutes = require('./banner.routes');
 const rentOrderRoutes = require('./rent-order.routes');
+const alertRoutes = require('./alert.routes');
+const fittingBookingRoutes = require('./fitting-booking.routes');
 // const orderRoutes = require('./order.routes');
 // ... thêm các routes khác ở đây
 
@@ -28,6 +30,8 @@ router.use('/products', productRoutes);
 router.use('/owner', ownerRoutes);
 router.use('/banners', bannerRoutes);
 router.use('/rent-orders', rentOrderRoutes);
+router.use('/alerts', alertRoutes);
+router.use('/fitting-bookings', fittingBookingRoutes);
 // router.use('/orders', orderRoutes);
 // ... thêm prefix tương ứng
 

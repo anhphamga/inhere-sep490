@@ -13,9 +13,9 @@ const toNumber = (value, fallback = 0) => {
 
 const normalizeStatus = (value) => {
   const raw = String(value || '').trim().toLowerCase();
-  if (raw === 'public') return 'published';
-  if (raw === 'draft' || raw === 'published') return raw;
-  return 'draft';
+  if (raw === 'published' || raw === 'public' || raw === 'publish') return 'Published';
+  if (raw === 'hidden') return 'Hidden';
+  return 'Draft';
 };
 
 const normalizePayload = (body = {}) => ({
@@ -38,7 +38,7 @@ const mapBlog = (item, lang = 'vi') => ({
   category: resolveLocalizedField(item, 'category', lang),
   likeCount: Number(item.likeCount || 0),
   viewCount: Number(item.viewCount || 0),
-  status: normalizeStatus(item.status || 'published'),
+  status: normalizeStatus(item.status || 'Published'),
   createdAt: item.createdAt,
   updatedAt: item.updatedAt,
 });
@@ -51,11 +51,11 @@ const getAllBlogs = async (req, res) => {
       scope === 'all'
         ? {}
         : {
-            $or: [
-              { status: { $in: ['published', 'Public'] } },
-              { status: { $exists: false } },
-            ],
-          };
+          $or: [
+            { status: 'Published' },
+            { status: { $exists: false } },
+          ],
+        };
 
     const blogs = await Blog.find(filter).sort({ createdAt: -1 }).lean();
     return res.status(200).json({

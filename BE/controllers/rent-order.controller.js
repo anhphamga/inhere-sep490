@@ -3,666 +3,848 @@ const RentOrderItem = require('../model/RentOrderItem.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
+const Collateral = require('../model/Collateral.model');
+const ReturnRecord = require('../model/ReturnRecord.model');
+const Alert = require('../model/Alert.model');
 
-// Tạo đơn thuê mới (Draft)
-exports.createRentOrder = async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    const {
-      rentStartDate,
-      rentEndDate,
-      items,
-      depositAmount,
-      remainingAmount,
-      totalAmount
-    } = req.body;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const LATE_FEE_MULTIPLIER = Number(process.env.LATE_FEE_MULTIPLIER || 1);
 
-    // Validate required fields
-    if (!rentStartDate || !rentEndDate || !items || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Vui lòng cung cấp đầy đủ thông tin thuê'
-      });
-    }
-
-    // Kiểm tra các sản phẩm có available không
-    for (const item of items) {
-      let instance;
-      
-      if (item.productInstanceId) {
-        // Nếu có productInstanceId, tìm theo ID
-        instance = await ProductInstance.findById(item.productInstanceId);
-      } else if (item.productId) {
-        // Nếu không có productInstanceId, tự động chọn instance available đầu tiên
-        instance = await ProductInstance.findOne({
-          productId: item.productId,
-          lifecycleStatus: 'Available'
-        }).sort({ conditionScore: -1 });
-      }
-      
-      if (!instance) {
-        return res.status(400).json({
-          success: false,
-          message: item.productInstanceId 
-            ? `Không tìm thấy sản phẩm với ID: ${item.productInstanceId}`
-            : `Không có sản phẩm nào available cho sản phẩm: ${item.productId}`
-        });
-      }
-      if (instance.lifecycleStatus !== 'Available') {
-        return res.status(400).json({
-          success: false,
-          message: `Sản phẩm "${instance._id}" không có sẵn để thuê`
-        });
-      }
-    }
-
-    // Tạo đơn thuê
-    const rentOrder = new RentOrder({
-      customerId: userId || req.body.customerId,
-      staffId: null,
-      status: 'Draft',
-      rentStartDate,
-      rentEndDate,
-      depositAmount: depositAmount || 0,
-      remainingAmount: remainingAmount || 0,
-      washingFee: 0,
-      damageFee: 0,
-      totalAmount: totalAmount || 0
-    });
-
-    await rentOrder.save();
-
-    // Tạo các RentOrderItem - lưu instance đã được xác nhận available
-    const orderItems = [];
-    for (const item of items) {
-      let instance;
-      
-      if (item.productInstanceId) {
-        instance = await ProductInstance.findById(item.productInstanceId);
-      } else if (item.productId) {
-        instance = await ProductInstance.findOne({
-          productId: item.productId,
-          lifecycleStatus: 'Available'
-        }).sort({ conditionScore: -1 });
-      }
-      
-      orderItems.push({
-        orderId: rentOrder._id,
-        productInstanceId: instance._id,
-        baseRentPrice: item.baseRentPrice || instance.currentRentPrice,
-        finalPrice: item.finalPrice || instance.currentRentPrice,
-        // Lưu ngày thuê của sản phẩm này
-        rentStartDate: item.rentStartDate,
-        rentEndDate: item.rentEndDate,
-        condition: instance.conditionLevel,
-        appliedRuleIds: item.appliedRuleIds || [],
-        selectLevel: item.selectLevel,
-        size: item.size,
-        color: item.color,
-        note: item.note || ''
-      });
-    }
-
-    await RentOrderItem.insertMany(orderItems);
-
-    // Cập nhật status sang PendingDeposit
-    rentOrder.status = 'PendingDeposit';
-    await rentOrder.save();
-
-    // Populate để trả về (xử lý null productInstanceId)
-    let populatedOrder = null;
+const safeObjectId = (value) => {
     try {
-      populatedOrder = await RentOrder.findById(rentOrder._id)
-        .populate('customerId', 'name phone email')
-        .populate({
-          path: 'items',
-          populate: { path: 'productInstanceId', populate: 'productId' }
-        })
-        .lean();
-    } catch (populateErr) {
-      console.error('Populate error:', populateErr);
-      populatedOrder = await RentOrder.findById(rentOrder._id)
-        .populate('customerId', 'name phone email')
-        .lean();
+        return value?.toString();
+    } catch {
+        return null;
     }
-
-    res.status(201).json({
-      success: true,
-      data: populatedOrder
-    });
-  } catch (error) {
-    console.error('Create rent order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi tạo đơn thuê',
-      error: error.message
-    });
-  }
 };
 
-// Lấy danh sách đơn thuê của customer
-exports.getMyRentOrders = async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    const { status, page = 1, limit = 10 } = req.query;
+const computeLateDays = (rentEndDate, returnDate = new Date()) => {
+    const end = new Date(rentEndDate);
+    const actual = new Date(returnDate);
+    if (Number.isNaN(end.getTime()) || Number.isNaN(actual.getTime())) return 0;
+    const diff = actual.setHours(0, 0, 0, 0) - end.setHours(0, 0, 0, 0);
+    if (diff <= 0) return 0;
+    return Math.ceil(diff / DAY_IN_MS);
+};
 
-    const query = { customerId: userId };
-    if (status) {
-      query.status = status;
-    }
-
-    const skip = (page - 1) * limit;
-
-    const [orders, total] = await Promise.all([
-      RentOrder.find(query)
-        .populate('customerId', 'name phone email')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit)),
-      RentOrder.countDocuments(query)
-    ]);
-
-    // Lấy items cho mỗi order (xử lý null productInstanceId)
-    const orderIds = orders.map(o => o._id);
-    let items = [];
-    try {
-      items = await RentOrderItem.find({ orderId: { $in: orderIds } })
+const fetchOrderItems = async (orderId) => {
+    return RentOrderItem.find({ orderId })
         .populate({
-          path: 'productInstanceId',
-          populate: { path: 'productId' }
+            path: 'productInstanceId',
+            populate: { path: 'productId' }
         })
         .lean();
-    } catch (populateErr) {
-      console.error('Populate items error:', populateErr);
-      items = await RentOrderItem.find({ orderId: { $in: orderIds } }).lean();
-    }
+};
 
-    const itemsMap = items.reduce((acc, item) => {
-      if (!acc[item.orderId]) acc[item.orderId] = [];
-      acc[item.orderId].push(item);
-      return acc;
+const attachItems = async (orders = []) => {
+    const orderIds = orders.map((order) => order._id);
+    if (orderIds.length === 0) return orders;
+
+    const items = await RentOrderItem.find({ orderId: { $in: orderIds } })
+        .populate({
+            path: 'productInstanceId',
+            populate: { path: 'productId' }
+        })
+        .lean();
+
+    const byOrder = items.reduce((acc, item) => {
+        const key = safeObjectId(item.orderId);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(item);
+        return acc;
     }, {});
 
-    const ordersWithItems = orders.map(order => ({
-      ...order.toObject(),
-      items: itemsMap[order._id] || []
+    return orders.map((order) => ({
+        ...order.toObject(),
+        items: byOrder[safeObjectId(order._id)] || []
     }));
-
-    res.json({
-      success: true,
-      data: ordersWithItems,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    });
-  } catch (error) {
-    console.error('Get my rent orders error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi lấy danh sách đơn thuê',
-      error: error.message
-    });
-  }
 };
 
-// Lấy chi tiết đơn thuê
-exports.getRentOrderById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user?.id;
-    const userRole = req.user?.role;
+const fetchOrderDetail = async (orderId) => {
+    const order = await RentOrder.findById(orderId)
+        .populate('customerId', 'name phone email')
+        .populate('staffId', 'name phone');
 
-    const order = await RentOrder.findById(id)
-      .populate('customerId', 'name phone email')
-      .populate('staffId', 'name phone');
+    if (!order) return null;
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy đơn thuê'
-      });
-    }
+    const [items, deposits, payments, collaterals, returnRecord] = await Promise.all([
+        fetchOrderItems(orderId),
+        Deposit.find({ orderId }).lean(),
+        Payment.find({ orderId, orderType: 'Rent' }).lean(),
+        Collateral.find({ orderId }).lean(),
+        ReturnRecord.findOne({ orderId }).lean()
+    ]);
 
-    // Kiểm tra quyền xem (customer chỉ xem được đơn của mình)
-    if (order.customerId._id.toString() !== userId && userRole !== 'owner' && userRole !== 'staff') {
-      return res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền xem đơn thuê này'
-      });
-    }
-
-    // Lấy items (xử lý null productInstanceId)
-    let items = [];
-    try {
-      items = await RentOrderItem.find({ orderId: id })
-        .populate({
-          path: 'productInstanceId',
-          populate: { path: 'productId' }
-        })
-        .lean();
-    } catch (populateErr) {
-      console.error('Populate items error:', populateErr);
-      items = await RentOrderItem.find({ orderId: id }).lean();
-    }
-
-    // Lấy deposits
-    const deposits = await Deposit.find({ orderId: id });
-
-    // Lấy payments
-    const payments = await Payment.find({ orderId: id, orderType: 'Rent' });
-
-    res.json({
-      success: true,
-      data: {
+    return {
         ...order.toObject(),
         items,
         deposits,
-        payments
-      }
-    });
-  } catch (error) {
-    console.error('Get rent order by id error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi lấy chi tiết đơn thuê',
-      error: error.message
-    });
-  }
+        payments,
+        collaterals,
+        returnRecord
+    };
 };
 
-// Thanh toán đặt cọc
-exports.payDeposit = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { method = 'Cash' } = req.body;
-    const userId = req.user?.id;
-
-    const order = await RentOrder.findById(id);
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy đơn thuê'
-      });
-    }
-
-    // Kiểm tra quyền
-    if (order.customerId.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền thanh toán đơn thuê này'
-      });
-    }
-
-    // Kiểm tra trạng thái đơn
-    if (order.status !== 'PendingDeposit') {
-      return res.status(400).json({
-        success: false,
-        message: `Không thể thanh toán đặt cọc với trạng thái "${order.status}". Trạng thái phải là "Chờ đặt cọc"`
-      });
-    }
-
-    // Kiểm tra đơn đã có deposit chưa
-    const existingDeposit = await Deposit.findOne({ orderId: id, status: 'Held' });
-    if (existingDeposit) {
-      return res.status(400).json({
-        success: false,
-        message: 'Đơn thuê này đã có đặt cọc'
-      });
-    }
-
-    // Tạo deposit
-    const deposit = new Deposit({
-      orderId: id,
-      amount: order.depositAmount,
-      method,
-      status: 'Held',
-      paidAt: new Date()
-    });
-
-    await deposit.save();
-
-    // Tạo payment record
-    const payment = new Payment({
-      orderType: 'Rent',
-      orderId: id,
-      amount: order.depositAmount,
-      method,
-      status: 'Paid',
-      transactionCode: `DEP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      paidAt: new Date()
-    });
-
-    await payment.save();
-
-    // Cập nhật trạng thái đơn
-    order.status = 'Deposited';
-    await order.save();
-
-    // === BƯỚC 2: Chuyển ProductInstance: Available → Reserved ===
-    const items = await RentOrderItem.find({ orderId: id });
-    const instanceIds = items
-      .filter(i => i.productInstanceId)
-      .map(i => i.productInstanceId);
-    
-    if (instanceIds.length > 0) {
-      await ProductInstance.updateMany(
-        { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-        { lifecycleStatus: 'Reserved' }
-      );
-    }
-
-    // Populate để trả về (xử lý null productInstanceId)
-    let populatedOrder = null;
+exports.createRentOrder = async (req, res) => {
     try {
-      populatedOrder = await RentOrder.findById(id)
-        .populate('customerId', 'name phone email')
-        .populate({
-          path: 'items',
-          populate: [
-            { path: 'productInstanceId', match: { _id: { $ne: null } }, populate: 'productId' }
-          ]
-        })
-        .lean();
-    } catch (populateErr) {
-      console.error('Populate error:', populateErr);
-      // Nếu populate lỗi, lấy order không populate
-      populatedOrder = await RentOrder.findById(id)
-        .populate('customerId', 'name phone email')
-        .lean();
-    }
+        const userId = req.user?.id;
+        const { rentStartDate, rentEndDate, items = [] } = req.body;
 
-    if (!populatedOrder) {
-      return res.status(500).json({
-        success: false,
-        message: 'Lỗi khi tải thông tin đơn thuê'
-      });
-    }
+        if (!rentStartDate || !rentEndDate || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui long cung cap day du thong tin thue'
+            });
+        }
 
-    res.json({
-      success: true,
-      message: 'Thanh toán đặt cọc thành công',
-      data: {
-        order: populatedOrder,
-        deposit,
-        payment
-      }
-    });
-  } catch (error) {
-    console.error('Pay deposit error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi thanh toán đặt cọc',
-      error: error.message
-    });
-  }
-};
+        const resolvedItems = [];
+        for (const item of items) {
+            let instance = null;
+            if (item.productInstanceId) {
+                instance = await ProductInstance.findById(item.productInstanceId);
+            } else if (item.productId) {
+                instance = await ProductInstance.findOne({
+                    productId: item.productId,
+                    lifecycleStatus: 'Available'
+                }).sort({ conditionScore: -1 });
+            }
 
-// Hủy đơn thuê
-exports.cancelRentOrder = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user?.id;
+            if (!instance || instance.lifecycleStatus !== 'Available') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Co san pham khong kha dung de thue'
+                });
+            }
 
-    const order = await RentOrder.findById(id);
+            resolvedItems.push({ source: item, instance });
+        }
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy đơn thuê'
-      });
-    }
-
-    // Kiểm tra quyền
-    if (order.customerId.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền hủy đơn thuê này'
-      });
-    }
-
-    // Chỉ được hủy khi chưa thanh toán hoặc đã thanh toán đặt cọc
-    if (!['Draft', 'PendingDeposit', 'Deposited'].includes(order.status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Không thể hủy đơn thuê với trạng thái "${order.status}"`
-      });
-    }
-
-    // Cập nhật trạng thái
-    order.status = 'Cancelled';
-    await order.save();
-
-    // Hoàn các sản phẩm về available
-    const items = await RentOrderItem.find({ orderId: id });
-    const instanceIds = items.map(i => i.productInstanceId);
-    await ProductInstance.updateMany(
-      { _id: { $in: instanceIds } },
-      { lifecycleStatus: 'Available' }
-    );
-
-    // Nếu đã đặt cọc, tạo refund deposit
-    if (order.status === 'Deposited') {
-      await Deposit.updateMany(
-        { orderId: id, status: 'Held' },
-        { status: 'Refunded' }
-      );
-    }
-
-    res.json({
-      success: true,
-      message: 'Hủy đơn thuê thành công',
-      data: order
-    });
-  } catch (error) {
-    console.error('Cancel rent order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi hủy đơn thuê',
-      error: error.message
-    });
-  }
-};
-
-// Lấy danh sách đơn thuê (cho Owner/Staff)
-exports.getAllRentOrders = async (req, res) => {
-  try {
-    console.log('>>> getAllRentOrders called');
-    const orders = await RentOrder.find({})
-      .sort({ createdAt: -1 })
-      .limit(50);
-    console.log('>>> Found orders:', orders.length);
-    
-    res.json({
-      success: true,
-      data: orders,
-      pagination: { page: 1, limit: 50, total: orders.length, pages: 1 }
-    });
-  } catch (error) {
-    console.error('>>> getAllRentOrders error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: error.message
-    });
-  }
-};
-
-// Xác nhận đơn thuê (cho Staff)
-exports.confirmRentOrder = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { staffId } = req.user;
-
-    const order = await RentOrder.findById(id);
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy đơn thuê'
-      });
-    }
-
-    if (order.status !== 'Deposited') {
-      return res.status(400).json({
-        success: false,
-        message: `Chỉ có thể xác nhận đơn đã đặt cọc. Trạng thái hiện tại: "${order.status}"`
-      });
-    }
-
-    // === BƯỚC 3: Staff xác nhận đơn - Deposited → Confirmed ===
-    order.staffId = staffId;
-    order.status = 'Confirmed';
-    await order.save();
-
-    // ProductInstance vẫn giữ Reserved (chờ khách lấy)
-
-    res.json({
-      success: true,
-      message: 'Xác nhận đơn thuê thành công. Đơn đang chờ khách đến lấy đồ.',
-      data: order
-    });
-  } catch (error) {
-    console.error('Confirm rent order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi xác nhận đơn thuê',
-      error: error.message
-    });
-  }
-};
-
-// Xác nhận khách đã lấy đồ (Staff)
-exports.confirmPickup = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const order = await RentOrder.findById(id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
-    }
-
-    // === BƯỚC 4-5: Xác nhận khách lấy đồ ===
-    // Confirmed → WaitingPickup → Renting
-    // Reserved → Rented
-    if (order.status === 'Confirmed') {
-      order.status = 'WaitingPickup';
-    } else if (order.status === 'WaitingPickup') {
-      order.status = 'Renting';
-      
-      // Chuyển ProductInstance: Reserved → Rented
-      const items = await RentOrderItem.find({ orderId: id });
-      const instanceIds = items
-        .filter(i => i.productInstanceId)
-        .map(i => i.productInstanceId);
-      
-      if (instanceIds.length > 0) {
-        await ProductInstance.updateMany(
-          { _id: { $in: instanceIds }, lifecycleStatus: 'Reserved' },
-          { lifecycleStatus: 'Rented' }
+        const computedTotalAmount = resolvedItems.reduce(
+            (sum, item) => sum + Number(item.source.finalPrice || item.source.baseRentPrice || item.instance.currentRentPrice || 0),
+            0
         );
-      }
-    } else {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Không thể xác nhận lấy đồ với trạng thái "${order.status}". Đơn phải đã được xác nhận hoặc đang chờ lấy đồ.` 
-      });
+
+        const requestedDeposit = Number(req.body.depositAmount);
+        const depositAmount = Number.isFinite(requestedDeposit)
+            ? Math.max(requestedDeposit, 0)
+            : Math.round(computedTotalAmount * 0.5);
+        const requestedRemaining = Number(req.body.remainingAmount);
+        const remainingAmount = Number.isFinite(requestedRemaining)
+            ? Math.max(requestedRemaining, 0)
+            : Math.max(computedTotalAmount - depositAmount, 0);
+
+        const rentOrder = await RentOrder.create({
+            customerId: userId || req.body.customerId,
+            staffId: null,
+            status: 'PendingDeposit',
+            rentStartDate,
+            rentEndDate,
+            depositAmount,
+            remainingAmount,
+            washingFee: 0,
+            damageFee: 0,
+            lateDays: 0,
+            lateFee: 0,
+            compensationFee: 0,
+            totalAmount: Number(req.body.totalAmount) > 0 ? Number(req.body.totalAmount) : computedTotalAmount
+        });
+
+        await RentOrderItem.insertMany(
+            resolvedItems.map((item) => ({
+                orderId: rentOrder._id,
+                productInstanceId: item.instance._id,
+                baseRentPrice: item.source.baseRentPrice || item.instance.currentRentPrice,
+                finalPrice: item.source.finalPrice || item.instance.currentRentPrice,
+                rentStartDate: item.source.rentStartDate,
+                rentEndDate: item.source.rentEndDate,
+                condition: item.instance.conditionLevel,
+                appliedRuleIds: item.source.appliedRuleIds || [],
+                selectLevel: item.source.selectLevel || '',
+                size: item.source.size,
+                color: item.source.color,
+                note: item.source.note || ''
+            }))
+        );
+
+        const detail = await fetchOrderDetail(rentOrder._id);
+
+        return res.status(201).json({
+            success: true,
+            data: detail
+        });
+    } catch (error) {
+        console.error('Create rent order error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Loi server khi tao don thue',
+            error: error.message
+        });
     }
-
-    await order.save();
-
-    res.json({ 
-      success: true, 
-      message: order.status === 'WaitingPickup' 
-        ? 'Đơn chuyển sang trạng thái chờ khách lấy đồ' 
-        : 'Xác nhận khách đã lấy đồ thành công', 
-      data: order 
-    });
-  } catch (error) {
-    console.error('Confirm pickup error:', error);
-    res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
-  }
 };
 
-// Xác nhận trả đồ (Staff)
+exports.getMyRentOrders = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const { status, page = 1, limit = 10 } = req.query;
+
+        const query = { customerId: userId };
+        if (status) query.status = status;
+
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const [orders, total] = await Promise.all([
+            RentOrder.find(query)
+                .populate('customerId', 'name phone email')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(Number(limit)),
+            RentOrder.countDocuments(query)
+        ]);
+
+        const data = await attachItems(orders);
+
+        return res.json({
+            success: true,
+            data,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                pages: Math.ceil(total / Number(limit))
+            }
+        });
+    } catch (error) {
+        console.error('Get my rent orders error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Loi server khi lay danh sach don thue',
+            error: error.message
+        });
+    }
+};
+
+exports.getRentOrderById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user?.id;
+        const userRole = req.user?.role;
+
+        const detail = await fetchOrderDetail(id);
+        if (!detail) {
+            return res.status(404).json({
+                success: false,
+                message: 'Khong tim thay don thue'
+            });
+        }
+
+        if (safeObjectId(detail.customerId?._id || detail.customerId) !== userId && !['owner', 'staff'].includes(String(userRole || '').toLowerCase())) {
+            return res.status(403).json({
+                success: false,
+                message: 'Ban khong co quyen xem don thue nay'
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: detail
+        });
+    } catch (error) {
+        console.error('Get rent order by id error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Loi server khi lay chi tiet don thue',
+            error: error.message
+        });
+    }
+};
+
+exports.payDeposit = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { method = 'Cash' } = req.body;
+        const userId = req.user?.id;
+
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (safeObjectId(order.customerId) !== userId) {
+            return res.status(403).json({ success: false, message: 'Ban khong co quyen thanh toan don nay' });
+        }
+
+        if (order.status !== 'PendingDeposit') {
+            return res.status(400).json({
+                success: false,
+                message: `Khong the dat coc voi trang thai \"${order.status}\"`
+            });
+        }
+
+        const existingDeposit = await Deposit.findOne({ orderId: id, status: 'Held' });
+        if (existingDeposit) {
+            return res.status(400).json({ success: false, message: 'Don thue nay da co dat coc' });
+        }
+
+        const deposit = await Deposit.create({
+            orderId: id,
+            amount: order.depositAmount,
+            method,
+            status: 'Held',
+            paidAt: new Date()
+        });
+
+        const payment = await Payment.create({
+            orderType: 'Rent',
+            orderId: id,
+            amount: order.depositAmount,
+            method,
+            status: 'Paid',
+            purpose: 'Deposit',
+            transactionCode: `DEP_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            paidAt: new Date()
+        });
+
+        order.status = 'Deposited';
+        await order.save();
+
+        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+        if (instanceIds.length > 0) {
+            await ProductInstance.updateMany(
+                { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
+                { lifecycleStatus: 'Reserved' }
+            );
+        }
+
+        return res.json({
+            success: true,
+            message: 'Thanh toan dat coc thanh cong',
+            data: {
+                order: await fetchOrderDetail(id),
+                deposit,
+                payment
+            }
+        });
+    } catch (error) {
+        console.error('Pay deposit error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Loi server khi thanh toan dat coc',
+            error: error.message
+        });
+    }
+};
+
+exports.cancelRentOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user?.id;
+
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (safeObjectId(order.customerId) !== userId) {
+            return res.status(403).json({ success: false, message: 'Ban khong co quyen huy don nay' });
+        }
+
+        const previousStatus = order.status;
+        if (!['Draft', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup'].includes(previousStatus)) {
+            return res.status(400).json({
+                success: false,
+                message: `Khong the huy don voi trang thai \"${previousStatus}\"`
+            });
+        }
+
+        order.status = 'Cancelled';
+        await order.save();
+
+        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+        if (instanceIds.length > 0) {
+            await ProductInstance.updateMany({ _id: { $in: instanceIds } }, { lifecycleStatus: 'Available' });
+        }
+
+        if (previousStatus === 'Deposited') {
+            await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Refunded' });
+        }
+
+        return res.json({
+            success: true,
+            message: 'Huy don thue thanh cong',
+            data: await fetchOrderDetail(id)
+        });
+    } catch (error) {
+        console.error('Cancel rent order error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Loi server khi huy don thue',
+            error: error.message
+        });
+    }
+};
+
+exports.getAllRentOrders = async (req, res) => {
+    try {
+        const { status, page = 1, limit = 50 } = req.query;
+        const query = {};
+        if (status) query.status = status;
+
+        const skip = (Number(page) - 1) * Number(limit);
+        const [orders, total] = await Promise.all([
+            RentOrder.find(query)
+                .populate('customerId', 'name phone email')
+                .populate('staffId', 'name phone')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(Number(limit)),
+            RentOrder.countDocuments(query)
+        ]);
+
+        const data = await attachItems(orders);
+
+        return res.json({
+            success: true,
+            data,
+            pagination: {
+                page: Number(page),
+                limit: Number(limit),
+                total,
+                pages: Math.ceil(total / Number(limit))
+            }
+        });
+    } catch (error) {
+        console.error('Get all rent orders error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Loi server',
+            error: error.message
+        });
+    }
+};
+
+exports.confirmRentOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const staffId = req.user?.id;
+
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (order.status !== 'Deposited') {
+            return res.status(400).json({
+                success: false,
+                message: `Chi co the xac nhan don da dat coc. Trang thai hien tai: \"${order.status}\"`
+            });
+        }
+
+        order.staffId = staffId;
+        order.status = 'Confirmed';
+        order.confirmedAt = new Date();
+        await order.save();
+
+        return res.json({
+            success: true,
+            message: 'Xac nhan don thue thanh cong',
+            data: await fetchOrderDetail(id)
+        });
+    } catch (error) {
+        console.error('Confirm rent order error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Loi server khi xac nhan don thue',
+            error: error.message
+        });
+    }
+};
+
+exports.confirmPickup = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            markWaitingOnly = false,
+            method = 'Cash',
+            collateral,
+            collectRemaining = true
+        } = req.body;
+
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (!['Confirmed', 'WaitingPickup'].includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Khong the xac nhan lay do voi trang thai \"${order.status}\"`
+            });
+        }
+
+        if (markWaitingOnly && order.status === 'Confirmed') {
+            order.status = 'WaitingPickup';
+            await order.save();
+            return res.json({
+                success: true,
+                message: 'Don da chuyen sang trang thai cho lay do',
+                data: await fetchOrderDetail(id)
+            });
+        }
+
+        if (collectRemaining && Number(order.remainingAmount || 0) > 0) {
+            await Payment.create({
+                orderType: 'Rent',
+                orderId: id,
+                amount: order.remainingAmount,
+                method,
+                status: 'Paid',
+                purpose: 'Remaining',
+                transactionCode: `REM_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                paidAt: new Date()
+            });
+        }
+
+        if (collateral && collateral.type) {
+            await Collateral.create({
+                orderId: id,
+                type: String(collateral.type).toUpperCase(),
+                documentNumber: collateral.documentNumber || '',
+                documentImageUrl: collateral.documentImageUrl || '',
+                cashAmount: Number(collateral.cashAmount || 0),
+                status: 'Held',
+                receiveAt: new Date()
+            });
+        }
+
+        order.status = 'Renting';
+        order.pickupAt = new Date();
+        await order.save();
+
+        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+        if (instanceIds.length > 0) {
+            await ProductInstance.updateMany(
+                { _id: { $in: instanceIds }, lifecycleStatus: { $in: ['Reserved', 'Available'] } },
+                { lifecycleStatus: 'Rented' }
+            );
+        }
+
+        return res.json({
+            success: true,
+            message: 'Xac nhan khach da nhan do thanh cong',
+            data: await fetchOrderDetail(id)
+        });
+    } catch (error) {
+        console.error('Confirm pickup error:', error);
+        return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
+    }
+};
+
+exports.markWaitingReturn = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const order = await RentOrder.findById(id);
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (order.status !== 'Renting') {
+            return res.status(400).json({ success: false, message: 'Don phai o trang thai dang thue' });
+        }
+
+        order.status = 'WaitingReturn';
+        await order.save();
+
+        return res.json({
+            success: true,
+            message: 'Don da chuyen sang cho tra do',
+            data: await fetchOrderDetail(id)
+        });
+    } catch (error) {
+        console.error('Mark waiting return error:', error);
+        return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
+    }
+};
+
 exports.confirmReturn = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { washingFee = 0, damageFee = 0 } = req.body;
+    try {
+        const { id } = req.params;
+        const {
+            condition = 'Normal',
+            washingFee = 0,
+            damageFee = 0,
+            compensationFee = 0,
+            note = '',
+            returnDate = new Date(),
+            finalize = false
+        } = req.body;
 
-    const order = await RentOrder.findById(id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (!['Renting', 'WaitingReturn', 'Late'].includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Chi co the tra do khi don dang thue/cho tra. Trang thai: \"${order.status}\"`
+            });
+        }
+
+        const numericWashingFee = Math.max(Number(washingFee || 0), 0);
+        const numericDamageFee = Math.max(Number(damageFee || 0), 0);
+        const numericCompensationFee = Math.max(Number(compensationFee || 0), 0);
+        const lateDays = computeLateDays(order.rentEndDate, returnDate);
+        const lateFee = lateDays >= 3 ? Math.max(Number(order.totalAmount || 0) * LATE_FEE_MULTIPLIER, 0) : 0;
+
+        const totalDeduction = numericWashingFee + numericDamageFee + numericCompensationFee + lateFee;
+        let resolution = 'DepositDeducted';
+        if (totalDeduction <= 0) resolution = 'DepositRefunded';
+        if (totalDeduction > Number(order.depositAmount || 0)) resolution = 'AdditionalCharge';
+
+        const returnRecord = await ReturnRecord.findOneAndUpdate(
+            { orderId: id },
+            {
+                orderId: id,
+                returnDate,
+                condition,
+                washingFee: numericWashingFee,
+                damageFee: numericDamageFee,
+                lateDays,
+                lateFee,
+                compensationFee: numericCompensationFee,
+                resolution,
+                resolvedAt: new Date(),
+                note,
+                staffId: req.user?.id
+            },
+            { upsert: true, new: true, runValidators: true }
+        );
+
+        order.washingFee = numericWashingFee;
+        order.damageFee = numericDamageFee;
+        order.lateDays = lateDays;
+        order.lateFee = lateFee;
+        order.compensationFee = numericCompensationFee;
+        order.returnedAt = new Date(returnDate);
+
+        if (numericCompensationFee > 0 || condition === 'Lost') {
+            order.status = 'Compensation';
+        } else if (lateFee > 0) {
+            order.status = 'Late';
+        } else {
+            order.status = 'Returned';
+        }
+
+        if (finalize) {
+            order.status = 'Completed';
+            order.completedAt = new Date();
+        }
+
+        await order.save();
+
+        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+
+        let targetLifecycle = 'Available';
+        if (condition === 'Dirty') targetLifecycle = 'Washing';
+        if (condition === 'Damaged') targetLifecycle = 'Repair';
+        if (condition === 'Lost') targetLifecycle = 'Lost';
+
+        if (instanceIds.length > 0) {
+            await ProductInstance.updateMany({ _id: { $in: instanceIds } }, { lifecycleStatus: targetLifecycle });
+        }
+
+        const depositStatus = resolution === 'DepositRefunded' ? 'Refunded' : 'Forfeited';
+        await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: depositStatus });
+
+        await Collateral.updateMany(
+            { orderId: id, status: 'Held' },
+            {
+                status: resolution === 'DepositRefunded' ? 'Returned' : 'Deducted',
+                returnedAt: new Date()
+            }
+        );
+
+        if (lateFee > 0) {
+            await Alert.create({
+                type: 'Late',
+                targetType: 'RentOrder',
+                targetId: order._id,
+                status: 'New',
+                message: `Don ${order._id} tre han ${lateDays} ngay`,
+                actionRequired: true
+            });
+        }
+
+        if (numericCompensationFee > 0 || condition === 'Lost') {
+            await Alert.create({
+                type: 'Compensation',
+                targetType: 'RentOrder',
+                targetId: order._id,
+                status: 'New',
+                message: `Don ${order._id} phat sinh boi thuong`,
+                actionRequired: true
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: 'Xac nhan tra do thanh cong',
+            data: {
+                order: await fetchOrderDetail(id),
+                returnRecord
+            }
+        });
+    } catch (error) {
+        console.error('Confirm return error:', error);
+        return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
     }
-
-    if (order.status !== 'Renting') {
-      return res.status(400).json({ success: false, message: `Chỉ có thể xác nhận trả đồ với đơn đang thuê. Trạng thái: "${order.status}"` });
-    }
-
-    // === BƯỚC 6: Customer trả đồ ===
-    // Renting → Completed
-    // Rented → Washing (chờ giặt)
-    order.washingFee = washingFee;
-    order.damageFee = damageFee;
-    order.status = 'Completed';
-    await order.save();
-
-    // Chuyển ProductInstance: Rented → Washing
-    const items = await RentOrderItem.find({ orderId: id });
-    const instanceIds = items
-      .filter(i => i.productInstanceId)
-      .map(i => i.productInstanceId);
-    
-    if (instanceIds.length > 0) {
-      await ProductInstance.updateMany(
-        { _id: { $in: instanceIds }, lifecycleStatus: 'Rented' },
-        { lifecycleStatus: 'Washing' }
-      );
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Xác nhận trả đồ thành công. Sản phẩm đang chờ giặt.', 
-      data: { order, washingFee, damageFee } 
-    });
-  } catch (error) {
-    console.error('Confirm return error:', error);
-    res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
-  }
 };
 
-// === BƯỚC 7: Sau khi giặt xong - Washing → Available ===
+exports.finalizeRentOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { method = 'Cash', collectFees = true } = req.body;
+
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (order.status === 'Completed') {
+            return res.status(400).json({ success: false, message: 'Don da hoan tat' });
+        }
+
+        if (!['Returned', 'Late', 'Compensation', 'NoShow'].includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Khong the chot don o trang thai \"${order.status}\"`
+            });
+        }
+
+        if (collectFees) {
+            if (Number(order.lateFee || 0) > 0) {
+                await Payment.create({
+                    orderType: 'Rent',
+                    orderId: id,
+                    amount: order.lateFee,
+                    method,
+                    status: 'Paid',
+                    purpose: 'LateFee',
+                    transactionCode: `LATE_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                    paidAt: new Date()
+                });
+            }
+
+            if (Number(order.compensationFee || 0) > 0) {
+                await Payment.create({
+                    orderType: 'Rent',
+                    orderId: id,
+                    amount: order.compensationFee,
+                    method,
+                    status: 'Paid',
+                    purpose: 'Compensation',
+                    transactionCode: `COMP_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                    paidAt: new Date()
+                });
+            }
+        }
+
+        order.status = 'Completed';
+        order.completedAt = new Date();
+        await order.save();
+
+        return res.json({
+            success: true,
+            message: 'Chot don thanh cong',
+            data: await fetchOrderDetail(id)
+        });
+    } catch (error) {
+        console.error('Finalize rent order error:', error);
+        return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
+    }
+};
+
+exports.markNoShow = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+        }
+
+        if (!['Deposited', 'Confirmed', 'WaitingPickup'].includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Khong the danh dau no-show voi trang thai \"${order.status}\"`
+            });
+        }
+
+        order.status = 'NoShow';
+        order.noShowAt = new Date();
+        order.depositForfeited = true;
+        await order.save();
+
+        await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Forfeited' });
+
+        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+        if (instanceIds.length > 0) {
+            await ProductInstance.updateMany(
+                { _id: { $in: instanceIds }, lifecycleStatus: { $in: ['Reserved', 'Available'] } },
+                { lifecycleStatus: 'Available' }
+            );
+        }
+
+        await Alert.create({
+            type: 'NoShow',
+            targetType: 'RentOrder',
+            targetId: order._id,
+            status: 'New',
+            message: `Don ${order._id} da coc nhung khong den nhan do`,
+            actionRequired: true
+        });
+
+        return res.json({
+            success: true,
+            message: 'Da danh dau khach no-show',
+            data: await fetchOrderDetail(id)
+        });
+    } catch (error) {
+        console.error('Mark no-show error:', error);
+        return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
+    }
+};
+
 exports.completeWashing = async (req, res) => {
-  try {
-    const { id } = req.params; // id của order hoặc instance
-    const { instanceIds } = req.body; // danh sách instance cần complete (nếu không có thì lấy từ order)
+    try {
+        const { id } = req.params;
+        const { instanceIds } = req.body;
 
-    let instancesToUpdate = instanceIds;
+        let targetIds = instanceIds;
+        if (!Array.isArray(targetIds) || targetIds.length === 0) {
+            const items = await RentOrderItem.find({ orderId: id }).lean();
+            targetIds = items.map((item) => item.productInstanceId).filter(Boolean);
+        }
 
-    // Nếu không có instanceIds, lấy từ order
-    if (!instancesToUpdate || instancesToUpdate.length === 0) {
-      const items = await RentOrderItem.find({ orderId: id });
-      instancesToUpdate = items
-        .filter(i => i.productInstanceId)
-        .map(i => i.productInstanceId);
+        if (targetIds.length > 0) {
+            await ProductInstance.updateMany(
+                { _id: { $in: targetIds }, lifecycleStatus: 'Washing' },
+                { lifecycleStatus: 'Available' }
+            );
+        }
+
+        return res.json({
+            success: true,
+            message: 'Hoan tat giat. San pham da co san'
+        });
+    } catch (error) {
+        console.error('Complete washing error:', error);
+        return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
     }
-
-    if (instancesToUpdate && instancesToUpdate.length > 0) {
-      await ProductInstance.updateMany(
-        { _id: { $in: instancesToUpdate }, lifecycleStatus: 'Washing' },
-        { lifecycleStatus: 'Available' }
-      );
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Hoàn tất giặt. Sản phẩm đã có sẵn cho thuê tiếp theo.' 
-    });
-  } catch (error) {
-    console.error('Complete washing error:', error);
-    res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
-  }
 };

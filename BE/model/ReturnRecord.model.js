@@ -13,7 +13,7 @@ const returnRecordSchema = new mongoose.Schema({
   },
   condition: {
     type: String,
-    enum: ['Normal', 'Dirty', 'Damaged'],
+    enum: ['Normal', 'Dirty', 'Damaged', 'Lost'],
     default: 'Normal'
   },
   washingFee: {
@@ -23,6 +23,30 @@ const returnRecordSchema = new mongoose.Schema({
   damageFee: {
     type: Number,
     default: 0
+  },
+  lateDays: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  lateFee: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  compensationFee: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  resolution: {
+    type: String,
+    enum: ['DepositRefunded', 'DepositDeducted', 'AdditionalCharge'],
+    default: 'DepositDeducted'
+  },
+  resolvedAt: {
+    type: Date,
+    default: null
   },
   note: {
     type: String,

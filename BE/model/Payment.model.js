@@ -25,6 +25,11 @@ const paymentSchema = new mongoose.Schema({
     enum: ['Pending', 'Paid', 'Failed'],
     default: 'Pending'
   },
+  purpose: {
+    type: String,
+    enum: ['Deposit', 'Remaining', 'LateFee', 'Compensation', 'SalePayment', 'Refund'],
+    default: 'SalePayment'
+  },
   transactionCode: {
     type: String,
     default: ''

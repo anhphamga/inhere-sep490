@@ -43,8 +43,8 @@ const blogSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'published', 'Draft', 'Public'],
-    default: 'draft'
+    enum: ['Draft', 'Published', 'Hidden'],
+    default: 'Draft'
   },
   content: {
     type: mongoose.Schema.Types.Mixed,

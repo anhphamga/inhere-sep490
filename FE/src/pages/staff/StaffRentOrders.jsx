@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getAllRentOrdersApi, confirmRentOrderApi, confirmPickupApi, confirmReturnApi, completeWashingApi } from '../../services/rent-order.service'
 
 const statusLabels = {
@@ -8,7 +8,11 @@ const statusLabels = {
   Confirmed: 'Đã xác nhận',
   WaitingPickup: 'Chờ lấy đồ',
   Renting: 'Đang thuê',
-  Waiting: 'Chờ trả',
+  WaitingReturn: 'Chờ trả',
+  Returned: 'Đã trả',
+  Late: 'Trễ hạn',
+  Compensation: 'Bồi thường',
+  NoShow: 'Không nhận đồ',
   Completed: 'Hoàn tất',
   Cancelled: 'Đã hủy'
 }
@@ -20,9 +24,30 @@ const statusColors = {
   Confirmed: 'bg-indigo-100 text-indigo-800',
   WaitingPickup: 'bg-purple-100 text-purple-800',
   Renting: 'bg-green-100 text-green-800',
-  Waiting: 'bg-orange-100 text-orange-800',
+  WaitingReturn: 'bg-orange-100 text-orange-800',
+  Returned: 'bg-cyan-100 text-cyan-800',
+  Late: 'bg-amber-100 text-amber-800',
+  Compensation: 'bg-rose-100 text-rose-800',
+  NoShow: 'bg-red-100 text-red-800',
   Completed: 'bg-green-200 text-green-800',
   Cancelled: 'bg-red-100 text-red-800'
+}
+
+const getCustomerText = (customer) => {
+  if (!customer) return 'N/A'
+  if (typeof customer === 'string') return customer
+  if (typeof customer === 'object') {
+    const name = customer.name || ''
+    const phone = customer.phone || ''
+    const email = customer.email || ''
+    if (name && phone) return `${name} - ${phone}`
+    if (name && email) return `${name} - ${email}`
+    if (name) return name
+    if (phone) return phone
+    if (email) return email
+    if (customer._id) return customer._id
+  }
+  return 'N/A'
 }
 
 export default function StaffRentOrders() {
@@ -33,17 +58,13 @@ export default function StaffRentOrders() {
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    fetchOrders()
-  }, [filterStatus])
-
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       setLoading(true)
       setError('')
       const response = await getAllRentOrdersApi({})
       const allOrders = response.data || []
-      
+
       // Filter locally if status selected
       if (filterStatus) {
         setOrders(allOrders.filter(o => o.status === filterStatus))
@@ -56,11 +77,15 @@ export default function StaffRentOrders() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filterStatus])
+
+  useEffect(() => {
+    fetchOrders()
+  }, [fetchOrders])
 
   const handleConfirm = async (orderId) => {
     if (!confirm('Xác nhận đơn thuê này?')) return
-    
+
     setActionLoading(true)
     try {
       await confirmRentOrderApi(orderId)
@@ -76,7 +101,7 @@ export default function StaffRentOrders() {
 
   const handlePickup = async (orderId) => {
     if (!confirm('Xác nhận khách đã lấy đồ?')) return
-    
+
     setActionLoading(true)
     try {
       await confirmPickupApi(orderId)
@@ -93,9 +118,9 @@ export default function StaffRentOrders() {
   const handleReturn = async (orderId) => {
     const washingFee = prompt('Nhập phí giặt (nếu có):', '0')
     const damageFee = prompt('Nhập phí hư hỏng (nếu có):', '0')
-    
+
     if (washingFee === null || damageFee === null) return
-    
+
     setActionLoading(true)
     try {
       await confirmReturnApi(orderId, {
@@ -114,7 +139,7 @@ export default function StaffRentOrders() {
 
   const handleCompleteWashing = async (orderId) => {
     if (!confirm('Hoàn tất giặt? Sản phẩm sẽ sẵn sàng cho thuê tiếp theo.')) return
-    
+
     setActionLoading(true)
     try {
       await completeWashingApi(orderId)
@@ -169,7 +194,7 @@ export default function StaffRentOrders() {
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="font-semibold">Danh sách đơn thuê ({orders.length})</h3>
           </div>
-          
+
           {loading ? (
             <div className="p-8 text-center">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
@@ -190,7 +215,7 @@ export default function StaffRentOrders() {
                         #{order._id}
                       </p>
                       <p className="text-sm text-gray-500">
-                        ID khách: {order.customerId || 'N/A'}
+                        Khách: {getCustomerText(order.customerId)}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
                         {order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : 'N/A'}
@@ -214,11 +239,11 @@ export default function StaffRentOrders() {
           {selectedOrder ? (
             <div>
               <h3 className="font-semibold text-lg mb-4">Chi tiết đơn #{selectedOrder._id}</h3>
-              
+
               <div className="space-y-4">
                 <div>
                   <p className="text-sm text-gray-500">Mã khách hàng</p>
-                  <p className="font-medium">{selectedOrder.customerId || 'N/A'}</p>
+                  <p className="font-medium">{getCustomerText(selectedOrder.customerId)}</p>
                 </div>
 
                 <div>
@@ -231,7 +256,7 @@ export default function StaffRentOrders() {
                 {/* Thông tin thanh toán */}
                 <div className="border-t pt-4">
                   <p className="text-sm font-medium text-gray-700 mb-2">Thông tin thanh toán</p>
-                  
+
                   <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Tiền thuê:</span>
@@ -278,7 +303,7 @@ export default function StaffRentOrders() {
                       {actionLoading ? 'Đang xử lý...' : 'Xác nhận đơn (Chờ khách lấy đồ)'}
                     </button>
                   )}
-                  
+
                   {selectedOrder.status === 'Confirmed' && (
                     <button
                       onClick={() => handlePickup(selectedOrder._id)}

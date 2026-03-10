@@ -11,11 +11,6 @@ const saleOrderSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
-  productInstanceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'ProductInstance',
-    required: true
-  },
   status: {
     type: String,
     enum: ['Draft', 'PendingPayment', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],

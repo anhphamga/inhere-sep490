@@ -20,7 +20,7 @@ const fittingBookingSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Pending', 'Confirmed'],
+    enum: ['Pending', 'Confirmed', 'Rescheduled', 'Cancelled', 'Completed', 'NoShow'],
     default: 'Pending'
   },
   staffId: {
