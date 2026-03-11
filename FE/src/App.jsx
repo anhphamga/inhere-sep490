@@ -1,5 +1,6 @@
 import SakuraFall from './components/common/SakuraFall'
 import AppRoutes from './routes'
+import { BuyCartProvider } from './contexts/BuyCartContext'
 import { RentalCartProvider } from './contexts/RentalCartContext'
 
 function App() {
@@ -7,7 +8,9 @@ function App() {
     <>
       <SakuraFall count={22} />
       <RentalCartProvider>
-        <AppRoutes />
+        <BuyCartProvider>
+          <AppRoutes />
+        </BuyCartProvider>
       </RentalCartProvider>
     </>
   )

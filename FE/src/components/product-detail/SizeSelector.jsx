@@ -31,13 +31,13 @@ export default function SizeSelector({
               type="button"
               onClick={() => !disabled && onSelect?.(size)}
               disabled={disabled}
-              className={`min-h-11 min-w-11 rounded-xl border px-3 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
+              className={`min-h-11 min-w-11 max-w-full rounded-xl border px-3 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
                 active ? "border-amber-500 bg-amber-500 text-white" : "border-neutral-200 bg-white text-neutral-800"
               } ${disabled ? "cursor-not-allowed opacity-40" : "hover:border-neutral-300"}`}
               aria-pressed={active}
               aria-label={`Chon size ${size}`}
             >
-              {size}
+              <span className="break-words">{size}</span>
             </button>
           );
         })}

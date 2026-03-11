@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { getMyRentOrdersApi } from '../services/rent-order.service'
+import Header from '../components/common/Header'
 
 const statusLabels = {
   Draft: 'Nháp',
@@ -55,18 +56,22 @@ export default function RentalHistoryPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <>
+        <Header />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Vui lòng đăng nhập để xem lịch sử thuê</p>
           <Link to="/login" className="text-pink-600 hover:underline">Đăng nhập</Link>
         </div>
-      </div>
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
+    <div className="min-h-screen bg-gray-50">
+      <Header />
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Lịch sử thuê</h1>
           <Link

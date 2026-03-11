@@ -7,22 +7,23 @@ import VariantSelector from "../../components/product-detail/VariantSelector";
 import ProductActions from "../../components/product-detail/ProductActions";
 import ProductDescription from "../../components/product-detail/ProductDescription";
 import RelatedProducts from "../../components/product-detail/RelatedProducts";
+import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
 
 const I18N = {
   vi: {
-    back: "Quay lai danh sach",
-    notFound: "Khong tim thay san pham",
-    loading: "Dang tai chi tiet san pham...",
-    breadcrumbHome: "Trang chu",
-    breadcrumbBuy: "Mua trang phuc",
-    toastRent: "Da them vao don thue",
-    toastBuy: "Da them vao gio hang",
-    toastError: "Vui long chon bien the hop le",
-    policyTitle: "Chinh sach",
-    policyDeposit: "Dat coc 50% khi giu lich",
-    policySwap: "Ho tro doi size/mau theo ton kho",
-    policyTime: "Nhan va tra theo khung gio da hen",
+    back: "Quay lại danh sách",
+    notFound: "Không tìm thấy sản phẩm",
+    loading: "Đang tải chi tiết sản phẩm...",
+    breadcrumbHome: "Trang chủ",
+    breadcrumbBuy: "Mua trang phục",
+    toastRent: "Đã thêm vào đơn thuê",
+    toastBuy: "Đã thêm vào giỏ hàng",
+    toastError: "Vui lòng chọn biến thể hợp lệ",
+    policyTitle: "Chính sách",
+    policyDeposit: "Đặt cọc 50% khi giữ lịch",
+    policySwap: "Hỗ trợ đổi size/màu theo tồn kho",
+    policyTime: "Nhận và trả theo khung giờ đã hẹn",
   },
   en: {
     back: "Back to list",
@@ -83,10 +84,9 @@ const formatCurrency = (value, lang = "vi") => {
 export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { addItem, itemCount } = useRentalCart();
-  const [lang, setLang] = useState(
-    typeof window !== "undefined" ? window.localStorage.getItem("lang") || "vi" : "vi"
-  );
+  const { addItem } = useRentalCart();
+  const { addItem: addBuyItem } = useBuyCart();
+  const lang = "vi";
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState(null);
   const [selectedColor, setSelectedColor] = useState("");
@@ -105,13 +105,10 @@ export default function ProductDetailPage() {
   const t = I18N[lang] || I18N.vi;
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("lang", lang);
-    }
     if (typeof document !== "undefined") {
-      document.documentElement.lang = lang;
+      document.documentElement.lang = "vi";
     }
-  }, [lang]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -268,6 +265,11 @@ export default function ProductDetailPage() {
     return true;
   }, [product, selectedColor, selectedSize, isFreeSize, sizes]);
 
+  const canBuy = useMemo(
+    () => canSubmit && Number(product?.baseSalePrice || 0) > 0,
+    [canSubmit, product?.baseSalePrice]
+  );
+
   useEffect(() => {
     if (!product?._id) return;
     let mounted = true;
@@ -333,7 +335,7 @@ export default function ProductDetailPage() {
       showToast(t.toastRent);
       // Đóng modal và chuyển đến trang checkout
       setShowDateModal(false);
-      navigate('/rental/checkout');
+      navigate('/cart');
     } catch (error) {
       showToast('Có lỗi xảy ra');
     } finally {
@@ -346,10 +348,20 @@ export default function ProductDetailPage() {
       showToast(t.toastError);
       return;
     }
+    if (!canBuy) {
+      showToast(lang === "en" ? "This product is not available for purchase" : "Sản phẩm này hiện chưa hỗ trợ mua");
+      return;
+    }
     setLoadingAction("buy");
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      addBuyItem(product, {
+        color: selectedColor,
+        size: selectedSize,
+        salePrice: product.baseSalePrice,
+        quantity: 1
+      });
       showToast(t.toastBuy);
+      navigate("/cart");
     } finally {
       setLoadingAction("");
     }
@@ -365,26 +377,26 @@ export default function ProductDetailPage() {
     const list = ["Co san"];
     if (isFreeSize) list.push("Free size");
     if (product?.isBestSeller) list.push("Best seller");
-    if (product?.isNew) list.push("Moi");
+    if (product?.isNew) list.push("Mới");
     return list;
   }, [product?.isBestSeller, product?.isNew, isFreeSize]);
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-24 md:pb-10">
-      <Header lang={lang} setLang={setLang} />
+    <div className="min-h-screen bg-[linear-gradient(180deg,#fcfaf7_0%,#f7f4ee_24%,#f5f5f4_100%)] pb-24 md:pb-10">
+      <Header />
 
-      <main className="w-full px-4 py-4 md:px-6 md:py-6">
-        <div className="mx-auto w-full max-w-[1240px]">
-          <div className="mb-3 flex items-center gap-2 text-xs text-neutral-500 md:text-sm">
+      <main className="w-full px-4 py-5 md:px-6 md:py-8">
+        <div className="mx-auto w-full max-w-[1320px]">
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-neutral-500 md:text-sm">
             <Link to="/" className="hover:text-neutral-700">{t.breadcrumbHome}</Link>
             <span>/</span>
             <Link to="/buy" className="hover:text-neutral-700">{t.breadcrumbBuy}</Link>
             <span>/</span>
-            <span className="truncate font-medium text-neutral-700">{product?.name || id}</span>
+            <span className="max-w-full truncate font-medium text-neutral-700">{product?.name || id}</span>
           </div>
 
           <Link
-            className="mb-4 inline-flex min-h-11 items-center rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            className="mb-6 inline-flex min-h-11 items-center rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 shadow-sm hover:bg-neutral-50"
             to="/buy"
           >
             {"<"} {t.back}
@@ -395,7 +407,7 @@ export default function ProductDetailPage() {
 
           {!loading && product && (
             <>
-              <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,700px)_minmax(0,520px)] xl:justify-center">
+              <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] xl:gap-8">
                 <ProductGallery
                   images={currentImagesByColor}
                   activeIndex={selectedImageIndex}
@@ -404,7 +416,7 @@ export default function ProductDetailPage() {
                   productName={product.name || "product"}
                 />
 
-                <div className="w-full space-y-4">
+                <div className="w-full space-y-4 xl:sticky xl:top-24">
                   <ProductInfo
                     name={product.name}
                     category={product.category}
@@ -433,28 +445,29 @@ export default function ProductDetailPage() {
                         onBuy={handleBuy}
                         loadingAction={loadingAction}
                         canSubmit={canSubmit}
+                        canBuy={canBuy}
                       />
                     }
                   />
                 </div>
               </section>
 
-              <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,700px)_minmax(0,520px)] xl:justify-center">
+              <section className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] xl:gap-8">
                 <ProductDescription description={product.description} />
 
                 <div className="w-full">
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                  <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
                     <h3 className="text-lg font-semibold text-neutral-900">{t.policyTitle}</h3>
                     <ul className="mt-3 space-y-2 text-sm text-neutral-700">
-                      <li className="rounded-lg bg-neutral-50 p-3">{t.policyDeposit}</li>
-                      <li className="rounded-lg bg-neutral-50 p-3">{t.policySwap}</li>
-                      <li className="rounded-lg bg-neutral-50 p-3">{t.policyTime}</li>
+                      <li className="rounded-2xl bg-neutral-50 p-4">{t.policyDeposit}</li>
+                      <li className="rounded-2xl bg-neutral-50 p-4">{t.policySwap}</li>
+                      <li className="rounded-2xl bg-neutral-50 p-4">{t.policyTime}</li>
                     </ul>
                   </div>
                 </div>
               </section>
 
-              <section className="mt-4">
+              <section className="mt-8">
                 <RelatedProducts items={relatedProducts} loading={relatedLoading} />
               </section>
             </>

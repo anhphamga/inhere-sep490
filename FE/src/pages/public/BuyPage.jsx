@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Header from "../../components/common/Header";
 import "../../style/pages/ProductPages.css";
 import { useTranslationDisplay } from "../../hooks/useTranslationDisplay";
@@ -140,9 +140,8 @@ const flattenCategories = (nodes = []) => {
 };
 
 export default function BuyPage() {
-  const [lang, setLang] = useState(
-    typeof window !== "undefined" ? window.localStorage.getItem("lang") || "vi" : "vi"
-  );
+  const navigate = useNavigate();
+  const lang = "vi";
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [expanded, setExpanded] = useState({});
@@ -162,13 +161,10 @@ export default function BuyPage() {
   const { translateFields } = useTranslationDisplay(lang);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("lang", lang);
-    }
     if (typeof document !== "undefined") {
-      document.documentElement.lang = lang;
+      document.documentElement.lang = "vi";
     }
-  }, [lang]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -318,7 +314,7 @@ export default function BuyPage() {
 
   return (
     <div className="product-page">
-      <Header active="buy" lang={lang} setLang={setLang} />
+      <Header active="buy" />
 
       <main className="product-page-main">
         <div className="site-shell">
@@ -423,10 +419,10 @@ export default function BuyPage() {
                       </h3>
                       <p className="catalog-price">{p.priceText}</p>
                       <div className="catalog-actions">
-                        <button className="catalog-btn" type="button">
+                        <button className="catalog-btn" type="button" onClick={() => navigate(`/products/${p.id}`)}>
                           {t.rent}
                         </button>
-                        <button className="catalog-btn buy" type="button">
+                        <button className="catalog-btn buy" type="button" onClick={() => navigate(`/products/${p.id}`)}>
                           {t.buy}
                         </button>
                       </div>

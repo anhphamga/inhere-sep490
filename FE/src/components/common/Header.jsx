@@ -1,89 +1,150 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Heart, ShoppingCart, User } from "lucide-react";
 import logo from "../../assets/logo/logo.png";
+import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
+import { useAuth } from "../../hooks/useAuth";
+import { getRouteByRole } from "../../utils/auth";
+import "../../style/pages/ProductPages.css";
 
-const I18N = {
-  vi: {
-    hotline: "Hotline",
-    cart: "Giỏ hàng",
-    rentalHistory: "Lịch sử thuê",
-    navRent: "Thuê trang phục",
-    navBuy: "Mua trang phục",
-    navBooking: "Đặt lịch thử đồ",
-    navBlog: "Blog / Cẩm nang",
-    navPromo: "Khuyến mãi",
-    navContact: "Liên hệ",
-    search: "Tìm trang phục...",
-    cta: "ĐẶT LỊCH NGAY",
-  },
-  en: {
-    hotline: "Hotline",
-    cart: "Cart",
-    rentalHistory: "Rental History",
-    navRent: "Rent Outfits",
-    navBuy: "Buy Outfits",
-    navBooking: "Fitting Booking",
-    navBlog: "Blog / Guides",
-    navPromo: "Promotions",
-    navContact: "Contact",
-    search: "Search outfits...",
-    cta: "BOOK NOW",
-  },
+const LABELS = {
+  cart: "Giỏ hàng",
+  navRent: "Trang chủ",
+  navBuy: "Mua trang phục",
+  navBooking: "Đặt lịch thử đồ",
+  navBlog: "Blog / Cẩm nang",
+  search: "Tìm trang phục...",
+  cta: "ĐẶT LỊCH NGAY",
+  login: "Đăng nhập",
+  orderHistory: "Lịch sử đơn hàng",
+  favorites: "Sản phẩm yêu thích",
+  profile: "Tài khoản",
+  logout: "Đăng xuất",
+  dashboard: "Bảng điều khiển",
 };
 
-export default function Header({ active = "", lang, setLang }) {
-  const [innerLang, setInnerLang] = useState(
-    typeof window !== "undefined" ? window.localStorage.getItem("lang") || "vi" : "vi"
-  );
+export default function Header({ active = "", onSectionNavigate }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { itemCount } = useRentalCart() || { itemCount: 0 };
+  const { itemCount: buyItemCount } = useBuyCart() || { itemCount: 0 };
+  const { isAuthenticated, logout, user } = useAuth();
+  const menuRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const currentLang = lang || innerLang;
-  const onSetLang = setLang || setInnerLang;
-  const t = useMemo(() => I18N[currentLang] || I18N.vi, [currentLang]);
+  const isHomePage = location.pathname === "/";
+  const dashboardPath = getRouteByRole(user?.role);
+  const totalCartCount = Number(itemCount || 0) + Number(buyItemCount || 0);
+  const cartPath = "/cart";
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("lang", currentLang);
-    }
     if (typeof document !== "undefined") {
-      document.documentElement.lang = currentLang;
+      document.documentElement.lang = "vi";
     }
-  }, [currentLang]);
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!menuRef.current?.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  const getSectionHref = (section) => (isHomePage ? `#${section}` : `/#${section}`);
+
+  const handleSectionClick = (event, section) => {
+    if (!isHomePage || !onSectionNavigate) {
+      return;
+    }
+
+    event.preventDefault();
+    onSectionNavigate(section);
+  };
 
   return (
     <header className="site-header">
       <div className="site-shell site-top-row">
-        <Link to="/" className="site-brand">
+        <Link to="/" className="site-brand" aria-label="INHERE">
           <img src={logo} alt="INHERE" className="site-logo" />
         </Link>
 
         <div className="site-top-right">
-          <div className="site-lang">
-            <button
-              type="button"
-              className={currentLang === "vi" ? "active" : ""}
-              onClick={() => onSetLang("vi")}
-            >
-              VI
-            </button>
-            <button
-              type="button"
-              className={currentLang === "en" ? "active" : ""}
-              onClick={() => onSetLang("en")}
-            >
-              EN
-            </button>
-          </div>
-          <a className="site-pill" href="/#contact">
-            • {t.hotline}
-          </a>
-          <Link to="/rental/history" className="site-pill" title={t.rentalHistory}>
-            📋 {t.rentalHistory}
+          <Link
+            to={cartPath}
+            className={`site-icon-btn ${totalCartCount > 0 ? "site-pill-accent" : ""}`}
+            title={LABELS.cart}
+            aria-label={LABELS.cart}
+          >
+            <ShoppingCart size={18} />
+            {totalCartCount > 0 && <span className="site-pill-count">{totalCartCount}</span>}
           </Link>
-          {itemCount > 0 && (
-            <Link to="/rental/checkout" className="site-pill bg-pink-600 text-white" title={t.cart}>
-              🛒 {itemCount}
+
+          {isAuthenticated ? (
+            <div className="site-account" ref={menuRef}>
+              <button
+                type="button"
+                className="site-account-trigger"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                aria-label={LABELS.profile}
+              >
+                {user?.avatarUrl ? (
+                  <img src={user.avatarUrl} alt="Avatar" className="site-account-avatar" />
+                ) : (
+                  <span className="site-account-fallback">
+                    <User size={18} />
+                  </span>
+                )}
+              </button>
+
+              {menuOpen && (
+                <div className="site-account-menu">
+                  {(user?.role === "owner" || user?.role === "staff") && (
+                    <Link
+                      to={dashboardPath}
+                      className="site-account-item"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      {LABELS.dashboard}
+                    </Link>
+                  )}
+                  <Link to="/rental/history" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                    {LABELS.orderHistory}
+                  </Link>
+                  <Link to="/#rent" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                    <Heart size={16} />
+                    {LABELS.favorites}
+                  </Link>
+                  <Link to="/profile" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                    {LABELS.profile}
+                  </Link>
+                  <button
+                    type="button"
+                    className="site-account-item site-account-danger"
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      await logout();
+                      navigate("/", { replace: true });
+                    }}
+                  >
+                    {LABELS.logout}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link to="/login" className="site-pill">
+              {LABELS.login}
             </Link>
           )}
         </div>
@@ -92,32 +153,31 @@ export default function Header({ active = "", lang, setLang }) {
       <nav className="site-nav">
         <div className="site-shell site-nav-row">
           <div className="site-nav-left">
-            <a className="site-nav-link" href="/#rent">
-              {t.navRent}
+            <a
+              className={`site-nav-link ${active === "rent" ? "active" : ""}`}
+              href={getSectionHref("rent")}
+              onClick={(e) => handleSectionClick(e, "rent")}
+            >
+              {LABELS.navRent}
             </a>
             <Link className={`site-nav-link ${active === "buy" ? "active" : ""}`} to="/buy">
-              {t.navBuy}
+              {LABELS.navBuy}
+            </Link>
+            <Link className={`site-nav-link ${active === "booking" ? "active" : ""}`} to="/booking">
+              {LABELS.navBooking}
             </Link>
             <Link
-              className={`site-nav-link ${active === "booking" ? "active" : ""}`}
-              to="/booking"
+              className={`site-nav-link ${active === "blog" ? "active" : ""}`}
+              to="/blog"
             >
-              {t.navBooking}
+              {LABELS.navBlog}
             </Link>
-            <a className="site-nav-link" href="/#blog">
-              {t.navBlog}
-            </a>
-            <a className="site-nav-link" href="/#promo">
-              {t.navPromo}
-            </a>
-            <a className="site-nav-link" href="/#contact">
-              {t.navContact}
-            </a>
           </div>
+
           <div className="site-nav-right">
-            <input className="site-search" type="search" placeholder={t.search} />
+            <input className="site-search" type="search" placeholder={LABELS.search} />
             <Link to="/booking" className="site-cta">
-              {t.cta}
+              {LABELS.cta}
             </Link>
           </div>
         </div>

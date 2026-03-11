@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { changePasswordApi, getProfileApi, updateProfileApi, uploadAvatarApi } from '../../services/auth.service'
 import { useAuth } from '../../hooks/useAuth'
 import { getRouteByRole } from '../../utils/auth'
-import MainHeader from '../../layouts/MainHeader'
+import Header from '../../components/common/Header'
 import '../../style/AuthPages.css'
 
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024
@@ -169,9 +169,9 @@ const ProfilePage = () => {
 
   return (
     <>
-      <MainHeader />
+      <Header />
 
-      <div className="auth-shell profile-view-shell">
+      <div className="auth-shell auth-with-header profile-view-shell">
         <div className="profile-view-layout">
           <aside className="profile-overview-card">
             <div className="profile-overview-top">

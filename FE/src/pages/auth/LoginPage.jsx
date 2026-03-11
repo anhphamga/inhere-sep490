@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { getRouteByRole } from '../../utils/auth'
 import { loadGoogleIdentityScript } from '../../utils/googleIdentity'
+import Header from '../../components/common/Header'
 import logoImage from '../../assets/logo/logo.png'
 import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'
@@ -147,8 +148,10 @@ const LoginPage = () => {
   }
 
   return (
-    <div className="auth-shell auth-page login-page-shell">
-      <div className="auth-layout auth-layout-login">
+    <>
+      <Header />
+      <div className="auth-shell auth-page auth-with-header login-page-shell">
+        <div className="auth-layout auth-layout-login">
         <section
           className="auth-showcase login-hero"
           style={{ backgroundImage: `linear-gradient(rgba(35, 22, 7, 0.55), rgba(35, 22, 7, 0.62)), url(${heroImage})` }}
@@ -254,8 +257,9 @@ const LoginPage = () => {
 
           <p className="auth-foot-note auth-terms-note">Bằng việc đăng nhập, bạn đồng ý Điều khoản & Chính sách.</p>
         </section>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

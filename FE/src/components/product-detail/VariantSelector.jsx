@@ -14,7 +14,7 @@ export default function VariantSelector({
   isFreeSize,
 }) {
   return (
-    <div className="space-y-4 rounded-2xl border border-neutral-200 bg-neutral-50/40 p-4">
+    <div className="space-y-5 rounded-3xl border border-neutral-200 bg-neutral-50/50 p-4 lg:p-5">
       <ColorSelector
         colors={colors}
         selectedColor={selectedColor}

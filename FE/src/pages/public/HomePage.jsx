@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import Header from "../../components/common/Header";
+import { getBlogPostsFromData } from "../../utils/blogSource";
 import "../../style/pages/HomePage.css";
 import logo from "../../assets/logo/logo.png";
 import banner1 from "../../assets/banner/banner 1.png";
@@ -162,163 +164,7 @@ const I18N = {
     "footer.phone": "Hotline:",
   },
 
-  en: {
-    "brand.name": "INHERE",
-    "meta.title": "INHERE – Rent & Buy Hoi An Outfits",
-    "meta.desc":
-      "INHERE offers Hoi An outfit rentals and purchases: Ao Dai, Viet attire, Nhat Binh, accessories, photo packages, fitting appointments.",
-    "header.hotline": "Hotline",
-    "header.cart": "Cart",
-    "header.login": "Login",
 
-    "nav.rent": "Rent Outfits",
-    "nav.buy": "Buy Outfits",
-    "nav.booking": "Fitting Appointment",
-    "nav.packages": "Photo Packages",
-    "nav.blog": "Blog / Guides",
-    "nav.promo": "Promotions",
-    "nav.contact": "Contact",
-
-    "search.placeholder": "Search outfits...",
-    "cta.bookNow": "BOOK NOW",
-
-    "hero.badge": "Hoi An Outfits",
-    "hero.h1_1": "Rent Hoi An Outfits — Ready in 5 Minutes",
-    "hero.sub_1":
-      "Accessories included • Styling support • Online booking",
-    "hero.h1_2": "Family Sets — All Sizes, Full Accessories",
-    "hero.sub_2":
-      "Group styling tips • Easy posing support • Tourist-friendly",
-    "hero.h1_3": "Buy Outfits — Ready-to-wear & Tailor-made",
-    "hero.sub_3":
-      "Comfortable fabrics • Flattering fit • Fast delivery",
-    "hero.btn_rent": "Rent now",
-    "hero.btn_view": "View collection",
-    "hero.btn_packages": "View packages",
-    "hero.btn_booking": "Book",
-    "hero.btn_buy": "Buy now",
-    "hero.btn_contact": "Contact us",
-    "hero.panel_title": "Highlights",
-    "hero.panel_1": "Ready sets — arrive & dress",
-    "hero.panel_2": "Multiple sizes — easy exchanges",
-    "hero.panel_3": "Photo packages — full accessories",
-
-    "policy.title": "Rental & Purchase Policies at INHERE",
-    "policy.sub": "Clear — Transparent — Tourist-friendly",
-    "policy.c1.t": "50% deposit to reserve",
-    "policy.c1.d":
-      "Reserve your time slot and outfit set online.",
-    "policy.c2.t": "Pay remaining balance at pickup",
-    "policy.c2.d": "Pay the remaining 50% when you pick up.",
-    "policy.c3.t": "Flexible collateral options",
-    "policy.c3.d":
-      "ID/License/Vehicle papers or cash collateral (policy-based).",
-    "policy.c4.t": "Late returns incur fees",
-    "policy.c4.d": "Late ≥ 3 days will be charged per policy.",
-    "policy.c5.t": "Damage/Loss compensation",
-    "policy.c5.d": "Based on condition and item value.",
-    "policy.c6.t": "Size exchange support",
-    "policy.c6.d":
-      "Subject to availability; booking customers prioritized.",
-
-    "cat.title": "Featured Categories",
-    "cat.sub":
-      "Quick picks for Old Town photos — simple and beautiful.",
-    "cat.t1": "Women’s Ao Dai",
-    "cat.t2": "Viet Attire / Nhat Binh",
-    "cat.t3": "Couple / Family Sets",
-    "cat.cta": "Explore",
-
-    "rent.title": "Popular Products",
-    "rent.more": "View all",
-    "rent.p1.n": "Classic Ao Dai (Full set)",
-    "rent.p1.m": "Daily rental • Sizes S–XL",
-    "rent.p2.n": "Viet Attire (Accessories included)",
-    "rent.p2.m": "Old Town photo set • Styling support",
-    "rent.p3.n": "Nhat Binh (Elegant)",
-    "rent.p3.m": "Perfect for traditional concepts",
-    "rent.p4.n": "Men’s Outfit (Old Town)",
-    "rent.p4.m": "Neat • Polite • Photo-friendly",
-
-    "buy.title": "TRADITIONAL VIET COSTUMES FOR RENT",
-    "buy.more": "View all",
-    "buy.p1.n": "Ready-to-wear Ao Dai",
-    "buy.p1.m": "Light fabric • Flattering fit",
-    "buy.p2.n": "Tailor-made Viet Attire",
-    "buy.p2.m": "Measurements guidance • Quality finishing",
-    "buy.p3.n": "Photo accessories",
-    "buy.p3.m": "Hats • Fans • Bags • Jewelry",
-    "buy.p4.n": "Couple / Family set",
-    "buy.p4.m": "Multiple colors available",
-
-    "btn.rent": "Rent now",
-    "btn.buy": "Buy now",
-    "btn.detail": "Details",
-
-    "booking.title":
-      "Book a fitting before you arrive in Hoi An",
-    "booking.sub":
-      "Pick a time — choose outfits — arrive and dress. Staff will help with styling & accessories.",
-    "booking.guests": "Guests",
-    "booking.btn": "Book",
-
-    "packages.title": "Service Packages",
-    "packages.sub":
-      "Pick a package to save time and cost for your photos.",
-    "packages.c1.t": "Outfit + accessories",
-    "packages.c1.b1": "Basic accessory set included",
-    "packages.c1.b2": "Concept-based styling tips",
-    "packages.c1.b3": "Fast pickup process",
-    "packages.c2.t": "Outfit + makeup",
-    "packages.c2.b1": "Natural, light makeup",
-    "packages.c2.b2": "Great for Old Town photos",
-    "packages.c2.b3": "Save preparation time",
-    "packages.c3.t": "Outfit + photoshoot",
-    "packages.c3.b1": "Suggested photo spots",
-    "packages.c3.b2": "Basic posing guidance",
-    "packages.c3.b3": "Great for friends/family",
-
-    "reviews.title": "What Customers Say",
-    "reviews.sub":
-      "A few highlight reviews from tourists and locals.",
-    "reviews.r1":
-      "“Perfect size set ready, full accessories. Old Town photos look amazing!”",
-    "reviews.r2":
-      "“Very helpful staff — gentle posing guidance and great styling tips.”",
-    "reviews.r3":
-      "“Family package was super convenient and cost-effective.”",
-
-    "blog.title": "Blog & Hoi An Guides",
-    "blog.sub":
-      "Outfit tips, sizing guide, and Old Town photo itineraries.",
-    "blog.p1.t":
-      "How to choose Ao Dai for Old Town photos",
-    "blog.p1.d":
-      "Color, accessories, and best time slots for photos.",
-    "blog.p2.t": "Size guide — choose confidently",
-    "blog.p2.d":
-      "Simple measurements to make booking easier.",
-    "blog.p3.t":
-      "5 best Old Town photo spots in Hoi An",
-    "blog.p3.d":
-      "A suggested route for beautiful photos without exhaustion.",
-
-    "promo.title": "Promotions",
-    "promo.sub":
-      "Seasonal deals — book online to lock in promotions.",
-
-    "contact.title": "Contact",
-    "contact.sub":
-      "Call or message via Zalo for outfit styling and photo schedule advice.",
-
-    "footer.about":
-      "Because dressing is a way of life. Rent & buy Hoi An outfits — fast, beautiful, friendly.",
-    "footer.col1": "Categories",
-    "footer.col2": "Policies",
-    "footer.col3": "Contact",
-    "footer.addr": "Hoi An, Quang Nam",
-    "footer.phone": "Hotline:",
-  },
 };
 
 function t(lang, key) {
@@ -331,6 +177,15 @@ const year = new Date().getFullYear();
 const AUTO_SLIDE_MS = 5000;
 const CATEGORY_SLIDE_MS = 2800;
 const HOMEPAGE_PRODUCT_LIMIT = 8;
+const CONTACT_INFO = {
+  phoneDisplay: "0898 199 099",
+  phoneHref: "tel:0898199099",
+  zaloHref: "https://zalo.me/0898199099",
+  addressDisplay: "24 Đào Duy Từ, Hội An",
+  mapHref: "https://www.google.com/maps/search/?api=1&query=24+Dao+Duy+Tu+Hoi+An",
+  instagramLabel: "@inhere_trangphuchoian",
+  instagramHref: "https://www.instagram.com/inhere_trangphuchoian/",
+};
 const PRODUCT_CATEGORIES = [
   {
     displayName: "Áo Dài Cho Thuê",
@@ -521,11 +376,8 @@ const Homepage = ({ initialSection = "" }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, user, logout } = useAuth();
-  const [lang, setLang] = useState(
-    typeof window !== "undefined"
-      ? window.localStorage.getItem("lang") || "vi"
-      : "vi"
-  );
+  const lang = "vi";
+  const setLang = () => {};
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isSliderPaused, setIsSliderPaused] = useState(false);
   const [activeSection, setActiveSection] = useState(initialSection || "rent");
@@ -751,42 +603,10 @@ const Homepage = ({ initialSection = "" }) => {
   }, [lang]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const fetchBlogs = async () => {
-      try {
-        setBlogsLoading(true);
-        setBlogsError("");
-
-        const response = await fetch("/api/blogs");
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const payload = await response.json();
-        const blogData = Array.isArray(payload?.data) ? payload.data : [];
-        if (isMounted) {
-          setBlogs(blogData);
-        }
-      } catch {
-        if (isMounted) {
-          setBlogsError(
-            lang === "vi"
-              ? "Không tải được bài viết từ API, đang dùng nội dung mặc định."
-              : "Failed to load blog posts from API, using default content."
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setBlogsLoading(false);
-        }
-      }
-    };
-
-    fetchBlogs();
-    return () => {
-      isMounted = false;
-    };
+    setBlogsLoading(true);
+    setBlogsError("");
+    setBlogs(getBlogPostsFromData());
+    setBlogsLoading(false);
   }, [lang]);
 
   useEffect(() => {
@@ -1091,6 +911,15 @@ const Homepage = ({ initialSection = "" }) => {
 
   return (
     <>
+      <Header
+        active={activeSection}
+        onSectionNavigate={(section) => {
+          scrollToId(`#${section}`);
+          setActiveSection(section);
+        }}
+      />
+      {false && (
+        <>
       {/* HEADER */}
       <header className="header">
         <div className="container header-row">
@@ -1300,6 +1129,8 @@ const Homepage = ({ initialSection = "" }) => {
           </div>
         </nav>
       </header>
+        </>
+      )}
 
       {/* HERO SLIDER */}
       <section className="hero" id="top">
@@ -1924,9 +1755,10 @@ const Homepage = ({ initialSection = "" }) => {
       {/* BLOG */}
       <section id="blog">
         <div className="container">
-          <h2 className="section-title">
-            {t(lang, "blog.title")}
-          </h2>
+          <div className="row-head">
+            <h2>{t(lang, "blog.title")}</h2>
+            <Link to="/blog">{lang === "vi" ? "Xem tất cả bài viết" : "View all posts"}</Link>
+          </div>
           <p className="section-sub">
             {t(lang, "blog.sub")}
           </p>
@@ -1957,6 +1789,9 @@ const Homepage = ({ initialSection = "" }) => {
                 )}
                 <h3>{post.title}</h3>
                 <p className="footer-text">{post.excerpt}</p>
+                <Link className="blog-card-link" to={`/blog/${post.id}`}>
+                  Đọc thêm
+                </Link>
               </div>
             ))}
           </div>
@@ -1983,6 +1818,54 @@ const Homepage = ({ initialSection = "" }) => {
           <p className="section-sub">
             {t(lang, "contact.sub")}
           </p>
+          <div className="contact-grid">
+            <a className="contact-card" href={CONTACT_INFO.phoneHref}>
+              <span className="contact-label">Hotline</span>
+              <strong>{CONTACT_INFO.phoneDisplay}</strong>
+              <span>Gọi trực tiếp để được tư vấn nhanh về thuê, mua và đặt lịch.</span>
+            </a>
+            <a
+              className="contact-card"
+              href={CONTACT_INFO.mapHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="contact-label">Địa chỉ</span>
+              <strong>{CONTACT_INFO.addressDisplay}</strong>
+              <span>Mở bản đồ để đến cửa hàng tại trung tâm Hội An.</span>
+            </a>
+            <a
+              className="contact-card"
+              href={CONTACT_INFO.instagramHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="contact-label">Instagram</span>
+              <strong>{CONTACT_INFO.instagramLabel}</strong>
+              <span>Xem mẫu mới và nhắn tin trực tiếp qua trang mạng xã hội.</span>
+            </a>
+          </div>
+          <div className="contact-actions">
+            <a className="contact-btn primary" href={CONTACT_INFO.phoneHref}>
+              Gọi ngay
+            </a>
+            <a
+              className="contact-btn"
+              href={CONTACT_INFO.zaloHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Nhắn Zalo
+            </a>
+            <a
+              className="contact-btn"
+              href={CONTACT_INFO.mapHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Xem đường đi
+            </a>
+          </div>
         </div>
       </section>
 
@@ -2054,12 +1937,12 @@ const Homepage = ({ initialSection = "" }) => {
                 {t(lang, "footer.col3")}
               </p>
               <p className="footer-text">
-                <span>{t(lang, "footer.addr")}</span>
+                <span>{CONTACT_INFO.addressDisplay}</span>
                 <br />
                 <span>{t(lang, "footer.phone")}</span>{" "}
-                0900 000 000
+                {CONTACT_INFO.phoneDisplay}
                 <br />
-                Zalo / Facebook / Instagram
+                Zalo / Instagram: {CONTACT_INFO.instagramLabel}
               </p>
             </div>
           </div>
@@ -2075,4 +1958,5 @@ const Homepage = ({ initialSection = "" }) => {
 };
 
 export default Homepage;
+
 

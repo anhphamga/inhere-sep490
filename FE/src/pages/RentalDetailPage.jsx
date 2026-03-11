@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { getRentOrderByIdApi, payDepositApi, cancelRentOrderApi } from '../services/rent-order.service'
+import Header from '../components/common/Header'
 
 const statusLabels = {
   Draft: 'Nháp',
@@ -99,48 +100,60 @@ export default function RentalDetailPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <>
+        <Header />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Vui lòng đăng nhập để xem chi tiết đơn thuê</p>
           <Link to="/login?redirect=/rental/{id}" className="text-pink-600 hover:underline">
             Đăng nhập
           </Link>
         </div>
-      </div>
+        </div>
+      </>
     )
   }
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-pink-600 border-t-transparent"></div>
-      </div>
+      <>
+        <Header />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-pink-600 border-t-transparent"></div>
+        </div>
+      </>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <>
+        <Header />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <Link to="/rental/history" className="text-pink-600 hover:underline">
             Quay lại lịch sử thuê
           </Link>
         </div>
-      </div>
+        </div>
+      </>
     )
   }
 
   if (!order) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <>
+        <Header />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Không tìm thấy đơn thuê</p>
           <Link to="/rental/history" className="text-pink-600 hover:underline">
             Quay lại lịch sử thuê
           </Link>
         </div>
-      </div>
+        </div>
+      </>
     )
   }
 
@@ -148,8 +161,9 @@ export default function RentalDetailPage() {
   const canCancel = ['Draft', 'PendingDeposit', 'Deposited'].includes(order.status)
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
+    <div className="min-h-screen bg-gray-50">
+      <Header />
+      <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <Link to="/rental/history" className="text-pink-600 hover:underline">

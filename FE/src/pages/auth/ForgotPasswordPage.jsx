@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { forgotPasswordApi, resetPasswordApi } from '../../services/auth.service'
+import Header from '../../components/common/Header'
 import '../../style/AuthPages.css'
 
 const ForgotPasswordPage = () => {
@@ -82,8 +83,10 @@ const ForgotPasswordPage = () => {
   }
 
   return (
-    <div className="auth-shell auth-page">
-      <div className="auth-layout">
+    <>
+      <Header />
+      <div className="auth-shell auth-page auth-with-header">
+        <div className="auth-layout">
         <section className="auth-showcase">
           <p className="auth-showcase-badge">INHERE HOI AN COSTUME RENTAL</p>
           <h1>Khôi phục mật khẩu tài khoản</h1>
@@ -161,8 +164,9 @@ const ForgotPasswordPage = () => {
             <Link to="/signup">Chưa có tài khoản?</Link>
           </div>
         </section>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
