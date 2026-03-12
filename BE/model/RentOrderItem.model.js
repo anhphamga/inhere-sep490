@@ -19,6 +19,13 @@ const rentOrderItemSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  // Ngày thuê của sản phẩm này (có thể khác với ngày chung của đơn)
+  rentStartDate: {
+    type: Date
+  },
+  rentEndDate: {
+    type: Date
+  },
   condition: {
     type: String,
     default: ''

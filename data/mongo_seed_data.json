@@ -1,0 +1,824 @@
+{
+  "users": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000001"
+      },
+      "role": "owner",
+      "name": "Owner Admin",
+      "phone": "0900000001",
+      "email": "owner@inhere.local",
+      "passwordHash": "$2b$10$examplehashowner",
+      "authProvider": "local",
+      "status": "active",
+      "avatarUrl": null,
+      "address": "Hội An, Quảng Nam",
+      "gender": "other",
+      "dateOfBirth": null,
+      "createdAt": {
+        "$date": "2025-12-30T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000002"
+      },
+      "role": "staff",
+      "name": "Staff Linh",
+      "phone": "0900000002",
+      "email": "staff@inhere.local",
+      "passwordHash": "$2b$10$examplehashstaff",
+      "authProvider": "local",
+      "status": "active",
+      "avatarUrl": null,
+      "address": "Hội An",
+      "gender": "female",
+      "dateOfBirth": {
+        "$date": "1999-08-20T00:00:00Z"
+      },
+      "createdAt": {
+        "$date": "2026-01-19T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000003"
+      },
+      "role": "customer",
+      "name": "Customer Huy",
+      "phone": "0900000003",
+      "email": "customer@inhere.local",
+      "passwordHash": "$2b$10$examplehashcustomer",
+      "authProvider": "local",
+      "status": "active",
+      "avatarUrl": null,
+      "address": "Hà Nội",
+      "gender": "male",
+      "dateOfBirth": {
+        "$date": "2002-03-15T00:00:00Z"
+      },
+      "createdAt": {
+        "$date": "2026-02-08T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "products": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000101"
+      },
+      "name": "Áo dài cưới đỏ thêu rồng",
+      "category": "Áo Dài Cưới",
+      "size": "M",
+      "color": "Đỏ",
+      "description": "Áo dài cưới truyền thống, thêu rồng phượng, phù hợp chụp ảnh cưới.",
+      "images": [
+        "/uploads/products/aodai-cuoi-do-1.jpg",
+        "/uploads/products/aodai-cuoi-do-2.jpg"
+      ],
+      "baseRentPrice": 650000,
+      "baseSalePrice": 3200000,
+      "likeCount": 12,
+      "createdAt": {
+        "$date": "2026-01-09T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-23T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000102"
+      },
+      "name": "Áo dài cách tân pastel",
+      "category": "Áo Dài Cách Tân Cho Thuê",
+      "size": "S",
+      "color": "Hồng pastel",
+      "description": "Form trẻ trung, nhẹ nhàng, phù hợp dạo phố Hội An.",
+      "images": [
+        "/uploads/products/aodai-cachtan-1.jpg"
+      ],
+      "baseRentPrice": 250000,
+      "baseSalePrice": 990000,
+      "likeCount": 34,
+      "createdAt": {
+        "$date": "2026-01-24T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-25T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000103"
+      },
+      "name": "Áo dài nam xanh đậm",
+      "category": "Áo Dài Nam",
+      "size": "L",
+      "color": "Xanh đậm",
+      "description": "Áo dài nam lịch lãm, chất vải dày dặn, lên form đẹp.",
+      "images": [
+        "/uploads/products/aodai-nam-xanh-1.jpg"
+      ],
+      "baseRentPrice": 300000,
+      "baseSalePrice": 1200000,
+      "likeCount": 8,
+      "createdAt": {
+        "$date": "2026-02-03T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "productinstances": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000201"
+      },
+      "productId": {
+        "$oid": "65f000000000000000000101"
+      },
+      "conditionLevel": "Good",
+      "conditionScore": 92,
+      "lifecycleStatus": "Available",
+      "currentRentPrice": 650000,
+      "currentSalePrice": 2900000,
+      "note": "Bộ 01 - đã giặt, sẵn sàng cho thuê.",
+      "createdAt": {
+        "$date": "2026-01-14T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000202"
+      },
+      "productId": {
+        "$oid": "65f000000000000000000101"
+      },
+      "conditionLevel": "Used",
+      "conditionScore": 80,
+      "lifecycleStatus": "Washing",
+      "currentRentPrice": 600000,
+      "currentSalePrice": 2600000,
+      "note": "Bộ 02 - đang giặt.",
+      "createdAt": {
+        "$date": "2026-01-14T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T03:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000203"
+      },
+      "productId": {
+        "$oid": "65f000000000000000000102"
+      },
+      "conditionLevel": "New",
+      "conditionScore": 100,
+      "lifecycleStatus": "Rented",
+      "currentRentPrice": 250000,
+      "currentSalePrice": 990000,
+      "note": "Bộ pastel - đang cho thuê.",
+      "createdAt": {
+        "$date": "2026-01-29T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000204"
+      },
+      "productId": {
+        "$oid": "65f000000000000000000103"
+      },
+      "conditionLevel": "Good",
+      "conditionScore": 95,
+      "lifecycleStatus": "Available",
+      "currentRentPrice": 300000,
+      "currentSalePrice": 1200000,
+      "note": "Bộ nam xanh - sẵn sàng.",
+      "createdAt": {
+        "$date": "2026-02-10T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "pricingrules": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000b01"
+      },
+      "applyFor": "Rent",
+      "conditionLevel": "Used",
+      "modifyType": "Percentage",
+      "modifyValue": -10,
+      "isHot": true,
+      "priority": 10,
+      "scope": "Global",
+      "productId": null,
+      "createdAt": {
+        "$date": "2026-02-08T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000b02"
+      },
+      "applyFor": "Sale",
+      "conditionLevel": null,
+      "modifyType": "Fixed",
+      "modifyValue": -50000,
+      "isHot": false,
+      "priority": 5,
+      "scope": "Product",
+      "productId": {
+        "$oid": "65f000000000000000000102"
+      },
+      "createdAt": {
+        "$date": "2026-02-16T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "rentorders": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000301"
+      },
+      "customerId": {
+        "$oid": "65f000000000000000000003"
+      },
+      "staffId": {
+        "$oid": "65f000000000000000000002"
+      },
+      "status": "Deposited",
+      "rentStartDate": {
+        "$date": "2026-03-02T00:00:00Z"
+      },
+      "rentEndDate": {
+        "$date": "2026-03-04T00:00:00Z"
+      },
+      "depositAmount": 300000,
+      "remainingAmount": 400000,
+      "washingFee": 0,
+      "damageFee": 0,
+      "totalAmount": 700000,
+      "createdAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "rentorderitems": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000401"
+      },
+      "orderId": {
+        "$oid": "65f000000000000000000301"
+      },
+      "productInstanceId": {
+        "$oid": "65f000000000000000000203"
+      },
+      "baseRentPrice": 250000,
+      "finalPrice": 250000,
+      "condition": "New",
+      "appliedRuleIds": [],
+      "selectLevel": "Standard",
+      "size": "S",
+      "color": "Hồng pastel",
+      "note": "",
+      "createdAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000402"
+      },
+      "orderId": {
+        "$oid": "65f000000000000000000301"
+      },
+      "productInstanceId": {
+        "$oid": "65f000000000000000000201"
+      },
+      "baseRentPrice": 650000,
+      "finalPrice": 450000,
+      "condition": "Good",
+      "appliedRuleIds": [
+        {
+          "$oid": "65f000000000000000000b01"
+        }
+      ],
+      "selectLevel": "Premium",
+      "size": "M",
+      "color": "Đỏ",
+      "note": "Giảm giá combo 200k.",
+      "createdAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "deposits": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000501"
+      },
+      "orderId": {
+        "$oid": "65f000000000000000000301"
+      },
+      "amount": 300000,
+      "method": "Online",
+      "status": "Held",
+      "paidAt": {
+        "$date": "2026-02-27T23:30:00Z"
+      },
+      "createdAt": {
+        "$date": "2026-02-27T23:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T23:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "collaterals": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000601"
+      },
+      "orderId": {
+        "$oid": "65f000000000000000000301"
+      },
+      "type": "CCCD",
+      "documentNumber": "079123456789",
+      "documentImageUrl": "https://example.com/collateral/cccd.jpg",
+      "receiveAt": {
+        "$date": "2026-02-28T06:30:00Z"
+      },
+      "returnedAt": null,
+      "status": null,
+      "createdAt": {
+        "$date": "2026-02-28T06:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T06:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "returnrecords": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000701"
+      },
+      "orderId": {
+        "$oid": "65f000000000000000000301"
+      },
+      "returnDate": {
+        "$date": "2026-03-04T10:00:00Z"
+      },
+      "condition": "Dirty",
+      "washingFee": 50000,
+      "damageFee": 0,
+      "note": "Váy dính nhẹ bụi đường, tính phí giặt.",
+      "staffId": {
+        "$oid": "65f000000000000000000002"
+      },
+      "createdAt": {
+        "$date": "2026-02-28T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "saleorders": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000801"
+      },
+      "customerId": {
+        "$oid": "65f000000000000000000003"
+      },
+      "staffId": {
+        "$oid": "65f000000000000000000002"
+      },
+      "productInstanceId": {
+        "$oid": "65f000000000000000000204"
+      },
+      "status": "Paid",
+      "paymentMethod": "Online",
+      "discountAmount": 50000,
+      "shippingFee": 30000,
+      "totalAmount": 1180000,
+      "shippingAddress": "12 Tràng Tiền, Hoàn Kiếm, Hà Nội",
+      "shippingPhone": "0900000003",
+      "createdAt": {
+        "$date": "2026-02-24T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "saleorderitems": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000901"
+      },
+      "orderId": {
+        "$oid": "65f000000000000000000801"
+      },
+      "productId": {
+        "$oid": "65f000000000000000000103"
+      },
+      "unitPrice": 1200000,
+      "quantity": 1,
+      "size": "L",
+      "color": "Xanh đậm",
+      "note": "Áp dụng voucher 50k.",
+      "createdAt": {
+        "$date": "2026-02-24T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-24T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "payments": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000a01"
+      },
+      "orderType": "Rent",
+      "orderId": {
+        "$oid": "65f000000000000000000301"
+      },
+      "amount": 300000,
+      "method": "Online",
+      "status": "Paid",
+      "transactionCode": "ZLP_20260228_0001",
+      "paidAt": {
+        "$date": "2026-02-27T23:30:00Z"
+      },
+      "createdAt": {
+        "$date": "2026-02-27T23:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T23:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000a02"
+      },
+      "orderType": "Sale",
+      "orderId": {
+        "$oid": "65f000000000000000000801"
+      },
+      "amount": 1180000,
+      "method": "Online",
+      "status": "Paid",
+      "transactionCode": "VNP_20260226_0102",
+      "paidAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "createdAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "inventoryhistories": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000c01"
+      },
+      "productInstanceId": {
+        "$oid": "65f000000000000000000203"
+      },
+      "status": "Rented",
+      "startDate": {
+        "$date": "2026-02-27T08:00:00Z"
+      },
+      "endDate": null,
+      "note": "Bắt đầu cho thuê theo đơn RENT_0001.",
+      "createdAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000c02"
+      },
+      "productInstanceId": {
+        "$oid": "65f000000000000000000202"
+      },
+      "status": "Washing",
+      "startDate": {
+        "$date": "2026-02-28T02:00:00Z"
+      },
+      "endDate": null,
+      "note": "Đưa đi giặt sau khi trả.",
+      "createdAt": {
+        "$date": "2026-02-28T02:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T02:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "shifts": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000d01"
+      },
+      "title": "Ca sáng",
+      "startAt": {
+        "$date": "2026-02-28T01:00:00Z"
+      },
+      "endAt": {
+        "$date": "2026-02-28T09:00:00Z"
+      },
+      "staffIds": [
+        {
+          "$oid": "65f000000000000000000002"
+        }
+      ],
+      "note": "Kiểm kê nhanh + xác nhận đơn cọc.",
+      "createdAt": {
+        "$date": "2026-02-27T21:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T21:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "vouchers": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000e01"
+      },
+      "code": "WELCOME50K",
+      "discountType": "Fixed",
+      "discountValue": 50000,
+      "minOrderValue": 300000,
+      "expiryDate": {
+        "$date": "2026-12-31T23:59:59Z"
+      },
+      "usageLimit": 1000,
+      "usedCount": 12,
+      "isActive": true,
+      "createdAt": {
+        "$date": "2026-02-13T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000e02"
+      },
+      "code": "RENT10",
+      "discountType": "Percentage",
+      "discountValue": 10,
+      "minOrderValue": 500000,
+      "expiryDate": {
+        "$date": "2026-06-30T23:59:59Z"
+      },
+      "usageLimit": null,
+      "usedCount": 3,
+      "isActive": true,
+      "createdAt": {
+        "$date": "2026-02-18T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "banners": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000000f01"
+      },
+      "title": "Royal Elegance in Ancient Town",
+      "subtitle": "Thuê áo dài chụp ảnh Hội An",
+      "targetLink": "/collections/aodai-thue",
+      "imagePath": "/uploads/banners/hero-1.jpg",
+      "imageUrl": "",
+      "position": "hero",
+      "isActive": true,
+      "sortOrder": 1,
+      "startAt": {
+        "$date": "2026-02-01T00:00:00Z"
+      },
+      "endAt": {
+        "$date": "2026-12-31T23:59:59Z"
+      },
+      "createdAt": {
+        "$date": "2026-02-03T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-25T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000000f02"
+      },
+      "title": "Ưu đãi Combo Gia Đình",
+      "subtitle": "Giảm thêm 10% khi thuê từ 3 bộ",
+      "targetLink": "/promotions/family-combo",
+      "imagePath": "",
+      "imageUrl": "https://example.com/banners/family-combo.jpg",
+      "position": "promo",
+      "isActive": true,
+      "sortOrder": 2,
+      "startAt": {
+        "$date": "2026-02-15T00:00:00Z"
+      },
+      "endAt": {
+        "$date": "2026-03-15T23:59:59Z"
+      },
+      "createdAt": {
+        "$date": "2026-02-15T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "blogs": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000001001"
+      },
+      "title": "Kinh nghiệm thuê áo dài chụp ảnh Hội An",
+      "slug": "kinh-nghiem-thue-ao-dai-chup-anh-hoi-an",
+      "thumbnail": "/uploads/blogs/tips-1.jpg",
+      "category": "Tips",
+      "likeCount": 5,
+      "viewCount": 120,
+      "status": "published",
+      "content": "Gợi ý chọn màu, chọn size, và khung giờ chụp ảnh đẹp tại phố cổ Hội An.",
+      "createdAt": {
+        "$date": "2026-02-06T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000001002"
+      },
+      "title": "Bảng giá thuê áo dài 2026 (cập nhật)",
+      "slug": "bang-gia-thue-ao-dai-2026",
+      "thumbnail": "/uploads/blogs/price-2026.jpg",
+      "category": "Pricing",
+      "likeCount": 2,
+      "viewCount": 60,
+      "status": "draft",
+      "content": "Tổng hợp mức giá thuê theo chất liệu và dòng áo dài.",
+      "createdAt": {
+        "$date": "2026-02-21T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "alerts": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000001101"
+      },
+      "type": "PickupSoon",
+      "targetType": "RentOrder",
+      "targetId": {
+        "$oid": "65f000000000000000000301"
+      },
+      "status": "New",
+      "createdAt": {
+        "$date": "2026-02-28T07:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-28T07:30:00Z"
+      },
+      "__v": 0
+    },
+    {
+      "_id": {
+        "$oid": "65f000000000000000001102"
+      },
+      "type": "New",
+      "targetType": "SaleOrder",
+      "targetId": {
+        "$oid": "65f000000000000000000801"
+      },
+      "status": "Seen",
+      "createdAt": {
+        "$date": "2026-02-26T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ],
+  "fittingbookings": [
+    {
+      "_id": {
+        "$oid": "65f000000000000000001201"
+      },
+      "customerId": {
+        "$oid": "65f000000000000000000003"
+      },
+      "date": {
+        "$date": "2026-03-01T00:00:00Z"
+      },
+      "timeSlot": "09:00-09:30",
+      "note": "Khách muốn thử áo dài cưới màu đỏ.",
+      "status": "Confirmed",
+      "staffId": {
+        "$oid": "65f000000000000000000002"
+      },
+      "createdAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "updatedAt": {
+        "$date": "2026-02-27T09:30:00Z"
+      },
+      "__v": 0
+    }
+  ]
+}

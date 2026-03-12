@@ -9,19 +9,29 @@ const router = express.Router();
 
 // Import routes của từng model
 const userRoutes = require('./user.routes');
-const ownerRoutes = require('./owner.routes');
-const blogRoutes = require('./blog.routes');
 const authRoutes = require('./auth.routes');
-// const productRoutes = require('./product.routes');
+const blogRoutes = require('./blog.routes');
+const categoryRoutes = require('./category.routes');
+const productRoutes = require('./product.routes');
+const ownerRoutes = require('./owner.routes');
+const bannerRoutes = require('./banner.routes');
+const rentOrderRoutes = require('./rent-order.routes');
+const alertRoutes = require('./alert.routes');
+const fittingBookingRoutes = require('./fitting-booking.routes');
 // const orderRoutes = require('./order.routes');
 // ... thêm các routes khác ở đây
 
 // Mount routes với prefix cho từng module
-router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
-router.use('/owner', ownerRoutes);
+router.use('/auth', authRoutes);
 router.use('/blogs', blogRoutes);
-// router.use('/products', productRoutes);
+router.use('/categories', categoryRoutes);
+router.use('/products', productRoutes);
+router.use('/owner', ownerRoutes);
+router.use('/banners', bannerRoutes);
+router.use('/rent-orders', rentOrderRoutes);
+router.use('/alerts', alertRoutes);
+router.use('/fitting-bookings', fittingBookingRoutes);
 // router.use('/orders', orderRoutes);
 // ... thêm prefix tương ứng
 

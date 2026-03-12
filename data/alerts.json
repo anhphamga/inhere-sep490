@@ -1,0 +1,38 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000001101"
+    },
+    "type": "PickupSoon",
+    "targetType": "RentOrder",
+    "targetId": {
+      "$oid": "65f000000000000000000301"
+    },
+    "status": "New",
+    "createdAt": {
+      "$date": "2026-02-28T07:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-28T07:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000001102"
+    },
+    "type": "New",
+    "targetType": "SaleOrder",
+    "targetId": {
+      "$oid": "65f000000000000000000801"
+    },
+    "status": "Seen",
+    "createdAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { motion } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn } from '../../utils/ui.utils';
 import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Tag, Clock, AlertCircle } from 'lucide-react';
 import { XAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 const REVENUE_DATA = [

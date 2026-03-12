@@ -1,0 +1,25 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000601"
+    },
+    "orderId": {
+      "$oid": "65f000000000000000000301"
+    },
+    "type": "CCCD",
+    "documentNumber": "079123456789",
+    "documentImageUrl": "https://example.com/collateral/cccd.jpg",
+    "receiveAt": {
+      "$date": "2026-02-28T06:30:00Z"
+    },
+    "returnedAt": null,
+    "status": null,
+    "createdAt": {
+      "$date": "2026-02-28T06:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-28T06:30:00Z"
+    },
+    "__v": 0
+  }
+]

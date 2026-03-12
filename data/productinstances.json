@@ -1,0 +1,86 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000201"
+    },
+    "productId": {
+      "$oid": "65f000000000000000000101"
+    },
+    "conditionLevel": "Good",
+    "conditionScore": 92,
+    "lifecycleStatus": "Available",
+    "currentRentPrice": 650000,
+    "currentSalePrice": 2900000,
+    "note": "Bộ 01 - đã giặt, sẵn sàng cho thuê.",
+    "createdAt": {
+      "$date": "2026-01-14T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000202"
+    },
+    "productId": {
+      "$oid": "65f000000000000000000101"
+    },
+    "conditionLevel": "Used",
+    "conditionScore": 80,
+    "lifecycleStatus": "Washing",
+    "currentRentPrice": 600000,
+    "currentSalePrice": 2600000,
+    "note": "Bộ 02 - đang giặt.",
+    "createdAt": {
+      "$date": "2026-01-14T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-28T03:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000203"
+    },
+    "productId": {
+      "$oid": "65f000000000000000000102"
+    },
+    "conditionLevel": "New",
+    "conditionScore": 100,
+    "lifecycleStatus": "Rented",
+    "currentRentPrice": 250000,
+    "currentSalePrice": 990000,
+    "note": "Bộ pastel - đang cho thuê.",
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000204"
+    },
+    "productId": {
+      "$oid": "65f000000000000000000103"
+    },
+    "conditionLevel": "Good",
+    "conditionScore": 95,
+    "lifecycleStatus": "Available",
+    "currentRentPrice": 300000,
+    "currentSalePrice": 1200000,
+    "note": "Bộ nam xanh - sẵn sàng.",
+    "createdAt": {
+      "$date": "2026-02-10T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

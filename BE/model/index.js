@@ -1,5 +1,6 @@
 const Alert = require('./Alert.model');
 const Blog = require('./Blog.model');
+const Category = require('./Category.model');
 const Collateral = require('./Collateral.model');
 const Deposit = require('./Deposit.model');
 const FittingBooking = require('./FittingBooking.model');
@@ -21,6 +22,7 @@ const syncModelIndexes = async () => {
     await Promise.all([
         Alert.syncIndexes(),
         Blog.syncIndexes(),
+        Category.syncIndexes(),
         Collateral.syncIndexes(),
         Deposit.syncIndexes(),
         FittingBooking.syncIndexes(),
@@ -43,6 +45,7 @@ const syncModelIndexes = async () => {
 module.exports = {
     Alert,
     Blog,
+    Category,
     Collateral,
     Deposit,
     FittingBooking,

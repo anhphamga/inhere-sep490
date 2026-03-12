@@ -1,0 +1,873 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000002001"
+    },
+    "name": "Áo Dài Cho Thuê",
+    "slug": "ao-dai-cho-thue",
+    "parentId": null,
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002002"
+    },
+    "name": "Cho thuê váy đầm Hội An",
+    "slug": "cho-thue-vay-dam-hoi-an",
+    "parentId": null,
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002003"
+    },
+    "name": "Cho thuê Vest Hội An",
+    "slug": "cho-thue-vest-hoi-an",
+    "parentId": null,
+    "sortOrder": 3,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002004"
+    },
+    "name": "Cổ Phục Cho Thuê tại Hội An",
+    "slug": "co-phuc-cho-thue-tai-hoi-an",
+    "parentId": null,
+    "sortOrder": 4,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002005"
+    },
+    "name": "Đồ Cho Bé Cho Thuê Hội An",
+    "slug": "do-cho-be-cho-thue-hoi-an",
+    "parentId": null,
+    "sortOrder": 5,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002006"
+    },
+    "name": "Gói Chụp Ảnh",
+    "slug": "goi-chup-anh",
+    "parentId": null,
+    "sortOrder": 6,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002007"
+    },
+    "name": "Make Up",
+    "slug": "make-up",
+    "parentId": null,
+    "sortOrder": 7,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002008"
+    },
+    "name": "Phụ kiện chụp ảnh cho thuê",
+    "slug": "phu-kien-chup-anh-cho-thue",
+    "parentId": null,
+    "sortOrder": 8,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002009"
+    },
+    "name": "Quần Áo Dài",
+    "slug": "quan-ao-dai",
+    "parentId": null,
+    "sortOrder": 9,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000200a"
+    },
+    "name": "sửa đồ",
+    "slug": "sua-do",
+    "parentId": null,
+    "sortOrder": 10,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000200b"
+    },
+    "name": "váy cưới",
+    "slug": "vay-cuoi",
+    "parentId": null,
+    "sortOrder": 11,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000200c"
+    },
+    "name": "Áo Dài Bà Sui",
+    "slug": "ao-dai-ba-sui",
+    "parentId": {
+      "$oid": "65f000000000000000002001"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000200d"
+    },
+    "name": "Áo Dài Bé",
+    "slug": "ao-dai-be",
+    "parentId": {
+      "$oid": "65f000000000000000002001"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000200e"
+    },
+    "name": "Áo Dài Bé Trai",
+    "slug": "ao-dai-be-trai",
+    "parentId": {
+      "$oid": "65f00000000000000000200d"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000200f"
+    },
+    "name": "Áo Dài Cách Tân Cho Thuê",
+    "slug": "ao-dai-cach-tan-cho-thue",
+    "parentId": {
+      "$oid": "65f000000000000000002001"
+    },
+    "sortOrder": 3,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002010"
+    },
+    "name": "Áo Dài Cho Bé",
+    "slug": "ao-dai-cho-be",
+    "parentId": {
+      "$oid": "65f00000000000000000200f"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002011"
+    },
+    "name": "Áo Dài Cưới",
+    "slug": "ao-dai-cuoi",
+    "parentId": {
+      "$oid": "65f00000000000000000200f"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002012"
+    },
+    "name": "Áo Dài Gấm",
+    "slug": "ao-dai-gam",
+    "parentId": {
+      "$oid": "65f00000000000000000200f"
+    },
+    "sortOrder": 3,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002013"
+    },
+    "name": "Gấm Hoa",
+    "slug": "gam-hoa",
+    "parentId": {
+      "$oid": "65f000000000000000002012"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002014"
+    },
+    "name": "Gấm Thọ",
+    "slug": "gam-tho",
+    "parentId": {
+      "$oid": "65f000000000000000002012"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002015"
+    },
+    "name": "Áo Dài Suôn Lụa Trơn",
+    "slug": "ao-dai-suon-lua-tron",
+    "parentId": {
+      "$oid": "65f00000000000000000200f"
+    },
+    "sortOrder": 4,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002016"
+    },
+    "name": "Áo Dài Thiết Kế Cho Thuê",
+    "slug": "ao-dai-thiet-ke-cho-thue",
+    "parentId": {
+      "$oid": "65f00000000000000000200f"
+    },
+    "sortOrder": 5,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002017"
+    },
+    "name": "Áo Dài In Hoa Văn",
+    "slug": "ao-dai-in-hoa-van",
+    "parentId": {
+      "$oid": "65f000000000000000002016"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002018"
+    },
+    "name": "Áo Dài Tơ Thêu",
+    "slug": "ao-dai-to-theu",
+    "parentId": {
+      "$oid": "65f00000000000000000200f"
+    },
+    "sortOrder": 6,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002019"
+    },
+    "name": "áo dài cao cấp",
+    "slug": "ao-dai-cao-cap",
+    "parentId": {
+      "$oid": "65f000000000000000002001"
+    },
+    "sortOrder": 4,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000201a"
+    },
+    "name": "Áo Dài Nam",
+    "slug": "ao-dai-nam",
+    "parentId": {
+      "$oid": "65f000000000000000002001"
+    },
+    "sortOrder": 5,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000201b"
+    },
+    "name": "Áo Dài Truyền Thống Cho Thuê",
+    "slug": "ao-dai-truyen-thong-cho-thue",
+    "parentId": {
+      "$oid": "65f000000000000000002001"
+    },
+    "sortOrder": 6,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000201c"
+    },
+    "name": "váy đi tiệc",
+    "slug": "vay-di-tiec",
+    "parentId": {
+      "$oid": "65f000000000000000002002"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000201d"
+    },
+    "name": "Váy thiết kế concept",
+    "slug": "vay-thiet-ke-concept",
+    "parentId": {
+      "$oid": "65f000000000000000002002"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000201e"
+    },
+    "name": "Váy vintage",
+    "slug": "vay-vintage",
+    "parentId": {
+      "$oid": "65f000000000000000002002"
+    },
+    "sortOrder": 3,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000201f"
+    },
+    "name": "yếm chụp ảnh",
+    "slug": "yem-chup-anh",
+    "parentId": {
+      "$oid": "65f000000000000000002002"
+    },
+    "sortOrder": 4,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002020"
+    },
+    "name": "Phụ kiện vest",
+    "slug": "phu-kien-vest",
+    "parentId": {
+      "$oid": "65f000000000000000002003"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002021"
+    },
+    "name": "Vest Nam",
+    "slug": "vest-nam",
+    "parentId": {
+      "$oid": "65f000000000000000002003"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002022"
+    },
+    "name": "Áo Tấc",
+    "slug": "ao-tac",
+    "parentId": {
+      "$oid": "65f000000000000000002004"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002023"
+    },
+    "name": "Nhật Bình",
+    "slug": "nhat-binh",
+    "parentId": {
+      "$oid": "65f000000000000000002004"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002024"
+    },
+    "name": "Bé Gái",
+    "slug": "be-gai",
+    "parentId": {
+      "$oid": "65f000000000000000002005"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002025"
+    },
+    "name": "Bé Trai",
+    "slug": "be-trai",
+    "parentId": {
+      "$oid": "65f000000000000000002005"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002026"
+    },
+    "name": "băng đô",
+    "slug": "bang-do",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002027"
+    },
+    "name": "Giày Dép",
+    "slug": "giay-dep",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002028"
+    },
+    "name": "Hoa Cầm Tay",
+    "slug": "hoa-cam-tay",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 3,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000002029"
+    },
+    "name": "Mắt Kính",
+    "slug": "mat-kinh",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 4,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000202a"
+    },
+    "name": "Nón",
+    "slug": "non",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 5,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000202b"
+    },
+    "name": "Phụ Kiện Khác",
+    "slug": "phu-kien-khac",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 6,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000202c"
+    },
+    "name": "quạt",
+    "slug": "quat",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 7,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000202d"
+    },
+    "name": "Trâm Cài Tóc",
+    "slug": "tram-cai-toc",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 8,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000202e"
+    },
+    "name": "Túi Giỏ",
+    "slug": "tui-gio",
+    "parentId": {
+      "$oid": "65f000000000000000002008"
+    },
+    "sortOrder": 9,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f00000000000000000202f"
+    },
+    "name": "Quần Áo Dài Nữ",
+    "slug": "quan-ao-dai-nu",
+    "parentId": {
+      "$oid": "65f000000000000000002009"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-01-29T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000301"
+    },
+    "customerId": {
+      "$oid": "65f000000000000000000003"
+    },
+    "staffId": {
+      "$oid": "65f000000000000000000002"
+    },
+    "status": "Deposited",
+    "rentStartDate": {
+      "$date": "2026-03-02T00:00:00Z"
+    },
+    "rentEndDate": {
+      "$date": "2026-03-04T00:00:00Z"
+    },
+    "depositAmount": 300000,
+    "remainingAmount": 400000,
+    "washingFee": 0,
+    "damageFee": 0,
+    "totalAmount": 700000,
+    "createdAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-28T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

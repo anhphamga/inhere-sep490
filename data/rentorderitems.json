@@ -1,0 +1,58 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000401"
+    },
+    "orderId": {
+      "$oid": "65f000000000000000000301"
+    },
+    "productInstanceId": {
+      "$oid": "65f000000000000000000203"
+    },
+    "baseRentPrice": 250000,
+    "finalPrice": 250000,
+    "condition": "New",
+    "appliedRuleIds": [],
+    "selectLevel": "Standard",
+    "size": "S",
+    "color": "Hồng pastel",
+    "note": "",
+    "createdAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-28T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000402"
+    },
+    "orderId": {
+      "$oid": "65f000000000000000000301"
+    },
+    "productInstanceId": {
+      "$oid": "65f000000000000000000201"
+    },
+    "baseRentPrice": 650000,
+    "finalPrice": 450000,
+    "condition": "Good",
+    "appliedRuleIds": [
+      {
+        "$oid": "65f000000000000000000b01"
+      }
+    ],
+    "selectLevel": "Premium",
+    "size": "M",
+    "color": "Đỏ",
+    "note": "Giảm giá combo 200k.",
+    "createdAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-28T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

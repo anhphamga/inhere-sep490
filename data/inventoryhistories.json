@@ -1,0 +1,44 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000c01"
+    },
+    "productInstanceId": {
+      "$oid": "65f000000000000000000203"
+    },
+    "status": "Rented",
+    "startDate": {
+      "$date": "2026-02-27T08:00:00Z"
+    },
+    "endDate": null,
+    "note": "Bắt đầu cho thuê theo đơn RENT_0001.",
+    "createdAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000c02"
+    },
+    "productInstanceId": {
+      "$oid": "65f000000000000000000202"
+    },
+    "status": "Washing",
+    "startDate": {
+      "$date": "2026-02-28T02:00:00Z"
+    },
+    "endDate": null,
+    "note": "Đưa đi giặt sau khi trả.",
+    "createdAt": {
+      "$date": "2026-02-28T02:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-28T02:30:00Z"
+    },
+    "__v": 0
+  }
+]

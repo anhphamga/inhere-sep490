@@ -1,0 +1,42 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000001001"
+    },
+    "title": "Kinh nghiệm thuê áo dài chụp ảnh Hội An",
+    "slug": "kinh-nghiem-thue-ao-dai-chup-anh-hoi-an",
+    "thumbnail": "/uploads/blogs/tips-1.jpg",
+    "category": "Tips",
+    "likeCount": 5,
+    "viewCount": 120,
+    "status": "published",
+    "content": "Gợi ý chọn màu, chọn size, và khung giờ chụp ảnh đẹp tại phố cổ Hội An.",
+    "createdAt": {
+      "$date": "2026-02-06T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000001002"
+    },
+    "title": "Bảng giá thuê áo dài 2026 (cập nhật)",
+    "slug": "bang-gia-thue-ao-dai-2026",
+    "thumbnail": "/uploads/blogs/price-2026.jpg",
+    "category": "Pricing",
+    "likeCount": 2,
+    "viewCount": 60,
+    "status": "draft",
+    "content": "Tổng hợp mức giá thuê theo chất liệu và dòng áo dài.",
+    "createdAt": {
+      "$date": "2026-02-21T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

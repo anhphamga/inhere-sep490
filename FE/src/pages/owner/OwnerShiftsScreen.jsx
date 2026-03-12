@@ -1,4 +1,4 @@
-import StaffCalendar from './StaffCalendar'
+import StaffCalendar from '../../components/owner/StaffCalendar'
 import { useNavigate } from 'react-router-dom'
 
 const OwnerShiftsScreen = () => {

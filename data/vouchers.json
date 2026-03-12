@@ -1,0 +1,46 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000e01"
+    },
+    "code": "WELCOME50K",
+    "discountType": "Fixed",
+    "discountValue": 50000,
+    "minOrderValue": 300000,
+    "expiryDate": {
+      "$date": "2026-12-31T23:59:59Z"
+    },
+    "usageLimit": 1000,
+    "usedCount": 12,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-02-13T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000e02"
+    },
+    "code": "RENT10",
+    "discountType": "Percentage",
+    "discountValue": 10,
+    "minOrderValue": 500000,
+    "expiryDate": {
+      "$date": "2026-06-30T23:59:59Z"
+    },
+    "usageLimit": null,
+    "usedCount": 3,
+    "isActive": true,
+    "createdAt": {
+      "$date": "2026-02-18T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import UserDetail from './UserDetail'
+import UserDetail from '../../components/owner/UserDetail'
 
 const OwnerUserDetailScreen = () => {
     const { userId } = useParams()

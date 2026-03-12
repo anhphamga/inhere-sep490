@@ -1,4 +1,4 @@
-import UsersList from './UsersList'
+import UsersList from '../../components/owner/UsersList'
 import { useNavigate } from 'react-router-dom'
 
 const OwnerUsersScreen = () => {

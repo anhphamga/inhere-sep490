@@ -50,5 +50,18 @@ const requireOwner = (req, res, next) => {
 
 module.exports = {
   requireAuth,
-  requireOwner
+  requireOwner,
+  // Alias for consistency
+  authenticate: requireAuth,
+  authorize: (...roles) => {
+    return (req, res, next) => {
+      if (!req.user || !roles.map(r => r.toLowerCase()).includes(req.user.role.toLowerCase())) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden - Bạn không có quyền thực hiện thao tác này'
+        });
+      }
+      return next();
+    };
+  }
 };

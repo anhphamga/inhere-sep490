@@ -7,6 +7,7 @@ import {
     ChevronRight,
     CreditCard,
     LayoutDashboard,
+    LogOut,
     Megaphone,
     PanelLeft,
     PanelRight,
@@ -15,15 +16,18 @@ import {
     Search,
     Settings,
     Shirt,
-    Users
+    Users,
+    Package
 } from 'lucide-react'
-import { cn } from '../lib/utils'
-import './owner.css'
+import { cn } from '../../utils/ui.utils'
+import { useAuth } from '../../contexts/AuthContext'
+import '../../style/features/owner/owner.css'
 
 const navItems = [
     { to: '/owner/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/owner/users', label: 'Users', icon: Users },
     { to: '/owner/products', label: 'Products', icon: Shirt },
+    { to: '/owner/inventory', label: 'Inventory', icon: Package },
     { to: '/owner/staff', label: 'Staff', icon: BadgeCheck },
     { to: '/owner/orders', label: 'Orders', icon: ReceiptText },
     { to: '/owner/promotions', label: 'Promotions', icon: Megaphone },
@@ -36,6 +40,7 @@ const pageTitleMap = {
     dashboard: 'Dashboard',
     users: 'Users',
     products: 'Products',
+    inventory: 'Inventory',
     staff: 'Staff',
     'staff-calendar': 'Staff Calendar',
     'staff-analytics': 'Staff Analytics',
@@ -60,12 +65,20 @@ const layoutOptions = ['lithium', 'helium', 'hydrogen', 'carbon', 'boron', 'bery
 const OwnerLayout = () => {
     const location = useLocation()
     const navigate = useNavigate()
+    const { logout } = useAuth()
     const [settingsOpen, setSettingsOpen] = useState(false)
     const [appearance, setAppearance] = useState(() => localStorage.getItem('owner_appearance') || 'light')
     const [direction, setDirection] = useState(() => localStorage.getItem('owner_direction') || 'ltr')
     const [layoutMode, setLayoutMode] = useState('hydrogen')
     const [accentColor, setAccentColor] = useState('blue')
     const [ownerMenuOpen, setOwnerMenuOpen] = useState(false)
+
+    const handleLogout = async () => {
+        if (confirm('Bạn có chắc chắn muốn đăng xuất?')) {
+            await logout()
+            navigate('/login')
+        }
+    }
 
     const pathParts = location.pathname.split('/').filter(Boolean)
     const currentSegment = pathParts[1] || 'dashboard'
@@ -258,6 +271,14 @@ const OwnerLayout = () => {
                                 onClick={() => setSettingsOpen(true)}
                             >
                                 <Settings className="w-5 h-5" />
+                            </button>
+                            <button
+                                type="button"
+                                className="p-2 text-red-500 hover:bg-red-100 rounded-full transition-colors"
+                                onClick={handleLogout}
+                                title="Đăng xuất"
+                            >
+                                <LogOut className="w-5 h-5" />
                             </button>
                         </div>
                     </div>

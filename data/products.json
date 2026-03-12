@@ -1,0 +1,72 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000101"
+    },
+    "name": "Áo dài cưới đỏ thêu rồng",
+    "category": "Áo Dài Cưới",
+    "size": "M",
+    "color": "Đỏ",
+    "description": "Áo dài cưới truyền thống, thêu rồng phượng, phù hợp chụp ảnh cưới.",
+    "images": [
+      "/uploads/products/aodai-cuoi-do-1.jpg",
+      "/uploads/products/aodai-cuoi-do-2.jpg"
+    ],
+    "baseRentPrice": 650000,
+    "baseSalePrice": 3200000,
+    "likeCount": 12,
+    "createdAt": {
+      "$date": "2026-01-09T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-23T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000102"
+    },
+    "name": "Áo dài cách tân pastel",
+    "category": "Áo Dài Cách Tân Cho Thuê",
+    "size": "S",
+    "color": "Hồng pastel",
+    "description": "Form trẻ trung, nhẹ nhàng, phù hợp dạo phố Hội An.",
+    "images": [
+      "/uploads/products/aodai-cachtan-1.jpg"
+    ],
+    "baseRentPrice": 250000,
+    "baseSalePrice": 990000,
+    "likeCount": 34,
+    "createdAt": {
+      "$date": "2026-01-24T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-25T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000103"
+    },
+    "name": "Áo dài nam xanh đậm",
+    "category": "Áo Dài Nam",
+    "size": "L",
+    "color": "Xanh đậm",
+    "description": "Áo dài nam lịch lãm, chất vải dày dặn, lên form đẹp.",
+    "images": [
+      "/uploads/products/aodai-nam-xanh-1.jpg"
+    ],
+    "baseRentPrice": 300000,
+    "baseSalePrice": 1200000,
+    "likeCount": 8,
+    "createdAt": {
+      "$date": "2026-02-03T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

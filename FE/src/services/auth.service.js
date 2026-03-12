@@ -1,64 +1,69 @@
-import axiosClient from '../api/axiosClient'
+import {
+  changePasswordRequest,
+  forgotPasswordRequest,
+  getMeRequest,
+  getProfileRequest,
+  googleLoginRequest,
+  loginRequest,
+  logoutRequest,
+  resetPasswordRequest,
+  signupRequest,
+  updateProfileRequest,
+  uploadAvatarRequest
+} from '../api/auth.api'
 
 export const signupApi = async (payload) => {
-  const response = await axiosClient.post('/auth/signup', payload)
+  const response = await signupRequest(payload)
   return response.data
 }
 
 export const loginApi = async (payload) => {
-  const response = await axiosClient.post('/auth/login', payload)
+  const response = await loginRequest(payload)
   return response.data
 }
 
 export const googleLoginApi = async (payload) => {
-  const response = await axiosClient.post('/auth/google-login', payload)
+  const response = await googleLoginRequest(payload)
   return response.data
 }
 
 export const forgotPasswordApi = async (payload) => {
-  const response = await axiosClient.post('/auth/forgot-password', payload)
+  const response = await forgotPasswordRequest(payload)
   return response.data
 }
 
 export const resetPasswordApi = async (payload) => {
-  const response = await axiosClient.post('/auth/reset-password', payload)
+  const response = await resetPasswordRequest(payload)
   return response.data
 }
 
 export const logoutApi = async () => {
-  const response = await axiosClient.post('/auth/logout')
+  const response = await logoutRequest()
   return response.data
 }
 
 export const getMeApi = async () => {
-  const response = await axiosClient.get('/auth/me')
+  const response = await getMeRequest()
   return response.data
 }
 
 export const getProfileApi = async () => {
-  const response = await axiosClient.get('/users/me')
+  const response = await getProfileRequest()
   return response.data
 }
 
 export const updateProfileApi = async (payload) => {
-  const response = await axiosClient.put('/users/me', payload)
+  const response = await updateProfileRequest(payload)
   return response.data
 }
 
 export const changePasswordApi = async (payload) => {
-  const response = await axiosClient.put('/users/me/change-password', payload)
+  const response = await changePasswordRequest(payload)
   return response.data
 }
 
 export const uploadAvatarApi = async (file) => {
-  const formData = new FormData()
-  formData.append('avatar', file)
-
-  const response = await axiosClient.put('/users/me/avatar', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
-  })
+  const response = await uploadAvatarRequest(file)
 
   return response.data
 }

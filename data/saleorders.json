@@ -1,0 +1,30 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000801"
+    },
+    "customerId": {
+      "$oid": "65f000000000000000000003"
+    },
+    "staffId": {
+      "$oid": "65f000000000000000000002"
+    },
+    "productInstanceId": {
+      "$oid": "65f000000000000000000204"
+    },
+    "status": "Paid",
+    "paymentMethod": "Online",
+    "discountAmount": 50000,
+    "shippingFee": 30000,
+    "totalAmount": 1180000,
+    "shippingAddress": "12 Tràng Tiền, Hoàn Kiếm, Hà Nội",
+    "shippingPhone": "0900000003",
+    "createdAt": {
+      "$date": "2026-02-24T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

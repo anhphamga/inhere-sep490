@@ -1,0 +1,54 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000f01"
+    },
+    "title": "Royal Elegance in Ancient Town",
+    "subtitle": "Thuê áo dài chụp ảnh Hội An",
+    "targetLink": "/collections/aodai-thue",
+    "imagePath": "/uploads/banners/hero-1.jpg",
+    "imageUrl": "",
+    "position": "hero",
+    "isActive": true,
+    "sortOrder": 1,
+    "startAt": {
+      "$date": "2026-02-01T00:00:00Z"
+    },
+    "endAt": {
+      "$date": "2026-12-31T23:59:59Z"
+    },
+    "createdAt": {
+      "$date": "2026-02-03T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-25T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000f02"
+    },
+    "title": "Ưu đãi Combo Gia Đình",
+    "subtitle": "Giảm thêm 10% khi thuê từ 3 bộ",
+    "targetLink": "/promotions/family-combo",
+    "imagePath": "",
+    "imageUrl": "https://example.com/banners/family-combo.jpg",
+    "position": "promo",
+    "isActive": true,
+    "sortOrder": 2,
+    "startAt": {
+      "$date": "2026-02-15T00:00:00Z"
+    },
+    "endAt": {
+      "$date": "2026-03-15T23:59:59Z"
+    },
+    "createdAt": {
+      "$date": "2026-02-15T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

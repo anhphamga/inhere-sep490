@@ -1,959 +1,1271 @@
-/**
- * PRODUCT CONTROLLER - Owner quản lý sản phẩm trang phục
- */
-
-const xlsx = require('xlsx');
-const ExcelJS = require('exceljs');
 const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
+const RentOrderItem = require('../model/RentOrderItem.model');
+const SaleOrderItem = require('../model/SaleOrderItem.model');
 const { hasCloudinaryConfig, uploadImageBuffer } = require('../utils/cloudinary');
+const {
+  getRequestLang,
+  resolveLocalizedField,
+  normalizeLocalizedInput,
+  hasLocalizedText,
+} = require('../utils/i18n');
 
-const sanitizeProduct = (product) => ({
-    id: product._id,
-    name: product.name,
-    category: product.category,
-    size: product.size,
-    color: product.color,
-    description: product.description,
-    images: product.images,
-    baseRentPrice: product.baseRentPrice,
-    baseSalePrice: product.baseSalePrice,
-    depositAmount: product.depositAmount,
-    buyoutValue: product.buyoutValue,
-    createdAt: product.createdAt,
-    updatedAt: product.updatedAt
+const toNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const toIntegerOrNaN = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) ? n : Number.NaN;
+};
+
+const normalizeImages = (images) => {
+  if (!Array.isArray(images)) return [];
+  return images
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+};
+
+const normalizeText = (value) => String(value || '').trim();
+
+const parseJsonLike = (value, fallback) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (Array.isArray(value) || (value && typeof value === 'object')) return value;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+};
+
+const normalizeSizeToken = (value) => normalizeText(value).toUpperCase();
+
+const normalizeSizes = (values) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const result = [];
+
+  source.forEach((item) => {
+    const normalized = normalizeSizeToken(item);
+    if (!normalized) return;
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    result.push(normalized);
+  });
+
+  return result;
+};
+
+const normalizeColorName = (value) => normalizeText(value);
+
+const normalizeColorVariants = (values) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const result = [];
+
+  source.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const name = normalizeColorName(item.name);
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({
+      name,
+      images: normalizeImages(item.images),
+    });
+  });
+
+  return result;
+};
+
+const normalizeVariantMatrix = (values) => {
+  const source = Array.isArray(values) ? values : [];
+  const result = [];
+  const seen = new Set();
+
+  source.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const size = normalizeSizeToken(item.size);
+    const color = normalizeColorName(item.color);
+    if (!size || !color) return;
+    const key = `${size}::${color.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    result.push({
+      size,
+      color,
+      rentPrice: Math.max(toNumber(item.rentPrice, 0), 0),
+      salePrice: Math.max(toNumber(item.salePrice, 0), 0),
+      quantity: Math.max(toIntegerOrNaN(item.quantity), 0) || 0,
+    });
+  });
+
+  return result;
+};
+
+const applyCategoryFilter = (filter = {}, rawCategory = '') => {
+  const category = normalizeText(rawCategory);
+  if (!category) return filter;
+  return {
+    ...filter,
+    $or: [
+      { category },
+      { 'category.vi': category },
+      { 'category.en': category },
+      { categoryVi: category },
+      { categoryEn: category },
+    ],
+  };
+};
+
+const normalizePayload = (body = {}) => {
+  const rawSizes = parseJsonLike(body.sizes, Array.isArray(body.sizes) ? body.sizes : [body.size]);
+  const sizes = normalizeSizes(rawSizes);
+
+  const rawColorVariants = parseJsonLike(body.colorVariants, []);
+  const colorVariants = normalizeColorVariants(rawColorVariants);
+  const colorNames = colorVariants.map((item) => item.name);
+  const primaryColor = normalizeText(body.color) || colorNames[0] || '';
+
+  const mergedImages = normalizeImages([
+    ...normalizeImages(parseJsonLike(body.images, [])),
+    ...colorVariants.flatMap((item) => item.images || []),
+  ]);
+
+  const categoryParent = normalizeText(body.categoryParent);
+  const categoryChild = normalizeText(body.categoryChild);
+  const categoryValue = normalizeLocalizedInput(body, 'category');
+
+  return {
+    name: normalizeLocalizedInput(body, 'name'),
+    category: categoryValue,
+    categoryPath: {
+      parent: categoryParent,
+      child: categoryChild,
+    },
+    size: normalizeText(body.size) || sizes[0] || '',
+    sizes,
+    color: primaryColor,
+    colorVariants,
+    pricingMode: normalizeText(body.pricingMode) === 'per_variant' ? 'per_variant' : 'common',
+    commonRentPrice: Math.max(toNumber(body.commonRentPrice, toNumber(body.baseRentPrice, 0)), 0),
+    variantMatrix: normalizeVariantMatrix(parseJsonLike(body.variantMatrix, [])),
+    isDraft: Boolean(body.isDraft === true || String(body.isDraft).toLowerCase() === 'true'),
+    description: normalizeLocalizedInput(body, 'description'),
+    images: mergedImages,
+    baseRentPrice: toNumber(body.baseRentPrice, 0),
+    baseSalePrice: toNumber(body.baseSalePrice, 0),
+    depositAmount: Math.max(toNumber(body.depositAmount, 0), 0),
+    buyoutValue: Math.max(toNumber(body.buyoutValue, 0), 0),
+    likeCount: Math.max(toNumber(body.likeCount, 0), 0),
+  };
+};
+
+const ensureOwnerProductRequired = (payload) => {
+  if (payload.isDraft) {
+    if (Number.isNaN(payload.baseRentPrice) || Number.isNaN(payload.baseSalePrice)) {
+      return 'baseRentPrice and baseSalePrice must be valid numbers';
+    }
+    if (payload.baseRentPrice < 0 || payload.baseSalePrice < 0) {
+      return 'baseRentPrice and baseSalePrice must be >= 0';
+    }
+    if (Number.isNaN(payload.depositAmount) || Number.isNaN(payload.buyoutValue)) {
+      return 'depositAmount and buyoutValue must be valid numbers';
+    }
+    if (payload.depositAmount < 0 || payload.buyoutValue < 0) {
+      return 'depositAmount and buyoutValue must be >= 0';
+    }
+    return null;
+  }
+
+  if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
+    return 'name, category, size, color are required';
+  }
+
+  const uniqueSizes = new Set((payload.sizes || []).map((item) => normalizeSizeToken(item)));
+  if (uniqueSizes.size !== (payload.sizes || []).length) {
+    return 'sizes must not contain duplicates';
+  }
+
+  const colorNames = (payload.colorVariants || []).map((item) => normalizeColorName(item.name).toLowerCase()).filter(Boolean);
+  const uniqueColors = new Set(colorNames);
+  if (uniqueColors.size !== colorNames.length) {
+    return 'colors must not contain duplicates';
+  }
+
+  if (Number.isNaN(payload.baseRentPrice) || Number.isNaN(payload.baseSalePrice)) {
+    return 'baseRentPrice and baseSalePrice must be valid numbers';
+  }
+
+  if (payload.baseRentPrice < 0 || payload.baseSalePrice < 0) {
+    return 'baseRentPrice and baseSalePrice must be >= 0';
+  }
+
+  if (Number.isNaN(payload.depositAmount) || Number.isNaN(payload.buyoutValue)) {
+    return 'depositAmount and buyoutValue must be valid numbers';
+  }
+
+  if (payload.depositAmount < 0 || payload.buyoutValue < 0) {
+    return 'depositAmount and buyoutValue must be >= 0';
+  }
+
+  return null;
+};
+
+const toProductImageUrl = (product) =>
+  Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : '';
+
+const sanitizeProduct = (product, quantity = {}, lang = 'vi') => ({
+  id: product._id,
+  _id: product._id,
+  name: resolveLocalizedField(product, 'name', lang),
+  category: resolveLocalizedField(product, 'category', lang),
+  categoryPath: product.categoryPath || { parent: '', child: '' },
+  size: product.size,
+  sizes: Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes : [product.size].filter(Boolean),
+  color: product.color,
+  colorVariants: Array.isArray(product.colorVariants) ? product.colorVariants : [],
+  pricingMode: product.pricingMode || 'common',
+  commonRentPrice: toNumber(product.commonRentPrice, toNumber(product.baseRentPrice, 0)),
+  variantMatrix: Array.isArray(product.variantMatrix) ? product.variantMatrix : [],
+  isDraft: Boolean(product.isDraft),
+  description: resolveLocalizedField(product, 'description', lang),
+  images: Array.isArray(product.images) ? product.images : [],
+  imageUrl: toProductImageUrl(product),
+  baseRentPrice: product.baseRentPrice,
+  baseSalePrice: product.baseSalePrice,
+  depositAmount: toNumber(product.depositAmount, 0),
+  buyoutValue: toNumber(product.buyoutValue, 0),
+  likeCount: product.likeCount || 0,
+  totalQuantity: quantity.totalQuantity || 0,
+  availableQuantity: quantity.availableQuantity || 0,
+  createdAt: product.createdAt,
+  updatedAt: product.updatedAt,
 });
 
-const buildProductMatch = (query) => {
-    const match = {};
-
-    if (query.category) {
-        match.category = query.category;
-    }
-
-    if (query.size) {
-        match.size = query.size;
-    }
-
-    if (query.color) {
-        match.color = query.color;
-    }
-
-    return match;
-};
-
-const normalizeProductKeyPart = (value) => String(value || '')
-    .normalize('NFC')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-
-const normalizeProductKey = (value) => {
-    const normalized = String(value || '').normalize('NFC').trim().toLowerCase();
-
-    if (!normalized) {
-        return '';
-    }
-
-    return normalized
-        .split('|')
-        .map((part) => part.trim().replace(/\s+/g, ' '))
-        .filter((part) => part.length > 0)
-        .join('|');
-};
-
-const buildProductKey = (source) => [
-    source.name,
-    source.category,
-    source.size,
-    source.color
-]
-    .map((value) => normalizeProductKeyPart(value))
-    .join('|');
-
-const buildProductAttrKey = (source) => [
-    source.category,
-    source.size,
-    source.color
-]
-    .map((value) => normalizeProductKeyPart(value))
-    .join('|');
-
-const parseImages = (value) => {
-    if (Array.isArray(value)) {
-        return value.filter(Boolean);
-    }
-
-    if (typeof value === 'string') {
-        return value
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-    }
-
+const uploadOwnerImages = async (files = []) => {
+  if (!Array.isArray(files) || files.length === 0) {
     return [];
+  }
+
+  if (hasCloudinaryConfig()) {
+    const uploaded = await Promise.all(
+      files.map((file, index) =>
+        uploadImageBuffer(file.buffer, {
+          folder: 'inhere/products',
+          public_id: `owner_product_${Date.now()}_${index}`,
+          resource_type: 'image',
+        }).then((result) => result.secure_url)
+      )
+    );
+    return uploaded.filter(Boolean);
+  }
+
+  // Fallback for local/dev: keep image as data URL when cloud storage is not configured.
+  return files.map((file) => `data:${file.mimetype};base64,${file.buffer.toString('base64')}`);
 };
 
-const parseInstances = (value) => {
-    if (Array.isArray(value)) {
-        return value;
-    }
-
-    if (typeof value === 'string') {
-        try {
-            const parsed = JSON.parse(value);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch (error) {
-            return [];
-        }
-    }
-
-    return [];
+const createInstances = async ({ productId, quantity, baseRentPrice, baseSalePrice }) => {
+  if (!Number.isInteger(quantity) || quantity <= 0) return;
+  const docs = Array.from({ length: quantity }, () => ({
+    productId,
+    conditionLevel: 'New',
+    conditionScore: 100,
+    lifecycleStatus: 'Available',
+    currentRentPrice: baseRentPrice,
+    currentSalePrice: baseSalePrice,
+  }));
+  await ProductInstance.insertMany(docs);
 };
 
-const getImageRowNumber = (range) => {
-    const topLeftAnchor = range?.tl || {};
-    const zeroBasedRow = topLeftAnchor.nativeRow ?? topLeftAnchor.row;
+const getQuantityMap = async (productIds = []) => {
+  if (!Array.isArray(productIds) || productIds.length === 0) return new Map();
 
-    if (typeof zeroBasedRow !== 'number') {
-        return null;
-    }
+  const rows = await ProductInstance.aggregate([
+    {
+      $match: {
+        productId: { $in: productIds },
+      },
+    },
+    {
+      $group: {
+        _id: '$productId',
+        totalQuantity: { $sum: 1 },
+        availableQuantity: {
+          $sum: {
+            $cond: [{ $eq: ['$lifecycleStatus', 'Available'] }, 1, 0],
+          },
+        },
+      },
+    },
+  ]);
 
-    return Math.floor(zeroBasedRow) + 1;
+  return new Map(
+    rows.map((row) => [
+      String(row._id),
+      {
+        totalQuantity: row.totalQuantity || 0,
+        availableQuantity: row.availableQuantity || 0,
+      },
+    ])
+  );
 };
 
-const extractEmbeddedImagesByRow = async (fileBuffer) => {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(fileBuffer);
+const getProducts = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const purpose = (req.query.purpose || 'all').toLowerCase();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 50);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const category = normalizeText(req.query.category);
+    const skip = (page - 1) * limit;
 
-    const worksheet = workbook.getWorksheet('Products') || workbook.worksheets[0];
-    if (!worksheet || typeof worksheet.getImages !== 'function') {
-        return new Map();
+    const withCategory = (filter) => applyCategoryFilter(filter, category);
+
+    let products = [];
+    let totalItems = 0;
+    if (purpose === 'buy') {
+      const primaryFilter = withCategory({ baseSalePrice: { $gt: 0 } });
+      totalItems = await Product.countDocuments(primaryFilter);
+      if (totalItems > 0) {
+        products = await Product.find(primaryFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      } else {
+        const fallbackFilter = withCategory({});
+        totalItems = await Product.countDocuments(fallbackFilter);
+        products = await Product.find(fallbackFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      }
+    } else if (purpose === 'fitting') {
+      const filter = withCategory({ baseRentPrice: { $gt: 0 } });
+      totalItems = await Product.countDocuments(filter);
+      products = await Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+    } else {
+      const filter = withCategory({});
+      totalItems = await Product.countDocuments(filter);
+      products = await Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
     }
 
-    const images = worksheet.getImages();
-    const imageBuffersByRow = new Map();
+    const data = products.map((product) => ({
+      _id: product._id,
+      name: resolveLocalizedField(product, 'name', lang),
+      category: resolveLocalizedField(product, 'category', lang),
+      imageUrl: toProductImageUrl(product),
+      createdAt: product.createdAt,
+      baseRentPrice: product.baseRentPrice,
+      baseSalePrice: product.baseSalePrice,
+      depositAmount: toNumber(product.depositAmount, 0),
+      buyoutValue: toNumber(product.buyoutValue, 0),
+      likeCount: product.likeCount || 0,
+      size: product.size,
+      sizes: Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes : [product.size].filter(Boolean),
+      color: product.color,
+      colorVariants: Array.isArray(product.colorVariants) ? product.colorVariants : [],
+      description: resolveLocalizedField(product, 'description', lang),
+      images: Array.isArray(product.images) ? product.images : [],
+    }));
 
-    images.forEach((image, index) => {
-        const rowNumber = getImageRowNumber(image.range);
-        if (!rowNumber) {
-            return;
-        }
-
-        const media = workbook.model?.media?.find((item) => item.index === image.imageId);
-        if (!media || !Buffer.isBuffer(media.buffer)) {
-            return;
-        }
-
-        if (!imageBuffersByRow.has(rowNumber)) {
-            imageBuffersByRow.set(rowNumber, []);
-        }
-
-        imageBuffersByRow.get(rowNumber).push({
-            buffer: media.buffer,
-            index
-        });
+    return res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        page,
+        limit,
+        totalItems,
+        totalPages: Math.ceil(totalItems / limit) || 1,
+      },
     });
-
-    return imageBuffersByRow;
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting products',
+      error: error.message,
+    });
+  }
 };
 
 const listOwnerProducts = async (req, res) => {
-    try {
-        const match = buildProductMatch(req.query);
-        const { conditionLevel, lifecycleStatus } = req.query;
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const filter = {};
+    const category = normalizeText(req.query.category);
+    const size = normalizeText(req.query.size);
+    const color = normalizeText(req.query.color);
+    const lifecycleStatus = normalizeText(req.query.lifecycleStatus);
 
-        const instancePipeline = [
-            {
-                $match: {
-                    $expr: { $eq: ['$productId', '$$productId'] }
-                }
-            }
-        ];
+    if (category) Object.assign(filter, applyCategoryFilter({}, category));
+    if (size) filter.size = size;
+    if (color) filter.color = color;
 
-        const aggregatePipeline = [
-            { $match: match },
-            {
-                $lookup: {
-                    from: 'productinstances',
-                    let: { productId: '$_id' },
-                    pipeline: instancePipeline,
-                    as: 'instances'
-                }
-            },
-            {
-                $addFields: {
-                    totalQuantity: { $size: '$instances' },
-                    availableQuantity: {
-                        $size: {
-                            $filter: {
-                                input: '$instances',
-                                as: 'item',
-                                cond: { $eq: ['$$item.lifecycleStatus', 'Available'] }
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                $project: {
-                    instances: 0
-                }
-            },
-            { $sort: { createdAt: -1 } }
-        ];
-
-        if (conditionLevel) {
-            aggregatePipeline.splice(2, 0, {
-                $match: { 'instances.conditionLevel': conditionLevel }
-            });
-        }
-
-        if (lifecycleStatus) {
-            aggregatePipeline.splice(2, 0, {
-                $match: { 'instances.lifecycleStatus': lifecycleStatus }
-            });
-        }
-
-        const products = await Product.aggregate(aggregatePipeline);
-
-        return res.status(200).json({
-            success: true,
-            message: 'Get product list successfully',
-            data: products
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error getting product list',
-            error: error.message
-        });
+    if (lifecycleStatus) {
+      const productIds = await ProductInstance.distinct('productId', { lifecycleStatus });
+      filter._id = { $in: productIds };
     }
+
+    const products = await Product.find(filter).sort({ createdAt: -1 }).lean();
+    const quantityMap = await getQuantityMap(products.map((item) => item._id));
+    const data = products.map((item) => sanitizeProduct(item, quantityMap.get(String(item._id)), lang));
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting owner product list',
+      error: error.message,
+    });
+  }
 };
 
 const getOwnerProductDetail = async (req, res) => {
-    try {
-        const { id } = req.params;
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const { id } = req.params;
+    const product = await Product.findById(id).lean();
 
-        const product = await Product.findById(id);
-
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: 'Product not found'
-            });
-        }
-
-        const instances = await ProductInstance.find({ productId: product._id }).sort({ createdAt: -1 });
-
-        return res.status(200).json({
-            success: true,
-            message: 'Get product detail successfully',
-            data: {
-                product: sanitizeProduct(product),
-                instances,
-                totalQuantity: instances.length,
-                availableQuantity: instances.filter((item) => item.lifecycleStatus === 'Available').length
-            }
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error getting product detail',
-            error: error.message
-        });
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
     }
+
+    const instances = await ProductInstance.find({ productId: product._id }).sort({ createdAt: -1 }).lean();
+    const totalQuantity = instances.length;
+    const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        product: sanitizeProduct(product, { totalQuantity, availableQuantity }, lang),
+        instances,
+        totalQuantity,
+        availableQuantity,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting owner product detail',
+      error: error.message,
+    });
+  }
+};
+
+const getTopRentedProducts = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 4, 1), 12);
+
+    const rows = await RentOrderItem.aggregate([
+      { $group: { _id: '$productInstanceId', rentCount: { $sum: 1 } } },
+      { $lookup: { from: 'productinstances', localField: '_id', foreignField: '_id', as: 'instance' } },
+      { $unwind: '$instance' },
+      { $group: { _id: '$instance.productId', rentCount: { $sum: '$rentCount' } } },
+      { $sort: { rentCount: -1, _id: 1 } },
+      { $limit: limit },
+      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+      { $unwind: '$product' },
+      {
+        $project: {
+          _id: '$product._id',
+          name: '$product.name',
+          category: '$product.category',
+          imageUrl: { $ifNull: [{ $arrayElemAt: ['$product.images', 0] }, ''] },
+          baseRentPrice: '$product.baseRentPrice',
+          rentCount: 1,
+        },
+      },
+      { $sort: { rentCount: -1, _id: 1 } },
+    ]);
+
+    const data = rows.map((item) => ({
+      ...item,
+      name: resolveLocalizedField(item, 'name', lang),
+      category: resolveLocalizedField(item, 'category', lang),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting top rented products',
+      error: error.message,
+    });
+  }
+};
+
+const getTopLikedProducts = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 24);
+    const rows = await Product.find({ baseRentPrice: { $gt: 0 } }).sort({ likeCount: -1, createdAt: -1, _id: 1 }).limit(limit).lean();
+
+    const data = rows.map((product) => ({
+      _id: product._id,
+      name: resolveLocalizedField(product, 'name', lang),
+      category: resolveLocalizedField(product, 'category', lang),
+      imageUrl: toProductImageUrl(product),
+      baseRentPrice: product.baseRentPrice,
+      likeCount: product.likeCount || 0,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting top liked products',
+      error: error.message,
+    });
+  }
+};
+
+const getTopSoldProducts = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 24);
+
+    const rows = await SaleOrderItem.aggregate([
+      { $group: { _id: '$productId', soldQuantity: { $sum: '$quantity' } } },
+      { $sort: { soldQuantity: -1, _id: 1 } },
+      { $limit: limit },
+      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
+      { $unwind: '$product' },
+      {
+        $project: {
+          _id: '$product._id',
+          name: '$product.name',
+          category: '$product.category',
+          imageUrl: { $ifNull: [{ $arrayElemAt: ['$product.images', 0] }, ''] },
+          baseSalePrice: '$product.baseSalePrice',
+          soldQuantity: 1,
+        },
+      },
+      { $sort: { soldQuantity: -1, _id: 1 } },
+    ]);
+
+    const data = rows.map((item) => ({
+      ...item,
+      name: resolveLocalizedField(item, 'name', lang),
+      category: resolveLocalizedField(item, 'category', lang),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting top sold products',
+      error: error.message,
+    });
+  }
+};
+
+const getProductById = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const product = await Product.findById(req.params.id).lean();
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...product,
+        name: resolveLocalizedField(product, 'name', lang),
+        category: resolveLocalizedField(product, 'category', lang),
+        description: resolveLocalizedField(product, 'description', lang),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting product',
+      error: error.message,
+    });
+  }
+};
+
+const createProduct = async (req, res) => {
+  try {
+    const payload = normalizePayload(req.body);
+    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
+      return res.status(400).json({
+        success: false,
+        message: 'name, category, size, color are required',
+      });
+    }
+
+    const created = await Product.create(payload);
+    return res.status(201).json({
+      success: true,
+      data: created,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error creating product',
+      error: error.message,
+    });
+  }
 };
 
 const createOwnerProduct = async (req, res) => {
-    try {
-        const {
-            name,
-            category,
-            size,
-            color,
-            description,
-            images,
-            baseRentPrice,
-            baseSalePrice,
-            depositAmount,
-            buyoutValue,
-            quantity,
-            instances
-        } = req.body;
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const payload = normalizePayload(req.body);
+    const quantityRaw = req.body?.quantity;
+    const quantity = toIntegerOrNaN(quantityRaw);
 
-        if (!name || !category || !size || !color || baseRentPrice == null || baseSalePrice == null) {
-            return res.status(400).json({
-                success: false,
-                message: 'name, category, size, color, baseRentPrice, baseSalePrice are required'
-            });
-        }
-
-        let uploadedImageUrls = [];
-        if (Array.isArray(req.files) && req.files.length > 0) {
-            if (!hasCloudinaryConfig()) {
-                return res.status(500).json({
-                    success: false,
-                    message: 'Cloudinary is not configured'
-                });
-            }
-
-            const uploadResults = await Promise.all(
-                req.files.map((file, index) => uploadImageBuffer(file.buffer, {
-                    folder: 'inhere/products',
-                    public_id: `product_${Date.now()}_${index}`,
-                    resource_type: 'image'
-                }))
-            );
-
-            uploadedImageUrls = uploadResults.map((result) => result.secure_url).filter(Boolean);
-        }
-
-        const bodyImages = parseImages(images);
-        const normalizedInstances = parseInstances(instances);
-        const parsedQuantity = quantity == null || quantity === '' ? 0 : Number(quantity);
-
-        if (quantity != null && quantity !== '') {
-            if (!Number.isInteger(parsedQuantity) || parsedQuantity < 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'quantity must be a non-negative integer'
-                });
-            }
-        }
-
-        const product = await Product.create({
-            name,
-            category,
-            size,
-            color,
-            description: description || '',
-            images: [...bodyImages, ...uploadedImageUrls],
-            baseRentPrice,
-            baseSalePrice,
-            depositAmount: depositAmount ?? 0,
-            buyoutValue: buyoutValue ?? 0
-        });
-
-        const instanceDocsFromPayload = normalizedInstances.map((instance) => ({
-            productId: product._id,
-            conditionLevel: instance.conditionLevel || 'New',
-            conditionScore: instance.conditionScore ?? 100,
-            lifecycleStatus: instance.lifecycleStatus || 'Available',
-            currentRentPrice: instance.currentRentPrice ?? baseRentPrice,
-            currentSalePrice: instance.currentSalePrice ?? baseSalePrice,
-            note: instance.note || ''
-        }));
-
-        const instanceDocsFromQuantity = parsedQuantity > 0
-            ? Array.from({ length: parsedQuantity }, () => ({
-                productId: product._id,
-                conditionLevel: 'New',
-                conditionScore: 100,
-                lifecycleStatus: 'Available',
-                currentRentPrice: baseRentPrice,
-                currentSalePrice: baseSalePrice,
-                note: ''
-            }))
-            : [];
-
-        const instanceDocs = instanceDocsFromPayload.length > 0
-            ? instanceDocsFromPayload
-            : instanceDocsFromQuantity;
-
-        if (instanceDocs.length > 0) {
-
-            await ProductInstance.insertMany(instanceDocs);
-        }
-
-        return res.status(201).json({
-            success: true,
-            message: 'Create product successfully',
-            data: sanitizeProduct(product)
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error creating product',
-            error: error.message
-        });
+    const validationError = ensureOwnerProductRequired(payload);
+    if (validationError) {
+      return res.status(400).json({
+        success: false,
+        message: validationError,
+      });
     }
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'quantity must be a positive integer',
+      });
+    }
+
+    const uploadedImages = await uploadOwnerImages(req.files);
+    if (uploadedImages.length > 0) {
+      payload.images = normalizeImages([...(payload.images || []), ...uploadedImages]);
+    }
+
+    if (!Array.isArray(payload.images) || payload.images.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'at least one product image is required',
+      });
+    }
+
+    const created = await Product.create(payload);
+    await createInstances({
+      productId: created._id,
+      quantity,
+      baseRentPrice: created.baseRentPrice,
+      baseSalePrice: created.baseSalePrice,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: sanitizeProduct(created.toObject(), { totalQuantity: quantity, availableQuantity: quantity }, lang),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error creating owner product',
+      error: error.message,
+    });
+  }
+};
+
+const updateProduct = async (req, res) => {
+  try {
+    const payload = normalizePayload(req.body);
+    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
+      return res.status(400).json({
+        success: false,
+        message: 'name, category, size, color are required',
+      });
+    }
+
+    const updated = await Product.findByIdAndUpdate(req.params.id, payload, {
+      new: true,
+      runValidators: true,
+    });
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: updated,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating product',
+      error: error.message,
+    });
+  }
 };
 
 const updateOwnerProduct = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const hasQuantityField = Object.prototype.hasOwnProperty.call(req.body, 'quantity');
-        const parsedQuantity = hasQuantityField ? Number(req.body.quantity) : 0;
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const payload = normalizePayload(req.body);
+    const quantityRaw = req.body?.quantity;
+    const shouldAddQuantity = quantityRaw !== undefined && quantityRaw !== null && quantityRaw !== '';
+    const addQuantity = shouldAddQuantity ? toIntegerOrNaN(quantityRaw) : 0;
 
-        if (hasQuantityField && (!Number.isInteger(parsedQuantity) || parsedQuantity < 0)) {
-            return res.status(400).json({
-                success: false,
-                message: 'quantity must be a non-negative integer'
-            });
-        }
-
-        const allowedFields = [
-            'name',
-            'category',
-            'size',
-            'color',
-            'description',
-            'baseRentPrice',
-            'baseSalePrice',
-            'depositAmount',
-            'buyoutValue'
-        ];
-
-        const payload = {};
-        allowedFields.forEach((field) => {
-            if (Object.prototype.hasOwnProperty.call(req.body, field)) {
-                payload[field] = req.body[field];
-            }
-        });
-
-        let uploadedImageUrls = [];
-        if (Array.isArray(req.files) && req.files.length > 0) {
-            if (!hasCloudinaryConfig()) {
-                return res.status(500).json({
-                    success: false,
-                    message: 'Cloudinary is not configured'
-                });
-            }
-
-            const uploadResults = await Promise.all(
-                req.files.map((file, index) => uploadImageBuffer(file.buffer, {
-                    folder: 'inhere/products',
-                    public_id: `product_update_${Date.now()}_${index}`,
-                    resource_type: 'image'
-                }))
-            );
-
-            uploadedImageUrls = uploadResults.map((result) => result.secure_url).filter(Boolean);
-        }
-
-        const hasImagesField = Object.prototype.hasOwnProperty.call(req.body, 'images');
-        if (hasImagesField || uploadedImageUrls.length > 0) {
-            const bodyImages = parseImages(req.body.images);
-            payload.images = [...bodyImages, ...uploadedImageUrls];
-        }
-
-        const shouldCreateInstances = hasQuantityField && parsedQuantity > 0;
-
-        if (Object.keys(payload).length === 0 && !shouldCreateInstances) {
-            return res.status(400).json({
-                success: false,
-                message: 'No valid fields to update'
-            });
-        }
-
-        let product;
-
-        if (Object.keys(payload).length > 0) {
-            product = await Product.findByIdAndUpdate(id, payload, {
-                new: true,
-                runValidators: true
-            });
-        } else {
-            product = await Product.findById(id);
-        }
-
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: 'Product not found'
-            });
-        }
-
-        if (shouldCreateInstances) {
-            const instanceDocs = Array.from({ length: parsedQuantity }, () => ({
-                productId: product._id,
-                conditionLevel: 'New',
-                conditionScore: 100,
-                lifecycleStatus: 'Available',
-                currentRentPrice: product.baseRentPrice,
-                currentSalePrice: product.baseSalePrice,
-                note: ''
-            }));
-
-            await ProductInstance.insertMany(instanceDocs);
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: 'Update product successfully',
-            data: sanitizeProduct(product)
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error updating product',
-            error: error.message
-        });
+    const validationError = ensureOwnerProductRequired(payload);
+    if (validationError) {
+      return res.status(400).json({
+        success: false,
+        message: validationError,
+      });
     }
+
+    if (shouldAddQuantity && (!Number.isInteger(addQuantity) || addQuantity < 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'quantity must be an integer >= 0',
+      });
+    }
+
+    const existing = await Product.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    const uploadedImages = await uploadOwnerImages(req.files);
+    const nextPayload = {
+      ...payload,
+      images: uploadedImages.length > 0
+        ? normalizeImages([...(payload.images || []), ...uploadedImages])
+        : (Array.isArray(payload.images) && payload.images.length > 0 ? payload.images : existing.images),
+    };
+
+    if (!Array.isArray(nextPayload.images) || nextPayload.images.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'at least one product image is required',
+      });
+    }
+
+    const updated = await Product.findByIdAndUpdate(req.params.id, nextPayload, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (addQuantity > 0) {
+      await createInstances({
+        productId: updated._id,
+        quantity: addQuantity,
+        baseRentPrice: updated.baseRentPrice,
+        baseSalePrice: updated.baseSalePrice,
+      });
+    }
+
+    const instances = await ProductInstance.find({ productId: updated._id }).lean();
+    const totalQuantity = instances.length;
+    const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        product: sanitizeProduct(updated.toObject(), { totalQuantity, availableQuantity }, lang),
+        totalQuantity,
+        availableQuantity,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating owner product',
+      error: error.message,
+    });
+  }
 };
 
 const updateOwnerProductCollateral = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { depositAmount, buyoutValue } = req.body;
-
-        if (depositAmount == null && buyoutValue == null) {
-            return res.status(400).json({
-                success: false,
-                message: 'depositAmount or buyoutValue is required'
-            });
-        }
-
-        const updates = {};
-        if (depositAmount != null) {
-            updates.depositAmount = depositAmount;
-        }
-        if (buyoutValue != null) {
-            updates.buyoutValue = buyoutValue;
-        }
-
-        const product = await Product.findByIdAndUpdate(id, updates, {
-            new: true,
-            runValidators: true
-        });
-
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: 'Product not found'
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: 'Update collateral settings successfully',
-            data: sanitizeProduct(product)
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error updating collateral settings',
-            error: error.message
-        });
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const payload = {};
+    if (Object.prototype.hasOwnProperty.call(req.body, 'depositAmount')) {
+      payload.depositAmount = Math.max(toNumber(req.body.depositAmount, 0), 0);
     }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'buyoutValue')) {
+      payload.buyoutValue = Math.max(toNumber(req.body.buyoutValue, 0), 0);
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'depositAmount or buyoutValue is required',
+      });
+    }
+
+    const updated = await Product.findByIdAndUpdate(req.params.id, payload, {
+      new: true,
+      runValidators: true,
+    }).lean();
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: sanitizeProduct(updated, {}, lang),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating collateral info',
+      error: error.message,
+    });
+  }
+};
+
+const deleteProduct = async (req, res) => {
+  try {
+    const deleted = await Product.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: 'Deleted successfully',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error deleting product',
+      error: error.message,
+    });
+  }
 };
 
 const deleteOwnerProduct = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const product = await Product.findByIdAndDelete(id);
-
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: 'Product not found'
-            });
-        }
-
-        await ProductInstance.deleteMany({ productId: id });
-
-        return res.status(200).json({
-            success: true,
-            message: 'Delete product successfully'
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error deleting product',
-            error: error.message
-        });
+  try {
+    const { id } = req.params;
+    const deleted = await Product.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
     }
-};
 
-const exportOwnerProducts = async (req, res) => {
-    try {
-        const match = buildProductMatch(req.query);
-        const includeInstances = req.query.includeInstances === 'true';
+    await ProductInstance.deleteMany({ productId: deleted._id });
 
-        if (req.query.format === 'json') {
-            const products = await Product.find(match).sort({ createdAt: -1 });
-
-            if (!includeInstances) {
-                return res.status(200).json({
-                    success: true,
-                    message: 'Export products successfully',
-                    data: products.map(sanitizeProduct)
-                });
-            }
-
-            const productIds = products.map((product) => product._id);
-            const instances = await ProductInstance.find({ productId: { $in: productIds } });
-
-            const instanceMap = new Map();
-            instances.forEach((instance) => {
-                const key = instance.productId.toString();
-                if (!instanceMap.has(key)) {
-                    instanceMap.set(key, []);
-                }
-                instanceMap.get(key).push(instance);
-            });
-
-            const data = products.map((product) => ({
-                ...sanitizeProduct(product),
-                instances: instanceMap.get(product._id.toString()) || []
-            }));
-
-            return res.status(200).json({
-                success: true,
-                message: 'Export products successfully',
-                data
-            });
-        }
-
-        const products = await Product.find(match).sort({ createdAt: -1 });
-
-        const productRows = products.map((product) => ({
-            name: product.name,
-            category: product.category,
-            size: product.size,
-            color: product.color,
-            description: product.description || '',
-            images: (product.images || []).join(', '),
-            baseRentPrice: product.baseRentPrice,
-            baseSalePrice: product.baseSalePrice,
-            depositAmount: product.depositAmount ?? 0,
-            buyoutValue: product.buyoutValue ?? 0
-        }));
-
-        const workbook = xlsx.utils.book_new();
-        const productSheet = xlsx.utils.json_to_sheet(productRows);
-        xlsx.utils.book_append_sheet(workbook, productSheet, 'Products');
-
-        if (includeInstances) {
-            const productIds = products.map((product) => product._id);
-            const instances = await ProductInstance.find({ productId: { $in: productIds } });
-            const productKeyById = new Map(
-                products.map((product) => [product._id.toString(), buildProductKey(product)])
-            );
-
-            const instanceRows = instances.map((instance) => ({
-                productKey: productKeyById.get(instance.productId.toString()) || '',
-                conditionLevel: instance.conditionLevel,
-                conditionScore: instance.conditionScore,
-                lifecycleStatus: instance.lifecycleStatus,
-                currentRentPrice: instance.currentRentPrice,
-                currentSalePrice: instance.currentSalePrice,
-                note: instance.note || ''
-            }));
-
-            const instanceSheet = xlsx.utils.json_to_sheet(instanceRows);
-            xlsx.utils.book_append_sheet(workbook, instanceSheet, 'Instances');
-        }
-
-        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        const timestamp = new Date().toISOString().slice(0, 10);
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename=products_${timestamp}.xlsx`);
-        return res.status(200).send(buffer);
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error exporting products',
-            error: error.message
-        });
-    }
+    return res.status(200).json({
+      success: true,
+      message: 'Deleted successfully',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error deleting owner product',
+      error: error.message,
+    });
+  }
 };
 
 const importOwnerProducts = async (req, res) => {
-    try {
-        if (req.file) {
-            const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-            const productSheet = workbook.Sheets.Products || workbook.Sheets[workbook.SheetNames[0]];
-            const instanceSheet = workbook.Sheets.Instances;
+  return res.status(501).json({
+    success: false,
+    message: 'Excel import is not implemented yet',
+  });
+};
 
-            const productRows = xlsx.utils.sheet_to_json(productSheet, { defval: '' });
-            const embeddedImageUrlsByRow = new Map();
+const exportOwnerProducts = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const includeInstances = String(req.query.includeInstances || '').toLowerCase() === 'true';
+    const filter = {};
+    const category = normalizeText(req.query.category);
+    const size = normalizeText(req.query.size);
+    const color = normalizeText(req.query.color);
 
-            const embeddedImagesByRow = await extractEmbeddedImagesByRow(req.file.buffer);
-            if (embeddedImagesByRow.size > 0) {
-                if (!hasCloudinaryConfig()) {
-                    return res.status(500).json({
-                        success: false,
-                        message: 'Cloudinary is not configured'
-                    });
-                }
+    if (category) Object.assign(filter, applyCategoryFilter({}, category));
+    if (size) filter.size = size;
+    if (color) filter.color = color;
 
-                for (const [rowNumber, imageItems] of embeddedImagesByRow.entries()) {
-                    const uploadedImages = await Promise.all(
-                        imageItems.map((item) => uploadImageBuffer(item.buffer, {
-                            folder: 'inhere/products/import',
-                            public_id: `product_import_r${rowNumber}_${Date.now()}_${item.index}`,
-                            resource_type: 'image'
-                        }))
-                    );
+    const products = await Product.find(filter).sort({ createdAt: -1 }).lean();
+    const quantityMap = includeInstances ? await getQuantityMap(products.map((item) => item._id)) : new Map();
 
-                    embeddedImageUrlsByRow.set(
-                        rowNumber,
-                        uploadedImages.map((result) => result.secure_url).filter(Boolean)
-                    );
-                }
-            }
+    const header = [
+      'id',
+      'name',
+      'category',
+      'size',
+      'color',
+      'baseRentPrice',
+      'baseSalePrice',
+      'depositAmount',
+      'buyoutValue',
+      'totalQuantity',
+      'availableQuantity',
+    ];
 
-            if (!productRows.length) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Products sheet is empty'
-                });
-            }
+    const rows = products.map((product) => {
+      const quantity = quantityMap.get(String(product._id)) || {};
+      return [
+        String(product._id),
+        resolveLocalizedField(product, 'name', lang),
+        resolveLocalizedField(product, 'category', lang),
+        product.size || '',
+        product.color || '',
+        product.baseRentPrice || 0,
+        product.baseSalePrice || 0,
+        product.depositAmount || 0,
+        product.buyoutValue || 0,
+        includeInstances ? quantity.totalQuantity || 0 : '',
+        includeInstances ? quantity.availableQuantity || 0 : '',
+      ];
+    });
 
-            const createdProducts = [];
-            const preparedProducts = [];
-            const productIndexByKeyMap = new Map();
-            const productIndexesByAttrMap = new Map();
+    const csv = [header, ...rows]
+      .map((line) =>
+        line
+          .map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`)
+          .join(',')
+      )
+      .join('\n');
 
-            for (let rowIndex = 0; rowIndex < productRows.length; rowIndex += 1) {
-                const row = productRows[rowIndex];
-                const excelRowNumber = rowIndex + 2;
-                const embeddedImageUrls = embeddedImageUrlsByRow.get(excelRowNumber) || [];
-                const productData = {
-                    name: row.name || row.Name,
-                    category: row.category || row.Category,
-                    size: row.size || row.Size,
-                    color: row.color || row.Color,
-                    description: row.description || row.Description || '',
-                    images: [...new Set([...parseImages(row.images || row.Images), ...embeddedImageUrls])],
-                    baseRentPrice: row.baseRentPrice ?? row.BaseRentPrice,
-                    baseSalePrice: row.baseSalePrice ?? row.BaseSalePrice,
-                    depositAmount: row.depositAmount ?? row.DepositAmount ?? 0,
-                    buyoutValue: row.buyoutValue ?? row.BuyoutValue ?? 0
-                };
+    const filename = `owner_products_${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(`\uFEFF${csv}`);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error exporting owner products',
+      error: error.message,
+    });
+  }
+};
 
-                if (!productData.name || !productData.category || !productData.size || !productData.color || productData.baseRentPrice == null || productData.baseSalePrice == null) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Each product requires name, category, size, color, baseRentPrice, baseSalePrice'
-                    });
-                }
+// ============================================
+// PRODUCT INSTANCE APIs (Quản lý tồn kho)
+// ============================================
 
-                const normalizedProduct = {
-                    ...productData,
-                    baseRentPrice: Number(productData.baseRentPrice),
-                    baseSalePrice: Number(productData.baseSalePrice),
-                    depositAmount: Number(productData.depositAmount || 0),
-                    buyoutValue: Number(productData.buyoutValue || 0)
-                };
+// Lấy danh sách ProductInstance với filter
+const getProductInstances = async (req, res) => {
+  try {
+    const {
+      productId,
+      conditionLevel,
+      lifecycleStatus,
+      page = 1,
+      limit = 20,
+      search
+    } = req.query;
 
-                preparedProducts.push(normalizedProduct);
+    const filter = {};
 
-                const key = normalizeProductKey(row.productKey || row.ProductKey || buildProductKey(normalizedProduct));
-                productIndexByKeyMap.set(key, rowIndex);
-
-                const attrKey = buildProductAttrKey(normalizedProduct);
-                if (!productIndexesByAttrMap.has(attrKey)) {
-                    productIndexesByAttrMap.set(attrKey, []);
-                }
-                productIndexesByAttrMap.get(attrKey).push(rowIndex);
-            }
-
-            const preparedInstanceDocs = [];
-
-            if (instanceSheet) {
-                const instanceRows = xlsx.utils.sheet_to_json(instanceSheet, { defval: '' });
-                const unresolvedRows = [];
-                let resolvedCount = 0;
-
-                for (const row of instanceRows) {
-                    const rawProductKey = row.productKey || row.ProductKey || '';
-                    const rowKey = normalizeProductKey(rawProductKey);
-                    let resolvedProductIndex = rowKey ? productIndexByKeyMap.get(rowKey) : null;
-
-                    if (resolvedProductIndex == null && rowKey.includes('|')) {
-                        const keyParts = rowKey.split('|');
-
-                        if (keyParts.length >= 4) {
-                            const fallbackAttrKey = [keyParts[1], keyParts[2], keyParts[3]]
-                                .map((value) => normalizeProductKeyPart(value))
-                                .join('|');
-
-                            const matchedIndexes = productIndexesByAttrMap.get(fallbackAttrKey) || [];
-                            if (matchedIndexes.length === 1) {
-                                [resolvedProductIndex] = matchedIndexes;
-                            }
-                        }
-                    }
-
-                    const normalizedInstanceData = {
-                        rawProductKey,
-                        rowKey,
-                        conditionLevel: row.conditionLevel || row.ConditionLevel || 'New',
-                        conditionScore: row.conditionScore ?? row.ConditionScore ?? 100,
-                        lifecycleStatus: row.lifecycleStatus || row.LifecycleStatus || 'Available',
-                        currentRentPrice: row.currentRentPrice ?? row.CurrentRentPrice,
-                        currentSalePrice: row.currentSalePrice ?? row.CurrentSalePrice,
-                        note: row.note || row.Note || ''
-                    };
-
-                    if (resolvedProductIndex == null) {
-                        unresolvedRows.push(normalizedInstanceData);
-                        continue;
-                    }
-
-                    const baseProduct = preparedProducts[resolvedProductIndex];
-                    preparedInstanceDocs.push({
-                        productIndex: resolvedProductIndex,
-                        conditionLevel: normalizedInstanceData.conditionLevel,
-                        conditionScore: normalizedInstanceData.conditionScore,
-                        lifecycleStatus: normalizedInstanceData.lifecycleStatus,
-                        currentRentPrice: normalizedInstanceData.currentRentPrice ?? baseProduct?.baseRentPrice ?? 0,
-                        currentSalePrice: normalizedInstanceData.currentSalePrice ?? baseProduct?.baseSalePrice ?? 0,
-                        note: normalizedInstanceData.note
-                    });
-                    resolvedCount += 1;
-                }
-
-                if (unresolvedRows.length > 0) {
-                    if (resolvedCount === 0) {
-                        const keyOrderMap = new Map();
-
-                        unresolvedRows.forEach((item) => {
-                            if (!item.rowKey || keyOrderMap.has(item.rowKey)) {
-                                return;
-                            }
-
-                            keyOrderMap.set(item.rowKey, keyOrderMap.size);
-                        });
-
-                        for (const item of unresolvedRows) {
-                            if (!item.rowKey || !keyOrderMap.has(item.rowKey)) {
-                                return res.status(400).json({
-                                    success: false,
-                                    message: `Instance row has invalid productKey: ${item.rawProductKey || 'empty'}`
-                                });
-                            }
-
-                            const fallbackIndex = keyOrderMap.get(item.rowKey);
-                            const baseProduct = preparedProducts[fallbackIndex];
-
-                            if (!baseProduct) {
-                                return res.status(400).json({
-                                    success: false,
-                                    message: `Instance row has invalid productKey: ${item.rawProductKey || 'empty'}`
-                                });
-                            }
-
-                            preparedInstanceDocs.push({
-                                productIndex: fallbackIndex,
-                                conditionLevel: item.conditionLevel,
-                                conditionScore: item.conditionScore,
-                                lifecycleStatus: item.lifecycleStatus,
-                                currentRentPrice: item.currentRentPrice ?? baseProduct.baseRentPrice,
-                                currentSalePrice: item.currentSalePrice ?? baseProduct.baseSalePrice,
-                                note: item.note
-                            });
-                        }
-                    } else {
-                        const firstInvalid = unresolvedRows[0];
-                        return res.status(400).json({
-                            success: false,
-                            message: `Instance row has invalid productKey: ${firstInvalid.rawProductKey || 'empty'}`
-                        });
-                    }
-                }
-            }
-
-            for (const productData of preparedProducts) {
-                const created = await Product.create(productData);
-                createdProducts.push(created);
-            }
-
-            if (preparedInstanceDocs.length > 0) {
-                const instanceDocs = preparedInstanceDocs.map((instance) => ({
-                    productId: createdProducts[instance.productIndex]._id,
-                    conditionLevel: instance.conditionLevel,
-                    conditionScore: instance.conditionScore,
-                    lifecycleStatus: instance.lifecycleStatus,
-                    currentRentPrice: instance.currentRentPrice,
-                    currentSalePrice: instance.currentSalePrice,
-                    note: instance.note
-                }));
-
-                await ProductInstance.insertMany(instanceDocs);
-            }
-
-            return res.status(201).json({
-                success: true,
-                message: 'Import products successfully',
-                data: createdProducts.map(sanitizeProduct)
-            });
-        }
-
-        const payload = Array.isArray(req.body) ? req.body : req.body?.products;
-
-        if (!Array.isArray(payload) || payload.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'products array is required'
-            });
-        }
-
-        const createdProducts = [];
-
-        for (const item of payload) {
-            if (!item.name || !item.category || !item.size || !item.color || item.baseRentPrice == null || item.baseSalePrice == null) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Each product requires name, category, size, color, baseRentPrice, baseSalePrice'
-                });
-            }
-
-            const product = await Product.create({
-                name: item.name,
-                category: item.category,
-                size: item.size,
-                color: item.color,
-                description: item.description || '',
-                images: Array.isArray(item.images) ? item.images : [],
-                baseRentPrice: item.baseRentPrice,
-                baseSalePrice: item.baseSalePrice,
-                depositAmount: item.depositAmount ?? 0,
-                buyoutValue: item.buyoutValue ?? 0
-            });
-
-            if (Array.isArray(item.instances) && item.instances.length > 0) {
-                const instanceDocs = item.instances.map((instance) => ({
-                    productId: product._id,
-                    conditionLevel: instance.conditionLevel || 'New',
-                    conditionScore: instance.conditionScore ?? 100,
-                    lifecycleStatus: instance.lifecycleStatus || 'Available',
-                    currentRentPrice: instance.currentRentPrice ?? product.baseRentPrice,
-                    currentSalePrice: instance.currentSalePrice ?? product.baseSalePrice,
-                    note: instance.note || ''
-                }));
-
-                await ProductInstance.insertMany(instanceDocs);
-            }
-
-            createdProducts.push(product);
-        }
-
-        return res.status(201).json({
-            success: true,
-            message: 'Import products successfully',
-            data: createdProducts.map(sanitizeProduct)
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: 'Error importing products',
-            error: error.message
-        });
+    if (productId) {
+      filter.productId = productId;
     }
+
+    if (conditionLevel) {
+      filter.conditionLevel = conditionLevel;
+    }
+
+    if (lifecycleStatus) {
+      filter.lifecycleStatus = lifecycleStatus;
+    }
+
+    // Search theo product name
+    let productIds = null;
+    if (search) {
+      const products = await Product.find({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { 'name.en': { $regex: search, $options: 'i' } },
+          { 'name.vi': { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
+      productIds = products.map(p => p._id);
+      filter.productId = { $in: productIds };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [instances, total] = await Promise.all([
+      ProductInstance.find(filter)
+        .populate('productId', 'name images category')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      ProductInstance.countDocuments(filter)
+    ]);
+
+    res.json({
+      success: true,
+      data: instances,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get product instances error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Lấy chi tiết một ProductInstance
+const getProductInstanceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const instance = await ProductInstance.findById(id)
+      .populate('productId', 'name images category baseRentPrice baseSalePrice');
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: instance
+    });
+  } catch (error) {
+    console.error('Get product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy chi tiết sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Cập nhật ProductInstance (giá, trạng thái, tình trạng)
+const updateProductInstance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      conditionLevel,
+      conditionScore,
+      lifecycleStatus,
+      currentRentPrice,
+      currentSalePrice,
+      note
+    } = req.body;
+
+    const instance = await ProductInstance.findById(id);
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      });
+    }
+
+    // Cập nhật các trường được gửi lên
+    if (conditionLevel) instance.conditionLevel = conditionLevel;
+    if (conditionScore !== undefined) instance.conditionScore = conditionScore;
+    if (lifecycleStatus) instance.lifecycleStatus = lifecycleStatus;
+    if (currentRentPrice !== undefined) instance.currentRentPrice = currentRentPrice;
+    if (currentSalePrice !== undefined) instance.currentSalePrice = currentSalePrice;
+    if (note !== undefined) instance.note = note;
+
+    await instance.save();
+
+    // Populate để trả về
+    const updatedInstance = await ProductInstance.findById(id)
+      .populate('productId', 'name images category');
+
+    res.json({
+      success: true,
+      message: 'Cập nhật sản phẩm thành công',
+      data: updatedInstance
+    });
+  } catch (error) {
+    console.error('Update product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Tạo mới ProductInstance
+const createProductInstance = async (req, res) => {
+  try {
+    const {
+      productId,
+      conditionLevel,
+      currentRentPrice,
+      currentSalePrice,
+      note
+    } = req.body;
+
+    if (!productId || !currentRentPrice || !currentSalePrice) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp đầy đủ thông tin'
+      });
+    }
+
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm cha'
+      });
+    }
+
+    const instance = new ProductInstance({
+      productId,
+      conditionLevel: conditionLevel || 'New',
+      conditionScore: 100,
+      lifecycleStatus: 'Available',
+      currentRentPrice,
+      currentSalePrice,
+      note: note || ''
+    });
+
+    await instance.save();
+
+    const populatedInstance = await ProductInstance.findById(instance._id)
+      .populate('productId', 'name images category');
+
+    res.status(201).json({
+      success: true,
+      message: 'Tạo sản phẩm thành công',
+      data: populatedInstance
+    });
+  } catch (error) {
+    console.error('Create product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tạo sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Xóa ProductInstance
+const deleteProductInstance = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const instance = await ProductInstance.findById(id);
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sản phẩm'
+      });
+    }
+
+    // Chỉ cho phép xóa nếu sản phẩm đang ở trạng thái Available
+    if (instance.lifecycleStatus !== 'Available') {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể xóa sản phẩm đang được thuê hoặc đang xử lý'
+      });
+    }
+
+    await ProductInstance.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: 'Xóa sản phẩm thành công'
+    });
+  } catch (error) {
+    console.error('Delete product instance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xóa sản phẩm',
+      error: error.message
+    });
+  }
+};
+
+// Lấy danh sách instance còn available (dùng cho customer thuê)
+const getAvailableInstances = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const { conditionLevel } = req.query;
+
+    const filter = {
+      productId,
+      lifecycleStatus: 'Available'
+    };
+
+    if (conditionLevel) {
+      filter.conditionLevel = conditionLevel;
+    }
+
+    const instances = await ProductInstance.find(filter)
+      .populate('productId', 'name images')
+      .sort({ conditionScore: -1 });
+
+    res.json({
+      success: true,
+      data: instances
+    });
+  } catch (error) {
+    console.error('Get available instances error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách sản phẩm có sẵn',
+      error: error.message
+    });
+  }
 };
 
 module.exports = {
-    listOwnerProducts,
-    getOwnerProductDetail,
-    createOwnerProduct,
-    updateOwnerProduct,
-    updateOwnerProductCollateral,
-    deleteOwnerProduct,
-    exportOwnerProducts,
-    importOwnerProducts
+  getProducts,
+  listOwnerProducts,
+  getOwnerProductDetail,
+  getTopRentedProducts,
+  getTopLikedProducts,
+  getTopSoldProducts,
+  getProductById,
+  createProduct,
+  createOwnerProduct,
+  updateProduct,
+  updateOwnerProduct,
+  updateOwnerProductCollateral,
+  deleteProduct,
+  deleteOwnerProduct,
+  importOwnerProducts,
+  exportOwnerProducts,
+  // Product Instance APIs
+  getProductInstances,
+  getProductInstanceById,
+  updateProductInstance,
+  createProductInstance,
+  deleteProductInstance,
+  getAvailableInstances,
 };

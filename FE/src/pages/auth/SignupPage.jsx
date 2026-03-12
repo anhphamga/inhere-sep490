@@ -1,8 +1,13 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../store/AuthContext'
-import MainHeader from '../../components/layout/MainHeader'
+import { useAuth } from '../../hooks/useAuth'
+import Header from '../../components/common/Header'
+import logoImage from '../../assets/logo/logo.png'
+import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const phoneRegex = /^\d{10,11}$/
 
 const SignupPage = () => {
   const navigate = useNavigate()
@@ -17,6 +22,8 @@ const SignupPage = () => {
   })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -24,22 +31,25 @@ const SignupPage = () => {
 
     const trimmedName = form.name.trim()
     const trimmedPhone = form.phone.trim()
-    const trimmedEmail = form.email.trim()
+    const trimmedEmail = form.email.trim().toLowerCase()
 
     if (!trimmedName || !trimmedPhone || !trimmedEmail || !form.password || !form.confirmPassword) {
       setError('Vui lòng nhập đầy đủ thông tin')
       return
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(trimmedEmail)) {
       setError('Email không hợp lệ')
       return
     }
 
-    const phoneRegex = /^[0-9]{8,15}$/
     if (!phoneRegex.test(trimmedPhone)) {
-      setError('Số điện thoại chỉ gồm 8-15 chữ số')
+      setError('Số điện thoại phải gồm 10-11 chữ số')
+      return
+    }
+
+    if (form.password.length < 6) {
+      setError('Mật khẩu tối thiểu 6 ký tự')
       return
     }
 
@@ -59,7 +69,7 @@ const SignupPage = () => {
       })
       navigate('/', { replace: true })
     } catch (apiError) {
-      setError(apiError?.response?.data?.message || 'Signup failed')
+      setError(apiError?.response?.data?.message || 'Đăng ký thất bại')
     } finally {
       setSubmitting(false)
     }
@@ -67,93 +77,142 @@ const SignupPage = () => {
 
   return (
     <>
-      <MainHeader />
-      <div className="auth-shell auth-page auth-with-header">
-        <div className="auth-layout">
-          <section className="auth-showcase">
-            <p className="auth-showcase-badge">INHERE HOI AN OUTFIT</p>
-            <h1>Tạo tài khoản customer trong vài bước</h1>
-            <p>Đăng ký để lưu thông tin hồ sơ, đặt lịch nhanh hơn và quản lý tài khoản thuận tiện.</p>
-            <ul className="auth-showcase-points">
-              <li>Đăng ký bằng email và số điện thoại</li>
-              <li>Xác nhận mật khẩu ngay trên form</li>
-              <li>Sẵn sàng cập nhật hồ sơ sau khi vào hệ thống</li>
-            </ul>
-          </section>
+      <Header />
+      <div className="auth-shell auth-page auth-with-header login-page-shell">
+        <div className="auth-layout auth-layout-login">
+        <section
+          className="auth-showcase login-hero"
+          style={{ backgroundImage: `linear-gradient(rgba(35, 22, 7, 0.55), rgba(35, 22, 7, 0.62)), url(${heroImage})` }}
+        >
+          <div className="login-hero-top">
+            <img src={logoImage} alt="INHERE" className="login-hero-logo" />
+            <p className="auth-showcase-badge">INHERE - HOI AN COSTUME</p>
+          </div>
 
-          <section className="auth-card auth-panel">
-            <div className="auth-tabs">
-              <Link to="/login" className="auth-tab">Đăng nhập</Link>
-              <span className="auth-tab auth-tab-active">Đăng ký</span>
-            </div>
+          <div className="login-hero-copy">
+            <h1>INHERE - Hội An Costume</h1>
+            <p className="login-hero-slogan">Thuê & mua trang phục truyền thống - nhận nhanh tại Hội An</p>
+          </div>
 
-            <h2 className="auth-title">Tạo tài khoản customer</h2>
-            <p className="auth-subtitle">Owner sử dụng tài khoản được cấp sẵn từ hệ thống.</p>
+          <ul className="auth-showcase-points login-benefits">
+            <li><span className="benefit-icon">✓</span><span>Thuê nhanh - đặt lịch nhận</span></li>
+            <li><span className="benefit-icon">✓</span><span>Cọc minh bạch - hỗ trợ đổi size</span></li>
+            <li><span className="benefit-icon">✓</span><span>Hỗ trợ khách du lịch đa ngôn ngữ</span></li>
+          </ul>
+        </section>
 
-            <form className="auth-form" onSubmit={handleSubmit}>
-              <div className="auth-input-wrap">
-                <label>Họ và tên</label>
+        <section className="auth-card auth-panel login-form-card">
+          <h2 className="auth-title">Đăng ký để đặt thuê nhanh hơn</h2>
+          <p className="auth-subtitle">Tạo tài khoản để lưu thông tin, theo dõi đơn thuê và nhận ưu đãi thành viên.</p>
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="auth-input-wrap">
+              <label>Họ và tên</label>
+              <div className="auth-input-icon-wrap">
+                <span className="auth-input-icon" aria-hidden="true">U</span>
                 <input
                   type="text"
                   placeholder="Nhập họ và tên"
                   value={form.name}
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  autoComplete="name"
                   required
                 />
               </div>
-              <div className="auth-input-wrap">
-                <label>Số điện thoại</label>
+            </div>
+
+            <div className="auth-input-wrap">
+              <label>Số điện thoại</label>
+              <div className="auth-input-icon-wrap">
+                <span className="auth-input-icon" aria-hidden="true">#</span>
                 <input
                   type="text"
                   placeholder="Nhập số điện thoại"
                   value={form.phone}
                   onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                  autoComplete="tel"
                   required
                 />
               </div>
-              <div className="auth-input-wrap">
-                <label>Email</label>
+            </div>
+
+            <div className="auth-input-wrap">
+              <label>Email</label>
+              <div className="auth-input-icon-wrap">
+                <span className="auth-input-icon" aria-hidden="true">@</span>
                 <input
                   type="email"
                   placeholder="Nhập email"
                   value={form.email}
                   onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  autoComplete="email"
                   required
                 />
               </div>
-              <div className="auth-input-wrap">
-                <label>Mật khẩu</label>
+            </div>
+
+            <div className="auth-input-wrap">
+              <label>Mật khẩu</label>
+              <div className="auth-input-icon-wrap">
+                <span className="auth-input-icon" aria-hidden="true">*</span>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   placeholder="Nhập mật khẩu"
                   value={form.password}
                   onChange={(event) => setForm({ ...form, password: event.target.value })}
                   minLength={6}
+                  autoComplete="new-password"
                   required
                 />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showPassword ? 'Ẩn' : 'Hiện'}
+                </button>
               </div>
-              <div className="auth-input-wrap">
-                <label>Xác nhận mật khẩu</label>
+            </div>
+
+            <div className="auth-input-wrap">
+              <label>Xác nhận mật khẩu</label>
+              <div className="auth-input-icon-wrap">
+                <span className="auth-input-icon" aria-hidden="true">*</span>
                 <input
-                  type="password"
+                  type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Nhập lại mật khẩu"
                   value={form.confirmPassword}
                   onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
+                  minLength={6}
+                  autoComplete="new-password"
                   required
                 />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  aria-label={showConfirmPassword ? 'Ẩn mật khẩu xác nhận' : 'Hiện mật khẩu xác nhận'}
+                >
+                  {showConfirmPassword ? 'Ẩn' : 'Hiện'}
+                </button>
               </div>
-
-              {error && <div className="error-text">{error}</div>}
-              <button type="submit" disabled={submitting}>
-                {submitting ? 'Đang tạo tài khoản...' : 'Đăng ký'}
-              </button>
-            </form>
-
-            <div className="auth-links">
-              <Link to="/forgot-password">Quên mật khẩu</Link>
-              <Link to="/login">Đã có tài khoản?</Link>
             </div>
-          </section>
+
+            {error && <div className="error-text">{error}</div>}
+
+            <button type="submit" disabled={submitting} className="login-submit-btn">
+              {submitting ? 'Đang tạo tài khoản...' : 'Đăng ký'}
+            </button>
+          </form>
+
+          <div className="auth-links auth-links-center">
+            <span>Đã có tài khoản?</span>
+            <Link to="/login">Đăng nhập</Link>
+          </div>
+
+          <p className="auth-foot-note auth-terms-note">Bằng việc đăng ký, bạn đồng ý Điều khoản & Chính sách.</p>
+        </section>
         </div>
       </div>
     </>

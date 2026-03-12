@@ -13,7 +13,21 @@ const rentOrderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'Waiting'],
+    enum: [
+      'Draft',
+      'PendingDeposit',
+      'Deposited',
+      'Confirmed',
+      'WaitingPickup',
+      'Renting',
+      'WaitingReturn',
+      'Returned',
+      'Completed',
+      'NoShow',
+      'Late',
+      'Compensation',
+      'Cancelled'
+    ],
     default: 'Draft'
   },
   rentStartDate: {
@@ -39,6 +53,45 @@ const rentOrderSchema = new mongoose.Schema({
   damageFee: {
     type: Number,
     default: 0
+  },
+  lateDays: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  lateFee: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  compensationFee: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  depositForfeited: {
+    type: Boolean,
+    default: false
+  },
+  confirmedAt: {
+    type: Date,
+    default: null
+  },
+  pickupAt: {
+    type: Date,
+    default: null
+  },
+  returnedAt: {
+    type: Date,
+    default: null
+  },
+  completedAt: {
+    type: Date,
+    default: null
+  },
+  noShowAt: {
+    type: Date,
+    default: null
   },
   totalAmount: {
     type: Number,

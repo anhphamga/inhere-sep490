@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../store/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 import { getRouteByRole } from '../../utils/auth'
 import { loadGoogleIdentityScript } from '../../utils/googleIdentity'
-import MainHeader from '../../components/layout/MainHeader'
+import Header from '../../components/common/Header'
+import logoImage from '../../assets/logo/logo.png'
+import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const phoneRegex = /^\d{10,11}$/
 
 const LoginPage = () => {
   const navigate = useNavigate()
@@ -15,12 +20,14 @@ const LoginPage = () => {
   const redirectPath = location.state?.from?.pathname
 
   const [form, setForm] = useState({
-    email: '',
-    password: ''
+    identifier: '',
+    password: '',
+    rememberMe: true
   })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     if (!googleClientId || !googleButtonRef.current) {
@@ -39,7 +46,7 @@ const LoginPage = () => {
           client_id: googleClientId,
           callback: async (response) => {
             if (!response?.credential) {
-              setError('Không lấy được thông tin Google đăng nhập')
+              setError('Không lấy được thông tin đăng nhập Google')
               return
             }
 
@@ -48,10 +55,11 @@ const LoginPage = () => {
               setGoogleSubmitting(true)
               const data = await loginWithGoogle({ idToken: response.credential })
               const fallbackPath = getRouteByRole(data.user.role)
-              const targetPath = data.user.role === 'owner' ? fallbackPath : (redirectPath || fallbackPath)
+              const enforceRoleDashboard = data.user.role === 'owner' || data.user.role === 'staff'
+              const targetPath = enforceRoleDashboard ? fallbackPath : (redirectPath || fallbackPath)
               navigate(targetPath, { replace: true })
             } catch (apiError) {
-              setError(apiError?.response?.data?.message || 'Google login failed')
+              setError(apiError?.response?.data?.message || 'Đăng nhập Google thất bại')
             } finally {
               setGoogleSubmitting(false)
             }
@@ -76,18 +84,64 @@ const LoginPage = () => {
     }
   }, [googleClientId, loginWithGoogle, navigate, redirectPath])
 
+  const normalizeLoginError = (apiError) => {
+    const message = apiError?.response?.data?.message || ''
+    const normalized = String(message).toLowerCase()
+
+    if (normalized.includes('invalid') || normalized.includes('not found') || normalized.includes('password')) {
+      return 'Email/SĐT hoặc mật khẩu không đúng'
+    }
+
+    if (normalized.includes('locked')) {
+      return 'Tài khoản đang bị khóa. Vui lòng liên hệ cửa hàng để được hỗ trợ'
+    }
+
+    if (normalized.includes('verify') || normalized.includes('kích hoạt')) {
+      return 'Vui lòng xác minh email trước khi đăng nhập'
+    }
+
+    return message || 'Đăng nhập thất bại'
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
+
+    const identifier = form.identifier.trim()
+    const password = form.password
+
+    if (!identifier || !password) {
+      setError('Vui lòng nhập đầy đủ thông tin đăng nhập')
+      return
+    }
+
+    const isEmail = emailRegex.test(identifier)
+    const isPhone = phoneRegex.test(identifier)
+
+    if (!isEmail && !isPhone) {
+      setError('Vui lòng nhập đúng Email hoặc SĐT 10-11 số')
+      return
+    }
+
+    if (password.length < 6) {
+      setError('Mật khẩu tối thiểu 6 ký tự')
+      return
+    }
+
     setSubmitting(true)
 
     try {
-      const data = await login(form)
+      const payload = isPhone
+        ? { phone: identifier, password }
+        : { email: identifier.toLowerCase(), password }
+
+      const data = await login(payload, { rememberMe: form.rememberMe })
       const fallbackPath = getRouteByRole(data.user.role)
-      const targetPath = data.user.role === 'owner' ? fallbackPath : (redirectPath || fallbackPath)
+      const enforceRoleDashboard = data.user.role === 'owner' || data.user.role === 'staff'
+      const targetPath = enforceRoleDashboard ? fallbackPath : (redirectPath || fallbackPath)
       navigate(targetPath, { replace: true })
     } catch (apiError) {
-      setError(apiError?.response?.data?.message || 'Login failed')
+      setError(normalizeLoginError(apiError))
     } finally {
       setSubmitting(false)
     }
@@ -95,73 +149,114 @@ const LoginPage = () => {
 
   return (
     <>
-      <MainHeader />
-      <div className="auth-shell auth-page auth-with-header">
-        <div className="auth-layout">
-          <section className="auth-showcase">
-            <p className="auth-showcase-badge">INHERE HOI AN OUTFIT</p>
-            <h1>Đăng nhập để tiếp tục đặt thuê trang phục</h1>
-            <p>Quản lý hồ sơ, theo dõi lịch đặt và cập nhật ảnh đại diện của bạn tại một nơi.</p>
-            <ul className="auth-showcase-points">
-              <li>Đăng nhập nhanh bằng email</li>
-              <li>Phân luồng owner và customer</li>
-              <li>Bảo mật tài khoản với đổi mật khẩu</li>
-            </ul>
-          </section>
+      <Header />
+      <div className="auth-shell auth-page auth-with-header login-page-shell">
+        <div className="auth-layout auth-layout-login">
+        <section
+          className="auth-showcase login-hero"
+          style={{ backgroundImage: `linear-gradient(rgba(35, 22, 7, 0.55), rgba(35, 22, 7, 0.62)), url(${heroImage})` }}
+        >
+          <div className="login-hero-top">
+            <img src={logoImage} alt="INHERE" className="login-hero-logo" />
+            <p className="auth-showcase-badge">INHERE - HOI AN COSTUME</p>
+          </div>
 
-          <section className="auth-card auth-panel">
-            <div className="auth-tabs">
-              <span className="auth-tab auth-tab-active">Đăng nhập</span>
-              <Link to="/signup" className="auth-tab">Đăng ký</Link>
-            </div>
+          <div className="login-hero-copy">
+            <h1>INHERE - Hội An Costume</h1>
+            <p className="login-hero-slogan">Thuê & mua trang phục truyền thống - nhận nhanh tại Hội An</p>
+          </div>
 
-            <h2 className="auth-title">Xin chào trở lại</h2>
-            <p className="auth-subtitle">Nhập tài khoản của bạn để vào hệ thống.</p>
+          <ul className="auth-showcase-points login-benefits">
+            <li><span className="benefit-icon">✓</span><span>Thuê nhanh - đặt lịch nhận</span></li>
+            <li><span className="benefit-icon">✓</span><span>Cọc minh bạch - hỗ trợ đổi size</span></li>
+            <li><span className="benefit-icon">✓</span><span>Hỗ trợ khách du lịch đa ngôn ngữ</span></li>
+          </ul>
+        </section>
 
-            <form className="auth-form" onSubmit={handleSubmit}>
-              <div className="auth-input-wrap">
-                <label>Email</label>
+        <section className="auth-card auth-panel login-form-card">
+          <h2 className="auth-title">Đăng nhập để đặt thuê nhanh hơn</h2>
+          <p className="auth-subtitle">Chào mừng bạn quay lại. Lưu thông tin, theo dõi đơn thuê, nhận ưu đãi thành viên.</p>
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="auth-input-wrap">
+              <label>Email / SĐT</label>
+              <div className="auth-input-icon-wrap">
+                <span className="auth-input-icon" aria-hidden="true">@</span>
                 <input
-                  type="email"
-                  placeholder="Nhập email"
-                  value={form.email}
-                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  type="text"
+                  placeholder="Email hoặc số điện thoại"
+                  value={form.identifier}
+                  onChange={(event) => setForm({ ...form, identifier: event.target.value })}
+                  autoComplete="username"
                   required
                 />
               </div>
-              <div className="auth-input-wrap">
-                <label>Mật khẩu</label>
+            </div>
+
+            <div className="auth-input-wrap">
+              <label>Mật khẩu</label>
+              <div className="auth-input-icon-wrap">
+                <span className="auth-input-icon" aria-hidden="true">*</span>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   placeholder="Nhập mật khẩu"
                   value={form.password}
                   onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  autoComplete="current-password"
                   required
                 />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showPassword ? 'Ẩn' : 'Hiện'}
+                </button>
               </div>
-              {error && <div className="error-text">{error}</div>}
-              <button type="submit" disabled={submitting}>
-                {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
-              </button>
-
-              <div className="auth-divider">
-                <span>hoặc</span>
-              </div>
-
-              {googleClientId ? (
-                <div className="google-login-wrap" ref={googleButtonRef} />
-              ) : (
-                <p className="google-login-disabled">Thiếu cấu hình Google Client ID</p>
-              )}
-
-              {googleSubmitting && <div className="auth-google-loading">Đang xác thực Google...</div>}
-            </form>
-
-            <div className="auth-links">
-              <Link to="/forgot-password">Quên mật khẩu</Link>
-              <Link to="/signup">Chưa có tài khoản?</Link>
             </div>
-          </section>
+
+            <div className="auth-row-between">
+              <label className="remember-check">
+                <input
+                  type="checkbox"
+                  checked={form.rememberMe}
+                  onChange={(event) => setForm({ ...form, rememberMe: event.target.checked })}
+                />
+                <span>Ghi nhớ tôi</span>
+              </label>
+              <Link to="/forgot-password" className="inline-link">Quên mật khẩu?</Link>
+            </div>
+
+            {error && <div className="error-text">{error}</div>}
+
+            <button type="submit" disabled={submitting} className="login-submit-btn">
+              {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            </button>
+
+            <div className="auth-divider">
+              <span>hoặc</span>
+            </div>
+
+            {googleClientId ? (
+              <>
+                <button type="button" className="social-fallback-btn" disabled={googleSubmitting}>
+                  {googleSubmitting ? 'Đang xác thực Google...' : 'Tiếp tục với Google'}
+                </button>
+                <div className="google-login-wrap" ref={googleButtonRef} />
+              </>
+            ) : (
+              <p className="google-login-disabled">Thiếu cấu hình Google Client ID</p>
+            )}
+          </form>
+
+          <div className="auth-links auth-links-center">
+            <span>Chưa có tài khoản?</span>
+            <Link to="/signup">Đăng ký</Link>
+          </div>
+
+          <p className="auth-foot-note auth-terms-note">Bằng việc đăng nhập, bạn đồng ý Điều khoản & Chính sách.</p>
+        </section>
         </div>
       </div>
     </>

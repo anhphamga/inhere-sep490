@@ -204,3 +204,40 @@ ISC
 ---
 
 **Happy Coding! 🎉**
+
+## Backend Translation (VI -> EN)
+
+### Environment variables (BE/.env)
+
+```env
+PORT=9000
+GCP_PROJECT_ID=your-gcp-project-id
+GCP_LOCATION=global
+# Preferred: path to service account json
+GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\service-account.json
+```
+
+You can also provide credentials by setting `GOOGLE_APPLICATION_CREDENTIALS` at OS level.
+
+### Google Cloud setup
+
+1. Create/select a GCP project.
+2. Enable `Cloud Translation API`.
+3. Create Service Account with Translation permissions.
+4. Download JSON key.
+5. Set `GOOGLE_APPLICATION_CREDENTIALS` to that JSON path.
+
+### Run local
+
+```bash
+cd BE
+npm install
+npm run dev
+```
+
+### Translation API
+
+- `POST /api/translate`
+- `POST /api/translate/batch`
+
+Both endpoints are rate-limited (`60 req/min/IP`) and cached in MongoDB collection `translations`.

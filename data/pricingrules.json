@@ -1,0 +1,44 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000b01"
+    },
+    "applyFor": "Rent",
+    "conditionLevel": "Used",
+    "modifyType": "Percentage",
+    "modifyValue": -10,
+    "isHot": true,
+    "priority": 10,
+    "scope": "Global",
+    "productId": null,
+    "createdAt": {
+      "$date": "2026-02-08T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000b02"
+    },
+    "applyFor": "Sale",
+    "conditionLevel": null,
+    "modifyType": "Fixed",
+    "modifyValue": -50000,
+    "isHot": false,
+    "priority": 5,
+    "scope": "Product",
+    "productId": {
+      "$oid": "65f000000000000000000102"
+    },
+    "createdAt": {
+      "$date": "2026-02-16T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T09:30:00Z"
+    },
+    "__v": 0
+  }
+]

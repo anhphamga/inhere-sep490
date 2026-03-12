@@ -1,4 +1,4 @@
-import ProductsList from './ProductsList'
+import ProductsList from '../../components/owner/ProductsList'
 import { useNavigate } from 'react-router-dom'
 
 const OwnerProductsScreen = () => {

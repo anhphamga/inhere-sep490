@@ -1,4 +1,17 @@
-import axiosClient from '../api/axiosClient'
+import axiosClient from '../config/axios'
+
+const appendPayloadField = (formData, field, value) => {
+    if (value === undefined || value === null) {
+        return
+    }
+
+    if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+        formData.append(field, JSON.stringify(value))
+        return
+    }
+
+    formData.append(field, String(value))
+}
 
 export const getOwnerDashboardSummaryApi = async () => {
     const response = await axiosClient.get('/owner/analytics/summary')
@@ -50,20 +63,26 @@ export const createOwnerProductApi = async (payload) => {
         const fields = [
             'name',
             'category',
+            'categoryParent',
+            'categoryChild',
             'size',
+            'sizes',
             'color',
+            'colorVariants',
             'quantity',
             'description',
             'baseRentPrice',
             'baseSalePrice',
             'depositAmount',
-            'buyoutValue'
+            'buyoutValue',
+            'pricingMode',
+            'commonRentPrice',
+            'variantMatrix',
+            'isDraft'
         ]
 
         fields.forEach((field) => {
-            if (payload?.[field] !== undefined && payload?.[field] !== null) {
-                formData.append(field, String(payload[field]))
-            }
+            appendPayloadField(formData, field, payload?.[field])
         })
 
         imageFiles.forEach((file) => {
@@ -96,20 +115,26 @@ export const updateOwnerProductApi = async (productId, payload) => {
         const fields = [
             'name',
             'category',
+            'categoryParent',
+            'categoryChild',
             'size',
+            'sizes',
             'color',
+            'colorVariants',
             'quantity',
             'description',
             'baseRentPrice',
             'baseSalePrice',
             'depositAmount',
-            'buyoutValue'
+            'buyoutValue',
+            'pricingMode',
+            'commonRentPrice',
+            'variantMatrix',
+            'isDraft'
         ]
 
         fields.forEach((field) => {
-            if (payload?.[field] !== undefined && payload?.[field] !== null) {
-                formData.append(field, String(payload[field]))
-            }
+            appendPayloadField(formData, field, payload?.[field])
         })
 
         imageFiles.forEach((file) => {

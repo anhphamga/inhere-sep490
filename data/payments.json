@@ -1,0 +1,48 @@
+[
+  {
+    "_id": {
+      "$oid": "65f000000000000000000a01"
+    },
+    "orderType": "Rent",
+    "orderId": {
+      "$oid": "65f000000000000000000301"
+    },
+    "amount": 300000,
+    "method": "Online",
+    "status": "Paid",
+    "transactionCode": "ZLP_20260228_0001",
+    "paidAt": {
+      "$date": "2026-02-27T23:30:00Z"
+    },
+    "createdAt": {
+      "$date": "2026-02-27T23:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-27T23:30:00Z"
+    },
+    "__v": 0
+  },
+  {
+    "_id": {
+      "$oid": "65f000000000000000000a02"
+    },
+    "orderType": "Sale",
+    "orderId": {
+      "$oid": "65f000000000000000000801"
+    },
+    "amount": 1180000,
+    "method": "Online",
+    "status": "Paid",
+    "transactionCode": "VNP_20260226_0102",
+    "paidAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "createdAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "updatedAt": {
+      "$date": "2026-02-26T09:30:00Z"
+    },
+    "__v": 0
+  }
+]
