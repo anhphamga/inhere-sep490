@@ -6,7 +6,7 @@ import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
 import { useAuth } from "../../hooks/useAuth";
 import { getRouteByRole } from "../../utils/auth";
-import "../../style/pages/ProductPages.css";
+import "../../style/components/Header.css";
 
 const LABELS = {
   cart: "Giỏ hàng",
