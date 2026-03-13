@@ -7,7 +7,6 @@ function Spinner() {
 
 export default function ProductActions({
   rentPriceText,
-  salePriceText,
   onRent,
   onBuy,
   loadingAction,
@@ -41,17 +40,7 @@ export default function ProductActions({
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {renting && <Spinner />}
-            Thuê ngay — {rentPriceText}
-          </button>
-
-          <button
-            type="button"
-            onClick={onBuy}
-            disabled={!canBuy || renting || buying}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-800 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {buying && <Spinner />}
-            Mua — {salePriceText}
+            Thuê ngay
           </button>
         </div>
 

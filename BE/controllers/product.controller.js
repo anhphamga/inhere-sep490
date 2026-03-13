@@ -776,6 +776,71 @@ const getProductById = async (req, res) => {
   }
 };
 
+const getSimilarProducts = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 4, 1), 12);
+    const product = await Product.findById(req.params.id).lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    const categoryCandidates = [
+      normalizeText(product?.categoryPath?.child),
+      normalizeText(product?.categoryPath?.parent),
+      ...normalizeStringList(product?.categoryPath?.ancestors),
+      normalizeText(toObject(product?.category)?.child),
+      normalizeText(toObject(product?.category)?.parent),
+      normalizeText(resolveLocalizedField(product, 'category', 'vi')),
+      normalizeText(resolveLocalizedField(product, 'category', 'en')),
+    ].filter(Boolean);
+
+    let relatedRows = [];
+
+    for (const category of categoryCandidates) {
+      const rows = await Product.find({
+        _id: { $ne: product._id },
+        ...applyCategoryFilter({}, category),
+      })
+        .sort({ likeCount: -1, createdAt: -1, _id: 1 })
+        .limit(limit)
+        .lean();
+
+      if (rows.length > 0) {
+        relatedRows = rows;
+        break;
+      }
+    }
+
+    if (relatedRows.length < limit) {
+      const excludedIds = [product._id, ...relatedRows.map((item) => item._id)];
+      const fallbackRows = await Product.find({
+        _id: { $nin: excludedIds },
+      })
+        .sort({ likeCount: -1, createdAt: -1, _id: 1 })
+        .limit(limit - relatedRows.length)
+        .lean();
+
+      relatedRows = relatedRows.concat(fallbackRows);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: relatedRows.map((item) => sanitizeProduct(item, {}, lang)),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting similar products',
+      error: error.message,
+    });
+  }
+};
+
 const createProduct = async (req, res) => {
   try {
     const payload = normalizePayload(req.body);
@@ -1425,6 +1490,7 @@ module.exports = {
   getTopLikedProducts,
   getTopSoldProducts,
   getProductById,
+  getSimilarProducts,
   createProduct,
   createOwnerProduct,
   updateProduct,

@@ -26,6 +26,9 @@ router.delete('/instances/:id', authenticate, authorize('Staff', 'Owner'), produ
 // GET /api/products/:productId/available-instances - Danh sách instance còn available (cho customer)
 router.get('/:productId/available-instances', productController.getAvailableInstances);
 
+// GET /api/products/:id/similar?limit=4
+router.get('/:id/similar', productController.getSimilarProducts);
+
 // ============================================
 // END PRODUCT INSTANCE ROUTES
 // ============================================

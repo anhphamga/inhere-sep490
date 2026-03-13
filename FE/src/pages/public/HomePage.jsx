@@ -377,7 +377,7 @@ const Homepage = ({ initialSection = "" }) => {
   const location = useLocation();
   const { isAuthenticated, user, logout } = useAuth();
   const lang = "vi";
-  const setLang = () => {};
+  const setLang = () => { };
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isSliderPaused, setIsSliderPaused] = useState(false);
   const [activeSection, setActiveSection] = useState(initialSection || "rent");
@@ -920,215 +920,215 @@ const Homepage = ({ initialSection = "" }) => {
       />
       {false && (
         <>
-      {/* HEADER */}
-      <header className="header">
-        <div className="container header-row">
-          <a
-            className="brand"
-            href="#top"
-            aria-label={t(lang, "meta.title")}
-          >
-            {/* Đổi src thành đường dẫn logo thực tế của bạn */}
-            <img
-              src={logo}
-              alt={t(lang, "meta.title")}
-              className="brand-logo"
-            />
-          </a>
-
-          <div className="header-right">
-            <div className="lang" aria-label="Language switcher">
-              <button
-                className={
-                  "lang-btn" +
-                  (lang === "vi" ? " active" : "")
-                }
-                type="button"
-                onClick={() => setLang("vi")}
+          {/* HEADER */}
+          <header className="header">
+            <div className="container header-row">
+              <a
+                className="brand"
+                href="#top"
+                aria-label={t(lang, "meta.title")}
               >
-                VI
-              </button>
-              <button
-                className={
-                  "lang-btn" +
-                  (lang === "en" ? " active" : "")
-                }
-                type="button"
-                onClick={() => setLang("en")}
-              >
-                EN
-              </button>
-            </div>
+                {/* Đổi src thành đường dẫn logo thực tế của bạn */}
+                <img
+                  src={logo}
+                  alt={t(lang, "meta.title")}
+                  className="brand-logo"
+                />
+              </a>
 
-            <a className="iconbtn" href="#contact">
-              <span className="dot" />
-              <span>{t(lang, "header.hotline")}</span>
-            </a>
-            <a className="iconbtn" href="#cart">
-              <span>Cart</span>
-              <span>{t(lang, "header.cart")}</span>
-            </a>
-            {isAuthenticated ? (
-              <div className="account-menu-wrap" ref={accountMenuRef}>
-                <button
-                  className="iconbtn account-avatar-btn"
-                  type="button"
-                  onClick={() => setAccountMenuOpen((prev) => !prev)}
-                  aria-label={lang === "vi" ? "Mở menu tài khoản" : "Open account menu"}
-                >
-                  {user?.avatarUrl ? (
-                    <img src={user.avatarUrl} alt="Avatar" className="account-avatar-img" />
-                  ) : (
-                    <span className="account-avatar-fallback">👤</span>
-                  )}
-                </button>
+              <div className="header-right">
+                <div className="lang" aria-label="Language switcher">
+                  <button
+                    className={
+                      "lang-btn" +
+                      (lang === "vi" ? " active" : "")
+                    }
+                    type="button"
+                    onClick={() => setLang("vi")}
+                  >
+                    VI
+                  </button>
+                  <button
+                    className={
+                      "lang-btn" +
+                      (lang === "en" ? " active" : "")
+                    }
+                    type="button"
+                    onClick={() => setLang("en")}
+                  >
+                    EN
+                  </button>
+                </div>
 
-                {accountMenuOpen && (
-                  <div className="account-dropdown">
+                <a className="iconbtn" href="#contact">
+                  <span className="dot" />
+                  <span>{t(lang, "header.hotline")}</span>
+                </a>
+                <a className="iconbtn" href="#cart">
+                  <span>Cart</span>
+                  <span>{t(lang, "header.cart")}</span>
+                </a>
+                {isAuthenticated ? (
+                  <div className="account-menu-wrap" ref={accountMenuRef}>
                     <button
+                      className="iconbtn account-avatar-btn"
                       type="button"
-                      className="account-dropdown-item"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        navigate("/profile");
-                      }}
+                      onClick={() => setAccountMenuOpen((prev) => !prev)}
+                      aria-label={lang === "vi" ? "Mở menu tài khoản" : "Open account menu"}
                     >
-                      {lang === "vi" ? "Xem thông tin" : "View profile"}
+                      {user?.avatarUrl ? (
+                        <img src={user.avatarUrl} alt="Avatar" className="account-avatar-img" />
+                      ) : (
+                        <span className="account-avatar-fallback">👤</span>
+                      )}
                     </button>
-                    <button
-                      type="button"
-                      className="account-dropdown-item danger"
-                      onClick={async () => {
-                        setAccountMenuOpen(false);
-                        await logout();
-                        navigate("/", { replace: true });
-                      }}
-                    >
-                      {lang === "vi" ? "Đăng xuất" : "Logout"}
-                    </button>
+
+                    {accountMenuOpen && (
+                      <div className="account-dropdown">
+                        <button
+                          type="button"
+                          className="account-dropdown-item"
+                          onClick={() => {
+                            setAccountMenuOpen(false);
+                            navigate("/profile");
+                          }}
+                        >
+                          {lang === "vi" ? "Xem thông tin" : "View profile"}
+                        </button>
+                        <button
+                          type="button"
+                          className="account-dropdown-item danger"
+                          onClick={async () => {
+                            setAccountMenuOpen(false);
+                            await logout();
+                            navigate("/", { replace: true });
+                          }}
+                        >
+                          {lang === "vi" ? "Đăng xuất" : "Logout"}
+                        </button>
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <button
+                    className="iconbtn login-btn"
+                    type="button"
+                    onClick={() => navigate("/login")}
+                  >
+                    <span>{t(lang, "header.login")}</span>
+                  </button>
                 )}
               </div>
-            ) : (
-              <button
-                className="iconbtn login-btn"
-                type="button"
-                onClick={() => navigate("/login")}
-              >
-                <span>{t(lang, "header.login")}</span>
-              </button>
-            )}
-          </div>
-        </div>
-        {/* NAVBAR */}
-        <nav className="nav" aria-label="Primary navigation">
-          <div className="container nav-row">
-            <div className="nav-left">
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "rent" ? " active" : "")
-                }
-                href="#rent"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#rent");
-                  setActiveSection("rent");
-                }}
-              >
-                {t(lang, "nav.rent")}
-              </a>
-              <Link
-                className={
-                  "nav-item" +
-                  (activeSection === "buy" ? " active" : "")
-                }
-                to="/buy"
-                onClick={() => {
-                  setActiveSection("buy");
-                }}
-              >
-                {t(lang, "nav.buy")}
-              </Link>
-              <Link
-                className={
-                  "nav-item" +
-                  (activeSection === "booking" ? " active" : "")
-                }
-                to="/booking"
-                onClick={() => {
-                  setActiveSection("booking");
-                }}
-              >
-                {t(lang, "nav.booking")}
-              </Link>
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "blog" ? " active" : "")
-                }
-                href="#blog"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#blog");
-                  setActiveSection("blog");
-                }}
-              >
-                {t(lang, "nav.blog")}
-              </a>
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "promo" ? " active" : "")
-                }
-                href="#promo"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#promo");
-                  setActiveSection("promo");
-                }}
-              >
-                {t(lang, "nav.promo")}
-              </a>
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "contact" ? " active" : "")
-                }
-                href="#contact"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#contact");
-                  setActiveSection("contact");
-                }}
-              >
-                {t(lang, "nav.contact")}
-              </a>
             </div>
+            {/* NAVBAR */}
+            <nav className="nav" aria-label="Primary navigation">
+              <div className="container nav-row">
+                <div className="nav-left">
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "rent" ? " active" : "")
+                    }
+                    href="#rent"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#rent");
+                      setActiveSection("rent");
+                    }}
+                  >
+                    {t(lang, "nav.rent")}
+                  </a>
+                  <Link
+                    className={
+                      "nav-item" +
+                      (activeSection === "buy" ? " active" : "")
+                    }
+                    to="/buy"
+                    onClick={() => {
+                      setActiveSection("buy");
+                    }}
+                  >
+                    {t(lang, "nav.buy")}
+                  </Link>
+                  <Link
+                    className={
+                      "nav-item" +
+                      (activeSection === "booking" ? " active" : "")
+                    }
+                    to="/booking"
+                    onClick={() => {
+                      setActiveSection("booking");
+                    }}
+                  >
+                    {t(lang, "nav.booking")}
+                  </Link>
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "blog" ? " active" : "")
+                    }
+                    href="#blog"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#blog");
+                      setActiveSection("blog");
+                    }}
+                  >
+                    {t(lang, "nav.blog")}
+                  </a>
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "promo" ? " active" : "")
+                    }
+                    href="#promo"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#promo");
+                      setActiveSection("promo");
+                    }}
+                  >
+                    {t(lang, "nav.promo")}
+                  </a>
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "contact" ? " active" : "")
+                    }
+                    href="#contact"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#contact");
+                      setActiveSection("contact");
+                    }}
+                  >
+                    {t(lang, "nav.contact")}
+                  </a>
+                </div>
 
-            <div className="nav-right">
-              <input
-                className="search"
-                type="search"
-                placeholder={t(
-                  lang,
-                  "search.placeholder"
-                )}
-              />
-              <button
-                className="cta"
-                type="button"
-                onClick={() => {
-                  navigate("/booking");
-                  setActiveSection("booking");
-                }}
-              >
-                {t(lang, "cta.bookNow")}
-              </button>
-            </div>
-          </div>
-        </nav>
-      </header>
+                <div className="nav-right">
+                  <input
+                    className="search"
+                    type="search"
+                    placeholder={t(
+                      lang,
+                      "search.placeholder"
+                    )}
+                  />
+                  <button
+                    className="cta"
+                    type="button"
+                    onClick={() => {
+                      navigate("/booking");
+                      setActiveSection("booking");
+                    }}
+                  >
+                    {t(lang, "cta.bookNow")}
+                  </button>
+                </div>
+              </div>
+            </nav>
+          </header>
         </>
       )}
 
@@ -1953,7 +1953,7 @@ const Homepage = ({ initialSection = "" }) => {
           </div>
         </div>
       </footer>
-    </div>
+    </>
   );
 };
 

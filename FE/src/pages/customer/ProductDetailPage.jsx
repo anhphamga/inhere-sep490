@@ -270,20 +270,14 @@ export default function ProductDetailPage() {
     [canSubmit, product?.baseSalePrice]
   );
 
-  const canBuy = useMemo(
-    () => canSubmit && Number(product?.baseSalePrice || 0) > 0,
-    [canSubmit, product?.baseSalePrice]
-  );
-
   useEffect(() => {
     if (!product?._id) return;
     let mounted = true;
     const run = async () => {
       try {
         setRelatedLoading(true);
-        const params = new URLSearchParams({ purpose: "all", limit: "12", page: "1" });
-        if (product.category) params.set("category", product.category);
-        const res = await fetch(`/api/products?${params.toString()}`);
+        const params = new URLSearchParams({ limit: "4" });
+        const res = await fetch(`/api/products/${product._id}/similar?${params.toString()}`);
         const data = res.ok ? await res.json() : { data: [] };
         if (!mounted) return;
         const items = Array.isArray(data?.data) ? data.data : [];
@@ -299,7 +293,7 @@ export default function ProductDetailPage() {
     return () => {
       mounted = false;
     };
-  }, [product?._id, product?.category]);
+  }, [product?._id]);
 
   const showToast = (message) => {
     setToast(message);
