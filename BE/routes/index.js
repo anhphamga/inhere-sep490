@@ -18,6 +18,7 @@ const bannerRoutes = require('./banner.routes');
 const rentOrderRoutes = require('./rent-order.routes');
 const alertRoutes = require('./alert.routes');
 const fittingBookingRoutes = require('./fitting-booking.routes');
+const virtualTryOnRoutes = require('./virtual-try-on.routes');
 // const orderRoutes = require('./order.routes');
 // ... thêm các routes khác ở đây
 
@@ -32,6 +33,7 @@ router.use('/banners', bannerRoutes);
 router.use('/rent-orders', rentOrderRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/fitting-bookings', fittingBookingRoutes);
+router.use('/virtual-try-on', virtualTryOnRoutes);
 // router.use('/orders', orderRoutes);
 // ... thêm prefix tương ứng
 

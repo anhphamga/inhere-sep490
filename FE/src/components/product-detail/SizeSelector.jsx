@@ -10,8 +10,11 @@ export default function SizeSelector({
   if (isFreeSize) {
     return (
       <div className="space-y-2">
-        <p className="text-sm font-semibold text-neutral-700">Kich thuoc</p>
-        <span className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Kích thước</p>
+          <button type="button" className="text-xs font-medium text-slate-500 underline hover:text-slate-700">Hướng dẫn chọn size</button>
+        </div>
+        <span className="inline-flex h-10 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700">
           Free Size
         </span>
       </div>
@@ -20,7 +23,10 @@ export default function SizeSelector({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-semibold text-neutral-700">Kich thuoc</p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Kích thước</p>
+        <button type="button" className="text-xs font-medium text-slate-500 underline hover:text-slate-700">Hướng dẫn chọn size</button>
+      </div>
       <div className="flex flex-wrap gap-2">
         {sizes.map((size) => {
           const active = selectedSize === size;
@@ -31,13 +37,14 @@ export default function SizeSelector({
               type="button"
               onClick={() => !disabled && onSelect?.(size)}
               disabled={disabled}
-              className={`min-h-11 min-w-11 max-w-full rounded-xl border px-3 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
-                active ? "border-amber-500 bg-amber-500 text-white" : "border-neutral-200 bg-white text-neutral-800"
-              } ${disabled ? "cursor-not-allowed opacity-40" : "hover:border-neutral-300"}`}
+              className={`inline-flex h-10 min-w-[56px] items-center justify-center rounded-lg border px-4 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${active
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
+                } ${disabled ? "cursor-not-allowed opacity-30" : ""}`}
               aria-pressed={active}
-              aria-label={`Chon size ${size}`}
+              aria-label={`Chọn size ${size}`}
             >
-              <span className="break-words">{size}</span>
+              {size}
             </button>
           );
         })}

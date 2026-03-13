@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Header from "../../components/common/Header";
 import ProductGallery from "../../components/product-detail/ProductGallery";
@@ -96,7 +96,7 @@ export default function ProductDetailPage() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState("");
   const [toast, setToast] = useState("");
-  
+
   // Date selection modal state
   const [showDateModal, setShowDateModal] = useState(false);
   const [rentStartDate, setRentStartDate] = useState("");
@@ -153,8 +153,8 @@ export default function ProductDetailPage() {
     if (!product) return [];
     const fromVariants = Array.isArray(product.colorVariants)
       ? product.colorVariants
-          .map((variant) => String(variant?.name || variant?.color || "").trim())
-          .filter(Boolean)
+        .map((variant) => String(variant?.name || variant?.color || "").trim())
+        .filter(Boolean)
       : [];
     if (fromVariants.length > 0) return uniq(fromVariants);
     const fromString = uniq(parseList(product.color));
@@ -191,14 +191,14 @@ export default function ProductDetailPage() {
     return Boolean(pricing && typeof pricing === "object" && Object.keys(pricing).length > 0);
   }, [product]);
 
-  const isVariantAvailable = (size, color) => {
+  const isVariantAvailable = useCallback((size, color) => {
     if (!hasVariantPricing) return true;
     if (isFreeSize) {
       return product?.variantRentPrices?.[`FREE SIZE__${color}`] != null || product?.variantRentPrices?.[`Free Size__${color}`] != null;
     }
     if (!size || !color) return false;
     return product?.variantRentPrices?.[`${size}__${color}`] != null;
-  };
+  }, [hasVariantPricing, isFreeSize, product?.variantRentPrices]);
 
   useEffect(() => {
     if (!colors.length) return;
@@ -211,7 +211,7 @@ export default function ProductDetailPage() {
       const fallback = sizes.find((size) => isVariantAvailable(size, selectedColor));
       if (fallback) setSelectedSize(fallback);
     }
-  }, [colors, selectedColor, selectedSize, sizes, isFreeSize]);
+  }, [colors, selectedColor, selectedSize, sizes, isFreeSize, isVariantAvailable]);
 
   useEffect(() => {
     if (!sizes.length) return;
@@ -263,7 +263,7 @@ export default function ProductDetailPage() {
     if (!isFreeSize && sizes.length > 0 && !selectedSize) return false;
     if (!isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) return false;
     return true;
-  }, [product, selectedColor, selectedSize, isFreeSize, sizes]);
+  }, [product, selectedColor, selectedSize, isFreeSize, sizes, isVariantAvailable]);
 
   const canBuy = useMemo(
     () => canSubmit && Number(product?.baseSalePrice || 0) > 0,
@@ -315,7 +315,7 @@ export default function ProductDetailPage() {
       showToast('Vui lòng chọn ngày thuê');
       return;
     }
-    
+
     if (new Date(rentStartDate) > new Date(rentEndDate)) {
       showToast('Ngày kết thúc phải lớn hơn ngày bắt đầu');
       return;
@@ -336,7 +336,7 @@ export default function ProductDetailPage() {
       // Đóng modal và chuyển đến trang checkout
       setShowDateModal(false);
       navigate('/cart');
-    } catch (error) {
+    } catch {
       showToast('Có lỗi xảy ra');
     } finally {
       setLoadingAction("");
@@ -382,32 +382,26 @@ export default function ProductDetailPage() {
   }, [product?.isBestSeller, product?.isNew, isFreeSize]);
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#fcfaf7_0%,#f7f4ee_24%,#f5f5f4_100%)] pb-24 md:pb-10">
+    <div className="min-h-screen bg-white pb-24 md:pb-10">
       <Header />
 
-      <main className="w-full px-4 py-5 md:px-6 md:py-8">
-        <div className="mx-auto w-full max-w-[1320px]">
-          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-neutral-500 md:text-sm">
-            <Link to="/" className="hover:text-neutral-700">{t.breadcrumbHome}</Link>
+      <main className="isolate w-full px-4 py-4 md:px-8 md:py-6">
+        <div className="mx-auto w-full max-w-7xl">
+          <nav className="mb-4 flex items-center gap-1.5 text-[13px] text-slate-400">
+            <Link to="/" className="hover:text-slate-700">{t.breadcrumbHome}</Link>
             <span>/</span>
-            <Link to="/buy" className="hover:text-neutral-700">{t.breadcrumbBuy}</Link>
+            <Link to="/buy" className="hover:text-slate-700">{t.breadcrumbBuy}</Link>
             <span>/</span>
-            <span className="max-w-full truncate font-medium text-neutral-700">{product?.name || id}</span>
-          </div>
-
-          <Link
-            className="mb-6 inline-flex min-h-11 items-center rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 shadow-sm hover:bg-neutral-50"
-            to="/buy"
-          >
-            {"<"} {t.back}
-          </Link>
+            <span className="max-w-50 truncate text-slate-600">{product?.name || id}</span>
+          </nav>
 
           {loading && <p className="text-sm text-neutral-500">{t.loading}</p>}
           {!loading && !product && <p className="text-sm text-neutral-500">{t.notFound}</p>}
 
           {!loading && product && (
-            <>
-              <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] xl:gap-8">
+            <div className="space-y-4">
+              {/* Product Section: Gallery + Info */}
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_400px] lg:gap-8">
                 <ProductGallery
                   images={currentImagesByColor}
                   activeIndex={selectedImageIndex}
@@ -416,77 +410,67 @@ export default function ProductDetailPage() {
                   productName={product.name || "product"}
                 />
 
-                <div className="w-full space-y-4 xl:sticky xl:top-24">
-                  <ProductInfo
-                    name={product.name}
-                    category={product.category}
-                    badges={badges}
-                    rentPriceText={formatCurrency(currentRentPrice, lang)}
-                    salePriceText={formatCurrency(product.baseSalePrice, lang)}
-                    variantContent={
-                      <VariantSelector
-                        colors={colors}
-                        sizes={sizes}
-                        selectedColor={selectedColor}
-                        selectedSize={selectedSize}
-                        onColorChange={setSelectedColor}
-                        onSizeChange={setSelectedSize}
-                        getSwatchClass={getSwatchClass}
-                        isColorDisabled={(color) => !isFreeSize && selectedSize ? !isVariantAvailable(selectedSize, color) : false}
-                        isSizeDisabled={(size) => selectedColor ? !isVariantAvailable(size, selectedColor) : false}
-                        isFreeSize={isFreeSize}
-                      />
-                    }
-                    actionsContent={
-                      <ProductActions
-                        rentPriceText={formatCurrency(currentRentPrice, lang)}
-                        salePriceText={formatCurrency(product.baseSalePrice, lang)}
-                        onRent={handleRent}
-                        onBuy={handleBuy}
-                        loadingAction={loadingAction}
-                        canSubmit={canSubmit}
-                        canBuy={canBuy}
-                      />
-                    }
-                  />
-                </div>
-              </section>
+                <ProductInfo
+                  name={product.name}
+                  category={product.category}
+                  badges={badges}
+                  rentPriceText={formatCurrency(currentRentPrice, lang)}
+                  salePriceText={formatCurrency(product.baseSalePrice, lang)}
+                  variantContent={
+                    <VariantSelector
+                      colors={colors}
+                      sizes={sizes}
+                      selectedColor={selectedColor}
+                      selectedSize={selectedSize}
+                      onColorChange={setSelectedColor}
+                      onSizeChange={setSelectedSize}
+                      getSwatchClass={getSwatchClass}
+                      isColorDisabled={(color) => !isFreeSize && selectedSize ? !isVariantAvailable(selectedSize, color) : false}
+                      isSizeDisabled={(size) => selectedColor ? !isVariantAvailable(size, selectedColor) : false}
+                      isFreeSize={isFreeSize}
+                    />
+                  }
+                  actionsContent={
+                    <ProductActions
+                      rentPriceText={formatCurrency(currentRentPrice, lang)}
+                      salePriceText={formatCurrency(product.baseSalePrice, lang)}
+                      onRent={handleRent}
+                      onBuy={handleBuy}
+                      loadingAction={loadingAction}
+                      canSubmit={canSubmit}
+                      canBuy={canBuy}
+                      productImage={currentImagesByColor[0]}
+                    />
+                  }
+                />
+              </div>
 
-              <section className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] xl:gap-8">
+              {/* Description Section */}
+              <section className="border-t border-slate-200 pt-4">
                 <ProductDescription description={product.description} />
-
-                <div className="w-full">
-                  <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-                    <h3 className="text-lg font-semibold text-neutral-900">{t.policyTitle}</h3>
-                    <ul className="mt-3 space-y-2 text-sm text-neutral-700">
-                      <li className="rounded-2xl bg-neutral-50 p-4">{t.policyDeposit}</li>
-                      <li className="rounded-2xl bg-neutral-50 p-4">{t.policySwap}</li>
-                      <li className="rounded-2xl bg-neutral-50 p-4">{t.policyTime}</li>
-                    </ul>
-                  </div>
-                </div>
               </section>
 
-              <section className="mt-8">
+              {/* Related Products Section */}
+              <section className="border-t border-slate-200 pt-4">
                 <RelatedProducts items={relatedProducts} loading={relatedLoading} />
               </section>
-            </>
+            </div>
           )}
         </div>
       </main>
 
       {toast && (
-        <div className="fixed right-4 top-20 z-50 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
+        <div className="fixed right-4 top-20 z-50 rounded-xl border border-white/10 bg-neutral-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
           {toast}
         </div>
       )}
 
       {/* Date Selection Modal */}
       {showDateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-md overflow-auto rounded-2xl border border-amber-100 bg-linear-to-b from-amber-50/60 to-white p-6 shadow-xl">
             <h3 className="mb-4 text-xl font-bold">Chọn ngày thuê</h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -497,10 +481,10 @@ export default function ProductDetailPage() {
                   value={rentStartDate}
                   onChange={(e) => setRentStartDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
-              
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   Ngày kết thúc
@@ -510,16 +494,16 @@ export default function ProductDetailPage() {
                   value={rentEndDate}
                   onChange={(e) => setRentEndDate(e.target.value)}
                   min={rentStartDate || new Date().toISOString().split('T')[0]}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
 
               {rentStartDate && rentEndDate && (
-                <div className="rounded-lg bg-pink-50 p-3 text-sm">
-                  <p className="font-medium text-pink-700">
+                <div className="rounded-lg bg-amber-50 p-3 text-sm">
+                  <p className="font-medium text-amber-800">
                     Số ngày thuê: {Math.ceil((new Date(rentEndDate) - new Date(rentStartDate)) / (1000 * 60 * 60 * 24)) + 1} ngày
                   </p>
-                  <p className="text-pink-600">
+                  <p className="text-amber-700">
                     Tổng tiền: {((Math.ceil((new Date(rentEndDate) - new Date(rentStartDate)) / (1000 * 60 * 60 * 24)) + 1) * currentRentPrice).toLocaleString('vi-VN')}đ
                   </p>
                 </div>
@@ -542,7 +526,7 @@ export default function ProductDetailPage() {
                 type="button"
                 onClick={handleConfirmRent}
                 disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate}
-                className="flex-1 rounded-lg bg-pink-600 px-4 py-2 font-medium text-white hover:bg-pink-700 disabled:bg-pink-300"
+                className="flex-1 rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-700 disabled:bg-amber-300"
               >
                 {loadingAction === "rent" ? "Đang xử lý..." : "Xác nhận"}
               </button>

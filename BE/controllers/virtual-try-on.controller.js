@@ -1,0 +1,110 @@
+/**
+ * Virtual Try-On Controller
+ * Handles proxy requests to API4.ai Virtual Try-On API
+ * Uses demo endpoint: https://demo.api4ai.cloud/virtual-try-on/v1/results
+ * - Free of charge
+ * - No API key required
+ * - Rate limits apply
+ */
+
+const https = require('https');
+const { URL } = require('url');
+
+/**
+ * Proxy virtual try-on request to API4.ai demo
+ * POST /api/virtual-try-on/generate
+ */
+exports.generateTryOn = async (req, res) => {
+    try {
+        // Create request to API4.ai demo endpoint
+        const url = new URL('https://demo.api4ai.cloud/virtual-try-on/v1/results');
+        const options = {
+            hostname: url.hostname,
+            path: url.pathname,
+            method: 'POST',
+            headers: {},
+        };
+
+        // Handle FormData from request
+        let body = '';
+        let contentLength = 0;
+
+        // Forward headers from original request
+        if (req.headers['content-type']) {
+            options.headers['Content-Type'] = req.headers['content-type'];
+        }
+        if (req.headers['content-length']) {
+            options.headers['Content-Length'] = req.headers['content-length'];
+            contentLength = parseInt(req.headers['content-length'], 10);
+        }
+
+        // Collect request body
+        await new Promise((resolve, reject) => {
+            let buffers = [];
+            req.on('data', (chunk) => {
+                buffers.push(chunk);
+            });
+            req.on('end', () => {
+                body = Buffer.concat(buffers);
+                if (body.length > 0) {
+                    options.headers['Content-Length'] = body.length;
+                }
+                resolve();
+            });
+            req.on('error', reject);
+        });
+
+        // Make request to API4.ai
+        return new Promise((resolve) => {
+            const apiReq = https.request(options, (apiRes) => {
+                let data = '';
+
+                apiRes.on('data', (chunk) => {
+                    data += chunk;
+                });
+
+                apiRes.on('end', () => {
+                    try {
+                        const jsonData = JSON.parse(data);
+                        return resolve(
+                            res.status(200).json({
+                                success: true,
+                                data: jsonData,
+                            })
+                        );
+                    } catch {
+                        return resolve(
+                            res.status(500).json({
+                                success: false,
+                                message: 'Invalid response from API4.ai',
+                                error: data,
+                            })
+                        );
+                    }
+                });
+            });
+
+            apiReq.on('error', (error) => {
+                console.error('Virtual try-on API error:', error.message);
+                return resolve(
+                    res.status(500).json({
+                        success: false,
+                        message: error.message || 'Virtual try-on generation failed',
+                    })
+                );
+            });
+
+            // Send body
+            if (body.length > 0) {
+                apiReq.write(body);
+            }
+            apiReq.end();
+        });
+    } catch (error) {
+        console.error('Virtual try-on error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Virtual try-on generation failed',
+        });
+    }
+};

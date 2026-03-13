@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Heart } from "lucide-react";
 
 function GalleryImage({ src, alt, className, fallbackClassName = "" }) {
   const [hasError, setHasError] = useState(false);
@@ -6,7 +7,7 @@ function GalleryImage({ src, alt, className, fallbackClassName = "" }) {
   if (!src || hasError) {
     return (
       <div
-        className={`flex items-center justify-center bg-neutral-100 px-3 text-center text-xs font-medium text-neutral-500 ${fallbackClassName}`}
+        className={`flex items-center justify-center bg-neutral-50 text-center text-xs text-neutral-400 ${fallbackClassName}`}
       >
         Khong co anh
       </div>
@@ -27,33 +28,34 @@ export default function ProductGallery({
 
   if (loading) {
     return (
-      <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm lg:p-5">
-        <div className="grid gap-3 md:grid-cols-[104px_1fr] lg:gap-4">
-          <div className="hidden gap-2 md:grid">
-            {Array.from({ length: 5 }).map((_, idx) => (
-              <div key={idx} className="h-24 w-full animate-pulse rounded-2xl bg-neutral-200" />
-            ))}
-          </div>
-          <div className="h-[420px] animate-pulse rounded-3xl bg-neutral-200 sm:h-[560px] xl:h-[640px]" />
+      <div className="grid grid-cols-[100px_1fr] gap-4">
+        <div className="hidden gap-3 md:grid">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="aspect-square w-full animate-pulse rounded-lg bg-slate-100" />
+          ))}
         </div>
+        <div className="aspect-[3/4] w-full animate-pulse rounded-lg bg-slate-100" />
       </div>
     );
   }
 
   const mainImage = safeImages[activeIndex] || safeImages[0] || "";
+  const imageCountText = `${Math.min(activeIndex + 1, Math.max(safeImages.length, 1))}/${Math.max(safeImages.length, 1)}`;
 
   return (
-    <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm lg:p-5">
-      <div className="grid gap-3 md:grid-cols-[104px_1fr] lg:gap-4">
-        <div className="hidden max-h-[640px] gap-3 overflow-auto pr-1 md:grid">
+    <div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[100px_1fr]">
+        {/* Thumbnails — desktop */}
+        <div className="hidden content-start gap-2 self-start overflow-auto md:grid" style={{ maxHeight: "calc(75vw * 4 / 3)" }}>
           {safeImages.map((img, idx) => (
             <button
               key={`${img.slice(0, 24)}-${idx}`}
               type="button"
               onClick={() => onSelectImage?.(idx)}
-              className={`h-24 w-full overflow-hidden rounded-2xl border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
-                idx === activeIndex ? "border-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.12)]" : "border-neutral-200"
-              }`}
+              className={`aspect-square w-full overflow-hidden rounded-lg border-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${idx === activeIndex
+                ? "border-slate-900 opacity-100"
+                : "border-slate-200 opacity-70 hover:opacity-100"
+                }`}
               aria-label={`View image ${idx + 1}`}
             >
               <GalleryImage
@@ -66,33 +68,46 @@ export default function ProductGallery({
           ))}
         </div>
 
-        <div className="group relative overflow-hidden rounded-3xl bg-neutral-100">
+        {/* Main image */}
+        <div className="group relative overflow-hidden rounded-lg bg-neutral-50">
+          <span className="absolute right-3 top-3 z-10 inline-flex h-6 items-center rounded-md bg-black/50 px-2 text-[11px] font-medium text-white backdrop-blur-sm">
+            {imageCountText}
+          </span>
+          <button
+            type="button"
+            aria-label="Save to wishlist"
+            className="absolute right-3 top-11 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/90 text-slate-500 shadow-sm transition hover:text-red-500"
+          >
+            <Heart size={18} />
+          </button>
           {mainImage ? (
             <GalleryImage
               key={mainImage}
               src={mainImage}
               alt={productName}
-              className="h-[420px] w-full scale-100 object-cover opacity-100 transition-all duration-500 ease-out sm:h-[520px] xl:h-[640px] md:group-hover:scale-[1.02]"
-              fallbackClassName="h-[420px] w-full sm:h-[520px] xl:h-[640px]"
+              className="aspect-[3/4] w-full object-cover"
+              fallbackClassName="aspect-[3/4] w-full"
             />
           ) : (
-            <div className="flex h-[420px] items-center justify-center text-sm text-neutral-500 sm:h-[520px] xl:h-[640px]">
+            <div className="flex aspect-[3/4] w-full items-center justify-center text-sm text-neutral-400">
               No image
             </div>
           )}
         </div>
       </div>
 
+      {/* Thumbnails — mobile */}
       {safeImages.length > 1 && (
-        <div className="mt-4 flex gap-2 overflow-auto pb-1 md:hidden">
+        <div className="mt-3 flex gap-2 overflow-auto pb-1 md:hidden">
           {safeImages.map((img, idx) => (
             <button
               key={`${img.slice(0, 24)}-${idx}`}
               type="button"
               onClick={() => onSelectImage?.(idx)}
-              className={`h-20 min-w-20 overflow-hidden rounded-2xl border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
-                idx === activeIndex ? "border-amber-500" : "border-neutral-200"
-              }`}
+              className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition focus:outline-none ${idx === activeIndex
+                ? "border-slate-900 opacity-100"
+                : "border-transparent opacity-60"
+                }`}
               aria-label={`View image ${idx + 1}`}
             >
               <GalleryImage
