@@ -7,8 +7,21 @@ const signAccessToken = (payload) => {
   return jwt.sign(payload, getJwtSecret(), { expiresIn: getJwtExpiresIn() });
 };
 
+const signGuestVerificationToken = (payload) => {
+  const expiresIn = process.env.GUEST_VERIFICATION_TOKEN_EXPIRES_IN || '15m';
+  return jwt.sign({ ...payload, scope: 'guest-checkout' }, getJwtSecret(), { expiresIn });
+};
+
 const verifyAccessToken = (token) => {
   return jwt.verify(token, getJwtSecret());
+};
+
+const verifyGuestVerificationToken = (token) => {
+  const payload = jwt.verify(token, getJwtSecret());
+  if (payload?.scope !== 'guest-checkout') {
+    throw new Error('Invalid guest verification token');
+  }
+  return payload;
 };
 
 const extractBearerToken = (authorizationHeader) => {
@@ -26,6 +39,8 @@ const extractBearerToken = (authorizationHeader) => {
 
 module.exports = {
   signAccessToken,
+  signGuestVerificationToken,
   verifyAccessToken,
+  verifyGuestVerificationToken,
   extractBearerToken
 };

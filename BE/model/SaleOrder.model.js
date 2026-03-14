@@ -4,7 +4,8 @@ const saleOrderSchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false,
+    default: null
   },
   staffId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -13,13 +14,36 @@ const saleOrderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft', 'PendingPayment', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],
+    enum: ['Draft', 'PendingPayment', 'PendingConfirmation', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],
     default: 'Draft'
   },
   paymentMethod: {
     type: String,
-    enum: ['COD', 'Online'],
+    enum: ['COD', 'Online', 'BankTransfer'],
     required: true
+  },
+  orderType: {
+    type: String,
+    enum: ['Buy', 'Rent'],
+    default: 'Buy'
+  },
+  guestName: {
+    type: String,
+    default: ''
+  },
+  guestEmail: {
+    type: String,
+    default: ''
+  },
+  guestVerificationMethod: {
+    type: String,
+    enum: ['phone', 'email', null],
+    default: null
+  },
+  guestVerificationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'GuestVerification',
+    default: null
   },
   discountAmount: {
     type: Number,

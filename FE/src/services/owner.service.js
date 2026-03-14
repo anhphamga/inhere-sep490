@@ -219,6 +219,16 @@ export const getOwnerCustomerDetailApi = async (customerId) => {
     return response.data
 }
 
+export const getOwnerOrdersApi = async (params = {}) => {
+    const response = await axiosClient.get('/owner/orders', { params })
+    return response.data
+}
+
+export const updateOwnerOrderStatusApi = async (orderId, status) => {
+    const response = await axiosClient.patch(`/owner/orders/${orderId}/status`, { status })
+    return response.data
+}
+
 export const updateOwnerCustomerStatusApi = async (customerId, status) => {
     const response = await axiosClient.patch(`/owner/customers/${customerId}/status`, { status })
     return response.data
