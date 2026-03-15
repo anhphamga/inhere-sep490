@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const seedOwnerAccount = require('./utils/seedOwner');
+const { startAutoCancelJob } = require('./utils/autoCancelPendingOrders');
 
 const app = express();
 
@@ -40,6 +41,9 @@ const bootstrap = async () => {
   try {
     await connectDB();
     await seedOwnerAccount();
+
+    // Bật cron job tự động hủy đơn PendingDeposit quá 30 phút
+    startAutoCancelJob();
 
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

@@ -293,7 +293,9 @@ export default function CartPage() {
                               <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Lịch thuê</p>
                                 <p className="mt-1 text-sm font-medium text-slate-700">
-                                  {new Date(item.rentStartDate).toLocaleDateString('vi-VN')} - {new Date(item.rentEndDate).toLocaleDateString('vi-VN')}
+                                  {new Date(item.rentStartDate).toLocaleDateString('vi-VN')} {item.rentStartDate.includes('T') ? new Date(item.rentStartDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                  {' - '}
+                                  {new Date(item.rentEndDate).toLocaleDateString('vi-VN')} {item.rentEndDate.includes('T') ? new Date(item.rentEndDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}
                                 </p>
                               </div>
                               <div className="rounded-2xl bg-slate-50 px-4 py-3">

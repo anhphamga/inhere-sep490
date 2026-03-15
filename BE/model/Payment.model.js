@@ -27,7 +27,7 @@ const paymentSchema = new mongoose.Schema({
   },
   purpose: {
     type: String,
-    enum: ['Deposit', 'Remaining', 'LateFee', 'Compensation', 'SalePayment', 'Refund'],
+    enum: ['Deposit', 'Remaining', 'LateFee', 'Compensation', 'DamageFee', 'SalePayment', 'Refund'],
     default: 'SalePayment'
   },
   transactionCode: {
