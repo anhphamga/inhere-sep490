@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { getRentOrderByIdApi, payDepositApi, cancelRentOrderApi } from '../services/rent-order.service'
+import { getRentOrderByIdApi, payDepositApi, cancelRentOrderApi, confirmPickupApi, confirmReturnApi, finalizeRentOrderApi } from '../services/rent-order.service'
 import Header from '../components/common/Header'
 
 const statusLabels = {
@@ -11,7 +11,7 @@ const statusLabels = {
   Confirmed: 'Đã xác nhận',
   WaitingPickup: 'Chờ lấy đồ',
   Renting: 'Đang thuê',
-  Waiting: 'Chờ trả',
+  WaitingReturn: 'Chờ trả',
   Completed: 'Hoàn tất',
   Cancelled: 'Đã hủy'
 }
@@ -23,7 +23,7 @@ const statusColors = {
   Confirmed: 'bg-indigo-100 text-indigo-800',
   WaitingPickup: 'bg-purple-100 text-purple-800',
   Renting: 'bg-green-100 text-green-800',
-  Waiting: 'bg-orange-100 text-orange-800',
+  WaitingReturn: 'bg-orange-100 text-orange-800',
   Completed: 'bg-green-200 text-green-800',
   Cancelled: 'bg-red-100 text-red-800'
 }
@@ -31,18 +31,45 @@ const statusColors = {
 export default function RentalDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isAuthenticated, loading: authLoading } = useAuth()
+  const { isAuthenticated, loading: authLoading, user } = useAuth()
+
+  const isStaffOrOwner = user?.role === 'Staff' || user?.role === 'Owner'
 
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
+  // Pickup form
+  const [pickupCollateralType, setPickupCollateralType] = useState('CCCD')
+  const [pickupDocumentNumber, setPickupDocumentNumber] = useState('')
+  const [pickupCashAmount, setPickupCashAmount] = useState(0)
+  const [pickupCollectRemaining, setPickupCollectRemaining] = useState(true)
+
+  // Return form
+  const [returnCondition, setReturnCondition] = useState('Normal')
+  const [returnWashingFee, setReturnWashingFee] = useState(0)
+  const [returnDamageFee, setReturnDamageFee] = useState(0)
+  const [returnCompensationFee, setReturnCompensationFee] = useState(0)
+  const [returnNote, setReturnNote] = useState('')
+
+  // Finalize form
+  const [finalizeMethod, setFinalizeMethod] = useState('Cash')
+
   useEffect(() => {
     if (!authLoading && isAuthenticated && id) {
       fetchOrderDetail()
     }
   }, [isAuthenticated, id, authLoading])
+
+  useEffect(() => {
+    if (!order) return
+
+    setPickupCashAmount(order.remainingAmount || 0)
+    setReturnWashingFee(order.washingFee || 0)
+    setReturnDamageFee(order.damageFee || 0)
+    setReturnCompensationFee(order.compensationFee || 0)
+  }, [order])
 
   const fetchOrderDetail = async () => {
     try {
@@ -93,6 +120,82 @@ export default function RentalDetailPage() {
       }
     } catch (err) {
       alert(err.response?.data?.message || 'Có lỗi xảy ra')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleConfirmPickup = async () => {
+    if (!pickupCollateralType) {
+      alert('Vui lòng chọn loại thế chấp')
+      return
+    }
+
+    // Nếu là cash thì cần nhập số tiền
+    if (pickupCollateralType === 'CASH' && (!pickupCashAmount || Number(pickupCashAmount) <= 0)) {
+      alert('Vui lòng nhập số tiền thế chấp hợp lệ')
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      const payload = {
+        method: 'Cash',
+        collateral: {
+          type: pickupCollateralType,
+          documentNumber: pickupCollateralType !== 'CASH' ? pickupDocumentNumber : undefined,
+          cashAmount: pickupCollateralType === 'CASH' ? Number(pickupCashAmount) : undefined
+        },
+        collectRemaining: pickupCollectRemaining
+      }
+      const response = await confirmPickupApi(id, payload)
+      if (response.success) {
+        alert('Xác nhận lấy đồ thành công')
+        fetchOrderDetail()
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi xác nhận lấy đồ')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleConfirmReturn = async () => {
+    setActionLoading(true)
+    try {
+      const returnedItems = (order.items || []).map((item) => ({
+        productInstanceId: item.productInstanceId?._id || item.productInstanceId,
+        condition: returnCondition,
+        damageFee: Number(returnDamageFee || 0)
+      }))
+
+      const payload = {
+        returnedItems,
+        note: returnNote
+      }
+
+      const response = await confirmReturnApi(id, payload)
+      if (response.success) {
+        alert('Xác nhận trả đồ thành công')
+        fetchOrderDetail()
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi trả đồ')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleFinalize = async () => {
+    setActionLoading(true)
+    try {
+      const response = await finalizeRentOrderApi(id, { method: finalizeMethod })
+      if (response.success) {
+        alert('Chốt đơn thành công')
+        fetchOrderDetail()
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi chốt đơn')
     } finally {
       setActionLoading(false)
     }
@@ -191,11 +294,17 @@ export default function RentalDetailPage() {
                 </div>
                 <div>
                   <p className="text-gray-500">Ngày bắt đầu</p>
-                  <p className="font-medium">{new Date(order.rentStartDate).toLocaleDateString('vi-VN')}</p>
+                  <p className="font-medium">
+                    {new Date(order.rentStartDate).toLocaleDateString('vi-VN')}
+                    {order.rentStartDate.includes('T') && ` ${new Date(order.rentStartDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
+                  </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Ngày kết thúc</p>
-                  <p className="font-medium">{new Date(order.rentEndDate).toLocaleDateString('vi-VN')}</p>
+                  <p className="font-medium">
+                    {new Date(order.rentEndDate).toLocaleDateString('vi-VN')}
+                    {order.rentEndDate.includes('T') && ` ${new Date(order.rentEndDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -314,7 +423,7 @@ export default function RentalDetailPage() {
             {/* Actions */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-xl font-semibold mb-4">Thao tác</h2>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {canPayDeposit && (
                   <button
                     onClick={handlePayDeposit}
@@ -324,6 +433,7 @@ export default function RentalDetailPage() {
                     {actionLoading ? 'Đang xử lý...' : 'Thanh toán đặt cọc'}
                   </button>
                 )}
+
                 {canCancel && (
                   <button
                     onClick={handleCancelOrder}
@@ -333,6 +443,173 @@ export default function RentalDetailPage() {
                     {actionLoading ? 'Đang xử lý...' : 'Hủy đơn'}
                   </button>
                 )}
+
+                {isStaffOrOwner && (order.status === 'Confirmed' || order.status === 'WaitingPickup') && (
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="text-lg font-semibold mb-3">Xác nhận lấy đồ</h3>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm font-medium text-gray-600">Loại thế chấp</label>
+                        <select
+                          className="w-full rounded-lg border px-3 py-2"
+                          value={pickupCollateralType}
+                          onChange={(e) => setPickupCollateralType(e.target.value)}
+                        >
+                          <option value="CCCD">CCCD</option>
+                          <option value="GPLX">GPLX</option>
+                          <option value="CAVET">CAVET</option>
+                          <option value="CASH">Tiền mặt</option>
+                        </select>
+                      </div>
+
+                      {pickupCollateralType === 'CASH' ? (
+                        <div className="grid grid-cols-1 gap-3">
+                          <label className="text-sm font-medium text-gray-600">Số tiền thế chấp</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={pickupCashAmount}
+                            onChange={(e) => setPickupCashAmount(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2"
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-3">
+                          <label className="text-sm font-medium text-gray-600">Số {pickupCollateralType}</label>
+                          <input
+                            type="text"
+                            value={pickupDocumentNumber}
+                            onChange={(e) => setPickupDocumentNumber(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2"
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="collectRemaining"
+                          type="checkbox"
+                          checked={pickupCollectRemaining}
+                          onChange={(e) => setPickupCollectRemaining(e.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        <label htmlFor="collectRemaining" className="text-sm text-gray-600">
+                          Thu khoản còn lại ngay (nếu có)
+                        </label>
+                      </div>
+
+                      <button
+                        onClick={handleConfirmPickup}
+                        disabled={actionLoading}
+                        className="w-full bg-emerald-600 text-white py-3 rounded-lg font-semibold hover:bg-emerald-700 disabled:bg-gray-400"
+                      >
+                        {actionLoading ? 'Đang xử lý...' : 'Xác nhận lấy đồ'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isStaffOrOwner && (order.status === 'Renting' || order.status === 'WaitingReturn' || order.status === 'Late') && (
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="text-lg font-semibold mb-3">Xác nhận trả đồ</h3>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm font-medium text-gray-600">Tình trạng đồ</label>
+                        <select
+                          className="w-full rounded-lg border px-3 py-2"
+                          value={returnCondition}
+                          onChange={(e) => setReturnCondition(e.target.value)}
+                        >
+                          <option value="Normal">Bình thường</option>
+                          <option value="Dirty">Bẩn</option>
+                          <option value="Damaged">Hỏng</option>
+                          <option value="Lost">Mất</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-sm font-medium text-gray-600">Phí giặt</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={returnWashingFee}
+                            onChange={(e) => setReturnWashingFee(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-gray-600">Phí hư hỏng</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={returnDamageFee}
+                            onChange={(e) => setReturnDamageFee(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-sm font-medium text-gray-600">Phí đền bù</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={returnCompensationFee}
+                            onChange={(e) => setReturnCompensationFee(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm font-medium text-gray-600">Ghi chú</label>
+                        <textarea
+                          rows={3}
+                          value={returnNote}
+                          onChange={(e) => setReturnNote(e.target.value)}
+                          className="w-full rounded-lg border px-3 py-2"
+                        />
+                      </div>
+
+                      <button
+                        onClick={handleConfirmReturn}
+                        disabled={actionLoading}
+                        className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400"
+                      >
+                        {actionLoading ? 'Đang xử lý...' : 'Xác nhận trả đồ'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isStaffOrOwner && ['Returned', 'WaitingReturn', 'Late', 'Compensation', 'NoShow'].includes(order.status) && (
+                  <div className="rounded-lg border border-gray-200 p-4">
+                    <h3 className="text-lg font-semibold mb-3">Chốt đơn</h3>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm font-medium text-gray-600">Phương thức thanh toán</label>
+                        <select
+                          className="w-full rounded-lg border px-3 py-2"
+                          value={finalizeMethod}
+                          onChange={(e) => setFinalizeMethod(e.target.value)}
+                        >
+                          <option value="Cash">Tiền mặt</option>
+                          <option value="Online">Chuyển khoản</option>
+                        </select>
+                      </div>
+                      <button
+                        onClick={handleFinalize}
+                        disabled={actionLoading}
+                        className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400"
+                      >
+                        {actionLoading ? 'Đang xử lý...' : 'Chốt đơn'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {!canPayDeposit && !canCancel && order.status === 'Completed' && (
                   <p className="text-center text-green-600 font-medium">Đơn thuê đã hoàn tất</p>
                 )}

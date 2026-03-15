@@ -101,6 +101,8 @@ export default function ProductDetailPage() {
   const [showDateModal, setShowDateModal] = useState(false);
   const [rentStartDate, setRentStartDate] = useState("");
   const [rentEndDate, setRentEndDate] = useState("");
+  const [rentStartTime, setRentStartTime] = useState("09:00");
+  const [rentEndTime, setRentEndTime] = useState("09:00");
 
   const t = I18N[lang] || I18N.vi;
 
@@ -322,14 +324,18 @@ export default function ProductDetailPage() {
 
     setLoadingAction("rent");
     try {
-      // Thêm sản phẩm vào giỏ thuê với thông tin ngày
+      // Tạo datetime string với giờ
+      const startDateTime = rentStartDate && rentStartTime ? `${rentStartDate}T${rentStartTime}:00` : rentStartDate;
+      const endDateTime = rentEndDate && rentEndTime ? `${rentEndDate}T${rentEndTime}:00` : rentEndDate;
+
+      // Thêm sản phẩm vào giỏ thuê với thông tin ngày và giờ
       addItem(product, {
         color: selectedColor,
         size: selectedSize,
         rentPrice: currentRentPrice,
         productInstanceId: null,
-        rentStartDate,
-        rentEndDate
+        rentStartDate: startDateTime,
+        rentEndDate: endDateTime
       });
       showToast(t.toastRent);
       // Đóng modal và chuyển đến trang checkout
@@ -471,39 +477,77 @@ export default function ProductDetailPage() {
             <h3 className="mb-4 text-xl font-bold">Chọn ngày thuê</h3>
 
             <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Ngày bắt đầu
-                </label>
-                <input
-                  type="date"
-                  value={rentStartDate}
-                  onChange={(e) => setRentStartDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Ngày bắt đầu
+                  </label>
+                  <input
+                    type="date"
+                    value={rentStartDate}
+                    onChange={(e) => setRentStartDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Giờ nhận
+                  </label>
+                  <input
+                    type="time"
+                    value={rentStartTime}
+                    onChange={(e) => setRentStartTime(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Ngày kết thúc
-                </label>
-                <input
-                  type="date"
-                  value={rentEndDate}
-                  onChange={(e) => setRentEndDate(e.target.value)}
-                  min={rentStartDate || new Date().toISOString().split('T')[0]}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Ngày kết thúc
+                  </label>
+                  <input
+                    type="date"
+                    value={rentEndDate}
+                    onChange={(e) => setRentEndDate(e.target.value)}
+                    min={rentStartDate || new Date().toISOString().split('T')[0]}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Giờ trả
+                  </label>
+                  <input
+                    type="time"
+                    value={rentEndTime}
+                    onChange={(e) => setRentEndTime(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
               </div>
 
               {rentStartDate && rentEndDate && (
                 <div className="rounded-lg bg-amber-50 p-3 text-sm">
                   <p className="font-medium text-amber-800">
-                    Số ngày thuê: {Math.ceil((new Date(rentEndDate) - new Date(rentStartDate)) / (1000 * 60 * 60 * 24)) + 1} ngày
+                    Số ngày thuê: {(() => {
+                      const start = new Date(rentStartDate + 'T' + rentStartTime);
+                      const end = new Date(rentEndDate + 'T' + rentEndTime);
+                      const diffMs = end - start;
+                      const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                      return days > 0 ? days : 1;
+                    })()} ngày
                   </p>
                   <p className="text-amber-700">
-                    Tổng tiền: {((Math.ceil((new Date(rentEndDate) - new Date(rentStartDate)) / (1000 * 60 * 60 * 24)) + 1) * currentRentPrice).toLocaleString('vi-VN')}đ
+                    Tổng tiền: {((() => {
+                      const start = new Date(rentStartDate + 'T' + rentStartTime);
+                      const end = new Date(rentEndDate + 'T' + rentEndTime);
+                      const diffMs = end - start;
+                      const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                      return days > 0 ? days : 1;
+                    })() * currentRentPrice).toLocaleString('vi-VN')}đ
                   </p>
                 </div>
               )}
@@ -516,6 +560,8 @@ export default function ProductDetailPage() {
                   setShowDateModal(false);
                   setRentStartDate('');
                   setRentEndDate('');
+                  setRentStartTime('09:00');
+                  setRentEndTime('09:00');
                 }}
                 className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
               >

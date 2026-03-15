@@ -1,13 +1,16 @@
 import {
   cancelRentOrderRequest,
+  completeRentOrderRequest,
   completeWashingRequest,
   confirmPickupRequest,
   confirmRentOrderRequest,
   confirmReturnRequest,
   createRentOrderRequest,
+  finalizeRentOrderRequest,
   getAllRentOrdersRequest,
   getMyRentOrdersRequest,
   getRentOrderByIdRequest,
+  markNoShowRequest,
   payDepositRequest
 } from '../api/rent-order.api'
 
@@ -46,8 +49,8 @@ export const confirmRentOrderApi = async (id) => {
   return response.data
 }
 
-export const confirmPickupApi = async (id) => {
-  const response = await confirmPickupRequest(id)
+export const confirmPickupApi = async (id, payload = {}) => {
+  const response = await confirmPickupRequest(id, payload)
   return response.data
 }
 
@@ -56,7 +59,22 @@ export const confirmReturnApi = async (id, payload = {}) => {
   return response.data
 }
 
+export const markNoShowApi = async (id) => {
+  const response = await markNoShowRequest(id)
+  return response.data
+}
+
 export const completeWashingApi = async (orderId, payload = {}) => {
   const response = await completeWashingRequest(orderId, payload)
+  return response.data
+}
+
+export const finalizeRentOrderApi = async (id, payload = {}) => {
+  const response = await finalizeRentOrderRequest(id, payload)
+  return response.data
+}
+
+export const completeRentOrderApi = async (id, payload = {}) => {
+  const response = await completeRentOrderRequest(id, payload)
   return response.data
 }

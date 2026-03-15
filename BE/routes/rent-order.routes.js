@@ -19,7 +19,8 @@ router.put('/:id/pickup', authenticate, authorize('Staff', 'Owner'), rentOrderCo
 router.put('/:id/waiting-return', authenticate, authorize('Staff', 'Owner'), rentOrderController.markWaitingReturn);
 router.put('/:id/return', authenticate, authorize('Staff', 'Owner'), rentOrderController.confirmReturn);
 router.put('/:id/no-show', authenticate, authorize('Staff', 'Owner'), rentOrderController.markNoShow);
-router.put('/:id/finalize', authenticate, authorize('Staff', 'Owner'), rentOrderController.finalizeRentOrder);
+router.put('/:id/finalize', authenticate, rentOrderController.finalizeRentOrder);
+router.put('/:id/complete', authenticate, authorize('Staff', 'Owner'), rentOrderController.completeRentOrder);
 router.put('/:id/complete-washing', authenticate, authorize('Staff', 'Owner'), rentOrderController.completeWashing);
 
 module.exports = router;
