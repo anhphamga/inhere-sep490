@@ -4,6 +4,7 @@ const SaleOrderItem = require('../model/SaleOrderItem.model');
 const GuestVerification = require('../model/GuestVerification.model');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 const { verifyGuestVerificationToken } = require('../utils/jwt');
+const { sendOrderConfirmationEmail } = require('../services/mailService');
 
 const SALE_ORDER_ALLOWED_STATUSES = new Set([
   'Draft',
@@ -114,6 +115,59 @@ const attachSaleOrderItems = async (orders = []) => {
   }));
 };
 
+const getProductDisplayName = (product = {}) => {
+  if (typeof product?.name === 'string') return product.name;
+  if (product?.name && typeof product.name === 'object') {
+    return String(product.name.vi || product.name.en || '').trim();
+  }
+  return '';
+};
+
+const buildOrderEmailPayload = ({ saleOrder, items, customer }) => {
+  const frontendUrl = String(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const orderUrl = `${frontendUrl}/cart`;
+
+  return {
+    _id: saleOrder?._id,
+    createdAt: saleOrder?.createdAt,
+    status: saleOrder?.status,
+    paymentMethod: saleOrder?.paymentMethod,
+    totalAmount: saleOrder?.totalAmount,
+    customer: {
+      name: customer?.name || '',
+      email: customer?.email || '',
+      phone: customer?.phone || '',
+      address: customer?.address || '',
+    },
+    items: (items || []).map((item) => ({
+      productName: getProductDisplayName(item.productId) || 'Sản phẩm',
+      size: [item.size, item.color].filter(Boolean).join(' / '),
+      quantity: item.quantity || 1,
+      price: item.unitPrice || 0,
+      image: item.productId?.images?.[0] || '',
+    })),
+    orderUrl,
+  };
+};
+
+const sendOrderConfirmationEmailSafely = async ({ saleOrder, customer }) => {
+  try {
+    const orderItems = await SaleOrderItem.find({ orderId: saleOrder._id })
+      .populate('productId', 'name images')
+      .lean();
+
+    const emailPayload = buildOrderEmailPayload({
+      saleOrder,
+      items: orderItems,
+      customer,
+    });
+
+    await sendOrderConfirmationEmail(emailPayload);
+  } catch (mailError) {
+    console.error('Order confirmation email error:', mailError);
+  }
+};
+
 exports.guestCheckout = async (req, res) => {
   try {
     const {
@@ -210,6 +264,16 @@ exports.guestCheckout = async (req, res) => {
     verification.consumedAt = new Date();
     await verification.save();
 
+    await sendOrderConfirmationEmailSafely({
+      saleOrder,
+      customer: {
+        name: normalizedName,
+        email: verification.method === 'email' ? (verification.email || normalizedEmail) : normalizedEmail,
+        phone: normalizedPhone,
+        address: normalizedAddress,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       data: {
@@ -297,6 +361,16 @@ exports.checkout = async (req, res) => {
       guestVerificationId: null,
       note,
       items: normalizedItems,
+    });
+
+    await sendOrderConfirmationEmailSafely({
+      saleOrder,
+      customer: {
+        name: normalizedName,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        address: normalizedAddress,
+      },
     });
 
     return res.status(201).json({
