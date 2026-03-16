@@ -29,6 +29,8 @@ const normalizeImages = (images) => {
 
 const normalizeText = (value) => String(value || '').trim();
 
+const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const parseJsonLike = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
   if (Array.isArray(value) || (value && typeof value === 'object')) return value;
@@ -522,11 +524,32 @@ const getProducts = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 50);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const category = normalizeText(req.query.category);
+    const search = normalizeText(req.query.search);
     const skip = (page - 1) * limit;
 
     const withCategory = (filter) => applyCategoryFilter(filter, category);
 
     const filter = withCategory({});
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), 'i');
+      filter.$and = [
+        ...(Array.isArray(filter.$and) ? filter.$and : []),
+        {
+          $or: [
+            { name: { $regex: regex } },
+            { 'name.vi': { $regex: regex } },
+            { 'name.en': { $regex: regex } },
+            { category: { $regex: regex } },
+            { 'category.vi': { $regex: regex } },
+            { 'category.en': { $regex: regex } },
+            { color: { $regex: regex } },
+            { size: { $regex: regex } },
+            { sizes: { $elemMatch: { $regex: regex } } },
+            { 'colorVariants.name': { $regex: regex } },
+          ],
+        },
+      ];
+    }
     const allProducts = await Product.find(filter).sort({ createdAt: -1 }).lean();
     const normalizedProducts = allProducts.map((product) => sanitizeProduct(product, {}, lang));
 

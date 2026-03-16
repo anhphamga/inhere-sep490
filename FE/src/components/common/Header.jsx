@@ -32,6 +32,7 @@ export default function Header({ active = "", onSectionNavigate }) {
   const { isAuthenticated, logout, user } = useAuth();
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
 
   const isHomePage = location.pathname === "/";
   const dashboardPath = getRouteByRole(user?.role);
@@ -61,6 +62,11 @@ export default function Header({ active = "", onSectionNavigate }) {
     setMenuOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setSearchValue(params.get("q") || "");
+  }, [location.pathname, location.search]);
+
   const getSectionHref = (section) => (isHomePage ? `#${section}` : `/#${section}`);
 
   const handleSectionClick = (event, section) => {
@@ -70,6 +76,17 @@ export default function Header({ active = "", onSectionNavigate }) {
 
     event.preventDefault();
     onSectionNavigate(section);
+  };
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    const keyword = searchValue.trim();
+    const params = new URLSearchParams();
+    if (keyword) params.set("q", keyword);
+    navigate({
+      pathname: "/buy",
+      search: params.toString() ? `?${params.toString()}` : "",
+    });
   };
 
   return (
@@ -175,7 +192,15 @@ export default function Header({ active = "", onSectionNavigate }) {
           </div>
 
           <div className="site-nav-right">
-            <input className="site-search" type="search" placeholder={LABELS.search} />
+            <form onSubmit={handleSearchSubmit}>
+              <input
+                className="site-search"
+                type="search"
+                placeholder={LABELS.search}
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+              />
+            </form>
             <Link to="/booking" className="site-cta">
               {LABELS.cta}
             </Link>

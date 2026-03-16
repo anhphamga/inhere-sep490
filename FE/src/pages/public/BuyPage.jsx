@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import Header from "../../components/common/Header";
 import "../../style/pages/ProductPages.css";
 import { useTranslationDisplay } from "../../hooks/useTranslationDisplay";
@@ -144,6 +144,7 @@ const flattenCategories = (nodes = []) => {
 
 export default function BuyPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const lang = "vi";
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -159,6 +160,10 @@ export default function BuyPage() {
   });
   const [loading, setLoading] = useState(true);
   const [translatedTextMap, setTranslatedTextMap] = useState({});
+  const searchKeyword = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return (params.get("q") || "").trim();
+  }, [location.search]);
 
   const t = I18N[lang] || I18N.vi;
   const { translateFields } = useTranslationDisplay(lang);
@@ -294,6 +299,9 @@ export default function BuyPage() {
           page: String(page),
           lang,
         });
+        if (searchKeyword) {
+          params.set("search", searchKeyword);
+        }
         if (selectedCategory) {
           params.set("category", selectedCategory);
         }
@@ -318,11 +326,11 @@ export default function BuyPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedCategory, page, lang]);
+  }, [selectedCategory, page, lang, searchKeyword]);
 
   useEffect(() => {
     setPage(1);
-  }, [selectedCategory]);
+  }, [selectedCategory, searchKeyword]);
 
   const display = useMemo(() => {
     const mapped = products.map((item) => {
@@ -387,7 +395,9 @@ export default function BuyPage() {
 
             <div className="catalog-content">
               <p className="catalog-desc">
-                {selectedCategoryInfo
+                {searchKeyword
+                  ? `Kết quả tìm kiếm cho "${searchKeyword}".`
+                  : selectedCategoryInfo
                   ? t.descByCategory(
                     translateDisplay(selectedCategoryInfo.displayName),
                     selectedCategoryInfo.count

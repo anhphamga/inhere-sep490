@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { getAllRentOrdersApi, confirmRentOrderApi, confirmPickupApi, confirmReturnApi, completeWashingApi, finalizeRentOrderApi } from '../../services/rent-order.service'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getAllRentOrdersApi, confirmRentOrderApi, confirmPickupApi, confirmReturnApi, completeWashingApi, finalizeRentOrderApi, markNoShowApi } from '../../services/rent-order.service'
 
 const statusLabels = {
   Draft: 'Nháp',
@@ -49,6 +49,10 @@ const getCustomerText = (customer) => {
   }
   return 'N/A'
 }
+
+const formatMoney = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
+const formatDate = (value) => (value ? new Date(value).toLocaleDateString('vi-VN') : 'N/A')
+const formatDateTime = (value) => (value ? new Date(value).toLocaleString('vi-VN') : 'N/A')
 
 export default function StaffRentOrders() {
   const [orders, setOrders] = useState([])
@@ -272,147 +276,207 @@ export default function StaffRentOrders() {
     }
   }
 
+  const statusSummary = useMemo(() => {
+    return orders.reduce((acc, order) => {
+      acc[order.status] = (acc[order.status] || 0) + 1
+      return acc
+    }, {})
+  }, [orders])
+
   return (
-    <div>
+    <div className="min-h-screen bg-slate-100/80">
+      <div className="space-y-6">
       {/* Bộ lọc */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex gap-4 items-center">
-          <label className="text-sm font-medium text-gray-700">Lọc theo trạng thái:</label>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">Tất cả</option>
-            <option value="PendingDeposit">Chờ đặt cọc</option>
-            <option value="Deposited">Đã đặt cọc</option>
-            <option value="Confirmed">Đã xác nhận</option>
-            <option value="WaitingPickup">Chờ lấy đồ</option>
-            <option value="Renting">Đang thuê</option>
-            <option value="Completed">Hoàn tất</option>
-            <option value="Cancelled">Đã hủy</option>
-          </select>
-          <button
-            onClick={fetchOrders}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-          >
-            Làm mới
-          </button>
+      <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">INHERE Staff</p>
+              <h1 className="mt-2 text-2xl font-semibold text-slate-950">Quản lý đơn thuê</h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                Theo dõi trạng thái đơn thuê, xử lý nhanh theo từng bước và giữ mọi thông tin vận hành ở một màn hình rõ ràng hơn.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[420px]">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tổng đơn</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{orders.length}</p>
+              </div>
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-500">Đang thuê</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{statusSummary.Renting || 0}</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600">Hoàn tất</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{statusSummary.Completed || 0}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+              <div className="min-w-0 flex-1">
+                <label className="mb-2 block text-sm font-medium text-slate-700">Lọc theo trạng thái</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                >
+                  <option value="">Tất cả</option>
+                  <option value="PendingDeposit">Chờ đặt cọc</option>
+                  <option value="Deposited">Đã đặt cọc</option>
+                  <option value="Confirmed">Đã xác nhận</option>
+                  <option value="WaitingPickup">Chờ lấy đồ</option>
+                  <option value="Renting">Đang thuê</option>
+                  <option value="Completed">Hoàn tất</option>
+                  <option value="Cancelled">Đã hủy</option>
+                </select>
+              </div>
+              <button
+                onClick={fetchOrders}
+                className="h-12 rounded-2xl bg-indigo-600 px-5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+              >
+                Làm mới
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600 shadow-sm">
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
         {/* Danh sách đơn */}
-        <div className="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="font-semibold">Danh sách đơn thuê ({orders.length})</h3>
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Danh sách đơn</p>
+              <h3 className="mt-2 text-lg font-semibold text-slate-950">Đơn thuê hiện tại</h3>
+            </div>
+            <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">{orders.length} đơn</div>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
+            <div className="flex min-h-[420px] items-center justify-center px-6 py-10">
+              <div className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
             </div>
           ) : orders.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">Không có đơn thuê nào</div>
+            <div className="flex min-h-[420px] items-center justify-center px-6 py-10 text-center text-sm text-slate-500">Không có đơn thuê nào</div>
           ) : (
-            <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
+            <div className="max-h-[calc(100vh-240px)] space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
               {orders.map((order) => (
-                <div
+                <button
                   key={order._id}
                   onClick={() => setSelectedOrder(order)}
-                  className={`p-4 hover:bg-gray-50 cursor-pointer ${selectedOrder?._id === order._id ? 'bg-indigo-50' : ''}`}
+                  className={`w-full rounded-[24px] border p-5 text-left transition ${selectedOrder?._id === order._id ? 'border-indigo-200 bg-indigo-50/80 shadow-[0_16px_36px_rgba(79,70,229,0.14)]' : 'border-slate-200 bg-white shadow-sm hover:border-slate-300 hover:bg-slate-50/80 hover:shadow-md'}`}
                 >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-gray-900">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-slate-950">
                         #{order._id}
                       </p>
-                      <p className="text-sm text-gray-500">
-                        Khách: {getCustomerText(order.customerId)}
+                      <p className="mt-3 text-sm font-medium text-slate-700">
+                        Khách hàng: {getCustomerText(order.customerId)}
                       </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {order.createdAt ? new Date(order.createdAt).toLocaleString('vi-VN') : 'N/A'}
+                      <p className="mt-1 text-sm text-slate-500">
+                        Tạo lúc: {formatDateTime(order.createdAt)}
                       </p>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[order.status] || 'bg-gray-100'}`}>
+                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusColors[order.status] || 'border-slate-200 bg-slate-100 text-slate-700'}`}>
                       {statusLabels[order.status] || order.status}
                     </span>
                   </div>
-                  <div className="mt-2 text-sm text-gray-600">
-                    Tổng tiền: {order.totalAmount || 0}đ
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Khoảng thuê</p>
+                      <p className="mt-1 text-sm font-medium text-slate-700">{formatDate(order.rentStartDate)} - {formatDate(order.rentEndDate)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3 sm:text-right">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tổng tiền</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-950">{formatMoney(order.totalAmount || 0)}</p>
+                    </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </div>
 
         {/* Chi tiết đơn */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
           {selectedOrder ? (
             <div>
-              <h3 className="font-semibold text-lg mb-4">Chi tiết đơn #{selectedOrder._id}</h3>
+              <div className="rounded-[24px] bg-[linear-gradient(135deg,#eef2ff,#ffffff)] p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-500">Chi tiết đơn</p>
+                    <h3 className="mt-2 text-xl font-semibold text-slate-950">#{selectedOrder._id}</h3>
+                  </div>
+                  <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusColors[selectedOrder.status] || 'border-slate-200 bg-slate-100 text-slate-700'}`}>
+                    {statusLabels[selectedOrder.status] || selectedOrder.status}
+                  </span>
+                </div>
+              </div>
 
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-gray-500">Mã khách hàng</p>
-                  <p className="font-medium">{getCustomerText(selectedOrder.customerId)}</p>
+              <div className="mt-5 space-y-5">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Khách hàng</p>
+                  <p className="mt-3 text-base font-semibold text-slate-950">{getCustomerText(selectedOrder.customerId)}</p>
                 </div>
 
-                <div>
-                  <p className="text-sm text-gray-500">Ngày thuê</p>
-                  <p className="font-medium">
-                    {selectedOrder.rentStartDate ? new Date(selectedOrder.rentStartDate).toLocaleDateString('vi-VN') : 'N/A'} - {selectedOrder.rentEndDate ? new Date(selectedOrder.rentEndDate).toLocaleDateString('vi-VN') : 'N/A'}
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Ngày thuê</p>
+                  <p className="mt-3 text-base font-semibold text-slate-950">
+                    {formatDate(selectedOrder.rentStartDate)} - {formatDate(selectedOrder.rentEndDate)}
                   </p>
                 </div>
 
                 {/* Thông tin thanh toán */}
-                <div className="border-t pt-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Thông tin thanh toán</p>
+                <div className="rounded-3xl border border-slate-200 bg-white p-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Thông tin thanh toán</p>
 
-                  <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                  <div className="mt-4 rounded-2xl bg-slate-50 p-4">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Tiền thuê:</span>
-                      <span className="font-medium">{(selectedOrder.totalAmount || 0).toLocaleString('vi-VN')}đ</span>
+                      <span className="text-slate-500">Tiền thuê:</span>
+                      <span className="font-semibold text-slate-900">{formatMoney(selectedOrder.totalAmount || 0)}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Đặt cọc (50%):</span>
-                      <span className="font-medium text-indigo-600">{(selectedOrder.depositAmount || 0).toLocaleString('vi-VN')}đ</span>
+                    <div className="mt-3 flex justify-between text-sm">
+                      <span className="text-slate-500">Đặt cọc (50%):</span>
+                      <span className="font-semibold text-indigo-600">{formatMoney(selectedOrder.depositAmount || 0)}</span>
                     </div>
-                    <div className="flex justify-between text-sm border-t pt-2">
-                      <span className="text-gray-600">Còn lại:</span>
-                      <span className="font-medium">{((selectedOrder.totalAmount || 0) - (selectedOrder.depositAmount || 0)).toLocaleString('vi-VN')}đ</span>
+                    <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-sm">
+                      <span className="text-slate-500">Còn lại:</span>
+                      <span className="font-semibold text-slate-900">{formatMoney((selectedOrder.totalAmount || 0) - (selectedOrder.depositAmount || 0))}</span>
                     </div>
                   </div>
 
                   {/* Phí phát sinh (nếu có) */}
                   {(selectedOrder.washingFee > 0 || selectedOrder.damageFee > 0) && (
-                    <div className="mt-3 bg-orange-50 rounded-lg p-3 space-y-2">
-                      <p className="text-sm font-medium text-orange-800">Phí phát sinh</p>
+                    <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4">
+                      <p className="text-sm font-semibold text-orange-800">Phí phát sinh</p>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Giặt:</span>
-                        <span className="font-medium">{(selectedOrder.washingFee || 0).toLocaleString('vi-VN')}đ</span>
+                        <span className="text-slate-500">Giặt:</span>
+                        <span className="font-semibold text-slate-900">{formatMoney(selectedOrder.washingFee || 0)}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Hư hỏng:</span>
-                        <span className="font-medium">{(selectedOrder.damageFee || 0).toLocaleString('vi-VN')}đ</span>
+                      <div className="mt-2 flex justify-between text-sm">
+                        <span className="text-slate-500">Hư hỏng:</span>
+                        <span className="font-semibold text-slate-900">{formatMoney(selectedOrder.damageFee || 0)}</span>
                       </div>
-                      <div className="flex justify-between text-sm border-t pt-2 font-semibold">
+                      <div className="mt-3 flex justify-between border-t border-orange-200 pt-3 text-sm font-semibold">
                         <span className="text-orange-800">Tổng cần thanh toán:</span>
-                        <span className="text-orange-800">{((selectedOrder.totalAmount || 0) - (selectedOrder.depositAmount || 0) + (selectedOrder.washingFee || 0) + (selectedOrder.damageFee || 0)).toLocaleString('vi-VN')}đ</span>
+                        <span className="text-orange-800">{formatMoney((selectedOrder.totalAmount || 0) - (selectedOrder.depositAmount || 0) + (selectedOrder.washingFee || 0) + (selectedOrder.damageFee || 0))}</span>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Actions */}
-                <div className="border-t pt-4 space-y-2">
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 space-y-3">
                   {selectedOrder.status === 'Deposited' && (
                     <button
                       onClick={() => handleConfirm(selectedOrder._id)}
@@ -682,6 +746,9 @@ export default function StaffRentOrders() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }
+
+
