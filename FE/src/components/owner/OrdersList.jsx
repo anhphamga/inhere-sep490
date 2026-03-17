@@ -24,49 +24,7 @@ const ORDER_TYPES = {
     rent: 'rent'
 }
 
-const SALE_STATUS_OPTIONS = ['All', 'PendingConfirmation', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Refunded']
-const RENT_STATUS_OPTIONS = ['All', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'WaitingReturn', 'Returned', 'Completed', 'Late', 'Compensation', 'NoShow', 'Cancelled']
-
-const STATUS_LABELS = {
-    Draft: 'Nháp',
-    PendingPayment: 'Chờ thanh toán',
-    PendingConfirmation: 'Chờ xác nhận',
-    Paid: 'Đã thanh toán',
-    Confirmed: 'Đã xác nhận',
-    Shipping: 'Đang giao',
-    Completed: 'Hoàn tất',
-    Cancelled: 'Đã hủy',
-    Returned: 'Trả hàng',
-    Unpaid: 'Chưa thanh toán',
-    Failed: 'Thất bại',
-    Refunded: 'Đã hoàn tiền',
-    PendingDeposit: 'Chờ đặt cọc',
-    Deposited: 'Đã đặt cọc',
-    WaitingPickup: 'Chờ lấy đồ',
-    Renting: 'Đang thuê',
-    WaitingReturn: 'Chờ trả đồ',
-    Late: 'Trễ hạn',
-    Compensation: 'Bồi thường',
-    NoShow: 'Không đến nhận'
-}
-
-const STATUS_CLASSES = {
-    PendingConfirmation: 'bg-amber-100 text-amber-700',
-    Confirmed: 'bg-sky-100 text-sky-700',
-    Shipping: 'bg-violet-100 text-violet-700',
-    Completed: 'bg-emerald-100 text-emerald-700',
-    Cancelled: 'bg-rose-100 text-rose-700',
-    Returned: 'bg-slate-200 text-slate-700',
-    Refunded: 'bg-orange-100 text-orange-700',
-    PendingDeposit: 'bg-amber-100 text-amber-700',
-    Deposited: 'bg-cyan-100 text-cyan-700',
-    WaitingPickup: 'bg-indigo-100 text-indigo-700',
-    Renting: 'bg-blue-100 text-blue-700',
-    WaitingReturn: 'bg-fuchsia-100 text-fuchsia-700',
-    Late: 'bg-red-100 text-red-700',
-    Compensation: 'bg-orange-100 text-orange-700',
-    NoShow: 'bg-slate-300 text-slate-700'
-}
+const DEFAULT_STATUS_BADGE = 'bg-slate-100 text-slate-700'
 
 const formatDateTime = (value) => {
     if (!value) return 'N/A'
@@ -75,7 +33,19 @@ const formatDateTime = (value) => {
     return parsed.toLocaleString('vi-VN')
 }
 
-const getStatusOptions = (orderType) => (orderType === ORDER_TYPES.sale ? SALE_STATUS_OPTIONS : RENT_STATUS_OPTIONS)
+const getSaleStatusOptions = (saleMeta) => {
+    const values = toArray(saleMeta?.statusOptions).map((item) => item?.value).filter(Boolean)
+    return ['All', ...values]
+}
+
+const getRentStatusOptions = (orders) => {
+    const values = Array.from(new Set(toArray(orders).map((order) => String(order?.status || '')).filter(Boolean)))
+    return ['All', ...values]
+}
+
+const getStatusOptions = (orderType, saleMeta, orders) => (
+    orderType === ORDER_TYPES.sale ? getSaleStatusOptions(saleMeta) : getRentStatusOptions(orders)
+)
 
 const getCustomerName = (order, orderType) => (
     orderType === ORDER_TYPES.sale
@@ -102,7 +72,23 @@ const getPrimaryItemName = (order, orderType) => {
 
 const getOrderAmount = (order) => Number(order?.totalAmount || 0)
 
-const getStatusClassName = (status) => STATUS_CLASSES[status] || 'bg-slate-100 text-slate-700'
+const getSaleStatusOption = (saleMeta, status) => (
+    toArray(saleMeta?.statusOptions).find((item) => item?.value === status) || null
+)
+
+const getStatusLabel = (order, orderType, saleMeta) => {
+    if (orderType === ORDER_TYPES.sale) {
+        return order?.statusLabel || getSaleStatusOption(saleMeta, order?.status)?.label || order?.status || 'N/A'
+    }
+    return order?.status || 'N/A'
+}
+
+const getStatusClassName = (order, orderType, saleMeta) => {
+    if (orderType === ORDER_TYPES.sale) {
+        return order?.statusBadgeClass || getSaleStatusOption(saleMeta, order?.status)?.badgeClass || DEFAULT_STATUS_BADGE
+    }
+    return DEFAULT_STATUS_BADGE
+}
 
 const getProductImage = (item, orderType) => {
     if (orderType === ORDER_TYPES.sale) {
@@ -116,60 +102,22 @@ const getProductImage = (item, orderType) => {
 
 const getTimelineItems = (order, orderType) => {
     if (orderType === ORDER_TYPES.sale) {
-        return [
-            {
-                label: 'Đơn được tạo',
-                description: 'Khách hàng đã gửi yêu cầu mua hàng.',
-                value: order?.createdAt,
-                active: true
-            },
-            {
-                label: 'Chờ xác nhận',
-                description: 'Owner hoặc staff kiểm tra và xác nhận đơn.',
-                value: ['PendingConfirmation', 'Confirmed', 'Shipping', 'Completed', 'Returned', 'Refunded'].includes(order?.status) ? order?.updatedAt || order?.createdAt : null,
-                active: ['PendingConfirmation', 'Confirmed', 'Shipping', 'Completed', 'Returned', 'Refunded'].includes(order?.status)
-            },
-            {
-                label: 'Đang giao hàng',
-                description: 'Đơn đã vào giai đoạn chuẩn bị hoặc vận chuyển.',
-                value: ['Shipping', 'Completed', 'Returned', 'Refunded'].includes(order?.status) ? order?.updatedAt : null,
-                active: ['Shipping', 'Completed', 'Returned', 'Refunded'].includes(order?.status)
-            },
-            {
-                label: 'Hoàn tất',
-                description: 'Đơn đã hoàn tất hoặc đã được xử lý sau bán.',
-                value: ['Completed', 'Returned', 'Refunded'].includes(order?.status) ? order?.updatedAt : null,
-                active: ['Completed', 'Returned', 'Refunded'].includes(order?.status)
-            }
-        ]
+        return toArray(order?.history).map((item) => ({
+            label: item?.statusLabel || item?.status || 'Cap nhat',
+            description: item?.description || item?.action || 'Cap nhat don hang',
+            value: item?.updatedAt,
+            actor: item?.updatedBy?.name || '',
+            active: true
+        }))
     }
 
-    return [
-        {
-            label: 'Đơn được tạo',
-            description: 'Khách hàng gửi yêu cầu thuê sản phẩm.',
-            value: order?.createdAt,
-            active: true
-        },
-        {
-            label: 'Đặt cọc',
-            description: 'Đơn thuê được xác nhận sau khi hoàn thành đặt cọc.',
-            value: ['Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'WaitingReturn', 'Returned', 'Completed', 'Late', 'Compensation'].includes(order?.status) ? order?.updatedAt : null,
-            active: ['Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'WaitingReturn', 'Returned', 'Completed', 'Late', 'Compensation'].includes(order?.status)
-        },
-        {
-            label: 'Nhận đồ',
-            description: 'Khách hàng đến nhận hoặc bắt đầu kỳ thuê.',
-            value: order?.pickupAt || order?.rentStartDate,
-            active: ['WaitingPickup', 'Renting', 'WaitingReturn', 'Returned', 'Completed', 'Late', 'Compensation'].includes(order?.status)
-        },
-        {
-            label: 'Trả đồ / hoàn tất',
-            description: 'Kết thúc kỳ thuê và chốt tình trạng đơn.',
-            value: order?.completedAt || order?.returnedAt || order?.rentEndDate,
-            active: ['Returned', 'Completed', 'Late', 'Compensation'].includes(order?.status)
-        }
-    ]
+    return [{
+        label: order?.status || 'Don thue',
+        description: 'Du lieu lich su hien tai duoc lay tu API don thue.',
+        value: order?.updatedAt || order?.createdAt,
+        actor: order?.staffId?.name || '',
+        active: true
+    }]
 }
 
 function DetailInfoRow({ icon, label, value, fullWidth = false }) {
@@ -224,6 +172,7 @@ function TypeTab({ active, icon, label, description, onClick }) {
 export default function OrdersList() {
     const [orderType, setOrderType] = useState(ORDER_TYPES.sale)
     const [orders, setOrders] = useState([])
+    const [saleMeta, setSaleMeta] = useState({ statusOptions: [] })
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [statusFilter, setStatusFilter] = useState('All')
@@ -249,6 +198,9 @@ export default function OrdersList() {
                     limit: 100
                 })
                 setOrders(toArray(response?.data))
+                setSaleMeta({
+                    statusOptions: toArray(response?.meta?.statusOptions)
+                })
                 return
             }
 
@@ -400,9 +352,9 @@ export default function OrdersList() {
                             onChange={(event) => setStatusFilter(event.target.value)}
                             className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#1975d2]/30"
                         >
-                            {getStatusOptions(orderType).map((status) => (
+                            {getStatusOptions(orderType, saleMeta, orders).map((status) => (
                                 <option key={status} value={status}>
-                                    {status === 'All' ? 'Tất cả trạng thái' : STATUS_LABELS[status] || status}
+                                    {status === 'All' ? 'Tất cả trạng thái' : (getSaleStatusOption(saleMeta, status)?.label || status)}
                                 </option>
                             ))}
                         </select>
@@ -460,8 +412,8 @@ export default function OrdersList() {
                                     <td className="px-5 py-4 text-slate-600">{getPrimaryItemName(order, orderType)}</td>
                                     <td className="px-5 py-4 text-slate-600">{formatDateTime(order.createdAt)}</td>
                                     <td className="px-5 py-4">
-                                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClassName(order.status)}`}>
-                                            {STATUS_LABELS[order.status] || order.status}
+                                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClassName(order, orderType, saleMeta)}`}>
+                                            {getStatusLabel(order, orderType, saleMeta)}
                                         </span>
                                     </td>
                                     <td className="px-5 py-4 text-right font-semibold text-slate-900">{currencyFormatter.format(getOrderAmount(order))}</td>
@@ -502,8 +454,8 @@ export default function OrdersList() {
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-3">
-                                        <span className={`inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-semibold ${getStatusClassName(selectedOrder.status)}`}>
-                                            {STATUS_LABELS[selectedOrder.status] || selectedOrder.status}
+                                        <span className={`inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-semibold ${getStatusClassName(selectedOrder, orderType, saleMeta)}`}>
+                                            {getStatusLabel(selectedOrder, orderType, saleMeta)}
                                         </span>
                                         <button
                                             type="button"
@@ -744,43 +696,29 @@ export default function OrdersList() {
 
                                         {orderType === ORDER_TYPES.sale ? (
                                             <div className="mt-5 space-y-4">
-                                                <div className="grid gap-3 sm:grid-cols-2">
-                                                    {SALE_STATUS_OPTIONS.filter((item) => item !== 'All').map((status) => (
-                                                        <button
-                                                            key={status}
-                                                            type="button"
-                                                            disabled={savingStatus || status === selectedOrder.status}
-                                                            onClick={() => handleUpdateSaleStatus(status)}
-                                                            className={`rounded-2xl border px-4 py-3 text-left text-sm font-medium transition ${
-                                                                status === selectedOrder.status
-                                                                    ? 'border-[#1975d2] bg-[#1975d2]/8 text-[#1975d2]'
-                                                                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-                                                            } ${savingStatus ? 'cursor-not-allowed opacity-70' : ''}`}
-                                                        >
-                                                            <div className="flex items-center justify-between gap-3">
-                                                                <span>{STATUS_LABELS[status] || status}</span>
-                                                                {status === selectedOrder.status ? <CheckCircle2 className="h-4 w-4" /> : null}
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-
-                                                <div>
-                                                    <label className="mb-2 block text-sm font-medium text-slate-700">Chọn từ danh sách</label>
-                                                    <select
-                                                        value={selectedOrder.status || 'PendingConfirmation'}
-                                                        onChange={(event) => handleUpdateSaleStatus(event.target.value)}
-                                                        disabled={savingStatus}
-                                                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#1975d2] focus:ring-4 focus:ring-[#1975d2]/10"
-                                                    >
-                                                        {SALE_STATUS_OPTIONS.filter((item) => item !== 'All').map((status) => (
-                                                            <option key={status} value={status}>
-                                                                {STATUS_LABELS[status] || status}
-                                                            </option>
+                                                {toArray(selectedOrder.availableNextStatuses).length > 0 ? (
+                                                    <div className="grid gap-3 sm:grid-cols-2">
+                                                        {toArray(selectedOrder.availableNextStatuses).map((status) => (
+                                                            <button
+                                                                key={status}
+                                                                type="button"
+                                                                disabled={savingStatus}
+                                                                onClick={() => handleUpdateSaleStatus(status)}
+                                                                className={`rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 ${savingStatus ? 'cursor-not-allowed opacity-70' : ''}`}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <span>{getSaleStatusOption(saleMeta, status)?.label || status}</span>
+                                                                    <CheckCircle2 className="h-4 w-4 text-slate-400" />
+                                                                </div>
+                                                            </button>
                                                         ))}
-                                                    </select>
-                                                    {savingStatus ? <p className="mt-2 text-xs text-slate-500">Đang cập nhật trạng thái...</p> : null}
-                                                </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                                                        Đơn hàng đang ở trạng thái kết thúc, không còn bước xử lý tiếp theo.
+                                                    </div>
+                                                )}
+                                                {savingStatus ? <p className="text-xs text-slate-500">Đang cập nhật trạng thái...</p> : null}
                                             </div>
                                         ) : (
                                             <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">

@@ -65,6 +65,29 @@ const saleOrderSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  history: [{
+    status: {
+      type: String,
+      default: ''
+    },
+    action: {
+      type: String,
+      default: ''
+    },
+    description: {
+      type: String,
+      default: ''
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   createdAt: {
     type: Date,
     default: Date.now
