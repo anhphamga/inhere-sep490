@@ -241,3 +241,17 @@ npm run dev
 - `POST /api/translate/batch`
 
 Both endpoints are rate-limited (`60 req/min/IP`) and cached in MongoDB collection `translations`.
+
+## Vercel Deploy (Frontend)
+
+Project da co san `vercel.json` o root de:
+- Build tu thu muc `FE`
+- Output `FE/dist`
+- Rewrite tat ca route ve `index.html` (React Router SPA)
+
+Can thiet lap environment variable tren Vercel:
+- `VITE_API_BASE_URL=https://<your-backend-domain>/api`
+
+Luu y:
+- Backend Express (`BE`) hien tai nen deploy rieng (Render/Railway/VPS).
+- Frontend tren Vercel se goi API qua `VITE_API_BASE_URL`.

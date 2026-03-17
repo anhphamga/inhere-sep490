@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Heart } from "lucide-react";
 import Header from "../../components/common/Header";
+import { useFavorites } from "../../contexts/FavoritesContext";
 import "../../style/pages/ProductPages.css";
 import { useTranslationDisplay } from "../../hooks/useTranslationDisplay";
 
@@ -145,6 +147,7 @@ const flattenCategories = (nodes = []) => {
 export default function BuyPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isFavorite, toggleFavorite } = useFavorites();
   const lang = "vi";
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -159,10 +162,15 @@ export default function BuyPage() {
     limit: 24,
   });
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState("");
   const [translatedTextMap, setTranslatedTextMap] = useState({});
   const searchKeyword = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return (params.get("q") || "").trim();
+  }, [location.search]);
+  const categoryKeyword = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return (params.get("category") || "").trim();
   }, [location.search]);
 
   const t = I18N[lang] || I18N.vi;
@@ -200,6 +208,21 @@ export default function BuyPage() {
     () => allCategoryNodes.find((item) => item.value === selectedCategory) || null,
     [allCategoryNodes, selectedCategory]
   );
+
+  useEffect(() => {
+    if (!categoryKeyword || allCategoryNodes.length === 0) return;
+
+    const normalizedKeyword = normalizeText(categoryKeyword);
+    const matched = allCategoryNodes.find((item) =>
+      [item.value, item.displayName, item.slug].some(
+        (candidate) => normalizeText(candidate) === normalizedKeyword
+      )
+    );
+
+    if (matched?.value) {
+      setSelectedCategory((prev) => (prev === matched.value ? prev : matched.value));
+    }
+  }, [categoryKeyword, allCategoryNodes]);
 
   useEffect(() => {
     let mounted = true;
@@ -356,6 +379,25 @@ export default function BuyPage() {
     setExpanded((prev) => ({ ...prev, [value]: !prev[value] }));
   };
 
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 2000);
+  };
+
+  const handleToggleFavorite = (event, product) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const result = toggleFavorite(product);
+    if (!result.ok && result.reason === "AUTH_REQUIRED") {
+      showToast("Vui long dang nhap de them san pham yeu thich");
+      navigate("/login", { state: { from: location } });
+      return;
+    }
+
+    showToast(result.added ? "Da them vao san pham yeu thich" : "Da xoa khoi san pham yeu thich");
+  };
+
   return (
     <div className="product-page">
       <Header active="buy" />
@@ -410,13 +452,26 @@ export default function BuyPage() {
               <div className="catalog-grid">
                 {display.map((p) => (
                   <article className="catalog-card" key={p.id}>
-                    <Link className="catalog-media-link" to={`/products/${p.id}`}>
-                      {p.imageUrl ? (
-                        <img src={p.imageUrl} alt={p.name} className="catalog-image" />
-                      ) : (
-                        <div className="catalog-image empty">{t.noImage}</div>
-                      )}
-                    </Link>
+                    <div className="relative">
+                      <Link className="catalog-media-link" to={`/products/${p.id}`}>
+                        {p.imageUrl ? (
+                          <img src={p.imageUrl} alt={p.name} className="catalog-image" />
+                        ) : (
+                          <div className="catalog-image empty">{t.noImage}</div>
+                        )}
+                      </Link>
+                      <button
+                        type="button"
+                        className={`absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white/95 shadow-sm transition ${isFavorite(p.id)
+                          ? "border-rose-300 text-rose-500"
+                          : "border-[#eadfce] text-[#7c6a54] hover:text-rose-500"
+                          }`}
+                        onClick={(event) => handleToggleFavorite(event, p)}
+                        aria-label="Them vao yeu thich"
+                      >
+                        <Heart size={17} fill={isFavorite(p.id) ? "currentColor" : "none"} />
+                      </button>
+                    </div>
                     <div className="catalog-body">
                       <h3 className="catalog-name">
                         <Link className="catalog-name-link" to={`/products/${p.id}`}>
@@ -462,6 +517,12 @@ export default function BuyPage() {
           </section>
         </div>
       </main>
+
+      {toast && (
+        <div className="fixed right-4 top-24 z-50 rounded-xl border border-white/10 bg-neutral-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

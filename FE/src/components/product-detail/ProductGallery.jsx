@@ -23,6 +23,8 @@ export default function ProductGallery({
   onSelectImage,
   loading = false,
   productName = "Product image",
+  isFavorite = false,
+  onToggleFavorite,
 }) {
   const safeImages = useMemo(() => (Array.isArray(images) ? images.filter(Boolean) : []), [images]);
 
@@ -76,9 +78,13 @@ export default function ProductGallery({
           <button
             type="button"
             aria-label="Save to wishlist"
-            className="absolute right-3 top-11 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/90 text-slate-500 shadow-sm transition hover:text-red-500"
+            onClick={onToggleFavorite}
+            className={`absolute right-3 top-11 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border bg-white/90 shadow-sm transition ${isFavorite
+              ? "border-rose-300 text-rose-500"
+              : "border-white/80 text-slate-500 hover:text-rose-500"
+              }`}
           >
-            <Heart size={18} />
+            <Heart size={18} fill={isFavorite ? "currentColor" : "none"} />
           </button>
           {mainImage ? (
             <GalleryImage

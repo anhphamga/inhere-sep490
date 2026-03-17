@@ -4,6 +4,7 @@ import BuyPage from '../pages/public/BuyPage'
 import BlogPage from '../pages/public/BlogPage'
 import BlogDetailPage from '../pages/public/BlogDetailPage'
 import BookingPage from '../pages/customer/BookingPage'
+import FavoritesPage from '../pages/customer/FavoritesPage'
 import ProductDetailPage from '../pages/customer/ProductDetailPage'
 import LoginPage from '../pages/auth/LoginPage'
 import SignupPage from '../pages/auth/SignupPage'
@@ -56,6 +57,7 @@ const AppRoutes = () => {
 
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/favorites" element={<FavoritesPage />} />
             </Route>
             <Route element={<PrivateRoute roles={['owner']} />}>
                 <Route path="/owner" element={<OwnerLayout />}>

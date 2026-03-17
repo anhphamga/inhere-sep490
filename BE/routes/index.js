@@ -17,6 +17,7 @@ const rentOrderRoutes = require('./rent-order.routes');
 const alertRoutes = require('./alert.routes');
 const fittingBookingRoutes = require('./fitting-booking.routes');
 const virtualTryOnRoutes = require('./virtual-try-on.routes');
+const proxyImageRoutes = require('./proxy-image.routes');
 const guestRoutes = require('./guest.routes');
 const orderRoutes = require('./order.routes');
 
@@ -31,6 +32,7 @@ router.use('/rent-orders', rentOrderRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/fitting-bookings', fittingBookingRoutes);
 router.use('/virtual-try-on', virtualTryOnRoutes);
+router.use('/proxy-image', proxyImageRoutes);
 router.use('/guest', guestRoutes);
 router.use('/orders', orderRoutes);
 

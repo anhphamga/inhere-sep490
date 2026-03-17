@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Header from "../../components/common/Header";
 import ProductGallery from "../../components/product-detail/ProductGallery";
 import ProductInfo from "../../components/product-detail/ProductInfo";
@@ -8,6 +8,7 @@ import ProductActions from "../../components/product-detail/ProductActions";
 import ProductDescription from "../../components/product-detail/ProductDescription";
 import RelatedProducts from "../../components/product-detail/RelatedProducts";
 import { useBuyCart } from "../../contexts/BuyCartContext";
+import { useFavorites } from "../../contexts/FavoritesContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
 
 const I18N = {
@@ -19,6 +20,9 @@ const I18N = {
     breadcrumbBuy: "Mua trang phục",
     toastRent: "Đã thêm vào đơn thuê",
     toastBuy: "Đã thêm vào giỏ hàng",
+    toastFavoriteAdded: "Đã thêm vào danh sách yêu thích",
+    toastFavoriteRemoved: "Đã xóa khỏi danh sách yêu thích",
+    toastFavoriteLogin: "Vui lòng đăng nhập để thêm sản phẩm yêu thích",
     toastError: "Vui lòng chọn biến thể hợp lệ",
     policyTitle: "Chính sách",
     policyDeposit: "Đặt cọc 50% khi giữ lịch",
@@ -33,6 +37,9 @@ const I18N = {
     breadcrumbBuy: "Buy outfits",
     toastRent: "Added to rental flow",
     toastBuy: "Added to cart",
+    toastFavoriteAdded: "Added to favorites",
+    toastFavoriteRemoved: "Removed from favorites",
+    toastFavoriteLogin: "Please log in to add favorite products",
     toastError: "Please select a valid variant",
     policyTitle: "Policies",
     policyDeposit: "50% deposit for booking",
@@ -84,8 +91,10 @@ const formatCurrency = (value, lang = "vi") => {
 export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { addItem } = useRentalCart();
   const { addItem: addBuyItem } = useBuyCart();
+  const { isFavorite, toggleFavorite } = useFavorites();
   const lang = "vi";
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState(null);
@@ -234,6 +243,11 @@ export default function ProductDetailPage() {
   const currentImagesByColor = useMemo(() => {
     return imagesByColor[selectedColor] || baseImages;
   }, [imagesByColor, selectedColor, baseImages]);
+
+  const productIsFavorite = useMemo(() => {
+    if (!product?._id) return false;
+    return isFavorite(product._id);
+  }, [isFavorite, product?._id]);
 
   useEffect(() => {
     if (selectedImageIndex < currentImagesByColor.length) return;
@@ -411,6 +425,25 @@ export default function ProductDetailPage() {
     }
   };
 
+  const handleToggleFavorite = () => {
+    if (!product?._id) return;
+
+    const result = toggleFavorite({
+      id: product._id,
+      name: product.name,
+      imageUrl: currentImagesByColor[0] || product.imageUrl || "",
+      price: Number(product.baseSalePrice || product.baseRentPrice || 0),
+    });
+
+    if (!result.ok && result.reason === "AUTH_REQUIRED") {
+      showToast(t.toastFavoriteLogin);
+      navigate("/login", { state: { from: location } });
+      return;
+    }
+
+    showToast(result.added ? t.toastFavoriteAdded : t.toastFavoriteRemoved);
+  };
+
   const getSwatchClass = (color) => {
     const key = normalize(color);
     const match = Object.keys(SWATCH_CLASS_MAP).find((item) => key.includes(item));
@@ -452,6 +485,8 @@ export default function ProductDetailPage() {
                   onSelectImage={setSelectedImageIndex}
                   loading={loading}
                   productName={product.name || "product"}
+                  isFavorite={productIsFavorite}
+                  onToggleFavorite={handleToggleFavorite}
                 />
 
                 <ProductInfo

@@ -701,15 +701,7 @@ const Homepage = ({ initialSection = "" }) => {
       return;
     }
 
-    const sectionIds = [
-      "rent",
-      "buy",
-      "booking",
-      "packages",
-      "blog",
-      "promo",
-      "contact",
-    ];
+    const sectionIds = ["rent", "buy", "fitting", "packages", "blog", "promo", "contact"];
 
     const handleScroll = () => {
       const offset = 130; // gần bằng chiều cao header + nav
@@ -749,15 +741,6 @@ const Homepage = ({ initialSection = "" }) => {
     return () => clearTimeout(timer);
   }, [initialSection]);
 
-  const handleBookingSubmit = (e) => {
-    e.preventDefault();
-    if (lang === "vi") {
-      alert("Đã ghi nhận! Chúng tôi sẽ liên hệ sớm.");
-    } else {
-      alert("Received! We will contact you soon.");
-    }
-  };
-
   const getCategoryTypeLabel = (type) => {
     if (lang === "vi") {
       if (type === "rent") return "Cho thuê";
@@ -769,6 +752,15 @@ const Homepage = ({ initialSection = "" }) => {
     if (type === "sale_or_rent") return "Sale / Rent";
     if (type === "service") return "Service";
     return "Other";
+  };
+
+  const navigateToBuyCategory = (categoryValue) => {
+    const value = String(categoryValue || "").trim();
+    if (!value) {
+      navigate("/buy");
+      return;
+    }
+    navigate(`/buy?category=${encodeURIComponent(value)}`);
   };
 
   const formatCurrency = (amount) =>
@@ -787,21 +779,27 @@ const Homepage = ({ initialSection = "" }) => {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
+  const hasAnyKeyword = (value, keywords) =>
+    keywords.some((keyword) => value.includes(keyword));
+
   const isTraditionalCostume = (item) => {
     const haystack = `${item?.name || ""} ${item?.category || ""}`;
     const normalized = normalizeText(haystack);
-    return (
-      normalized.includes("co phuc") ||
-      normalized.includes("viet phuc") ||
-      normalized.includes("nhat binh") ||
-      normalized.includes("ao tac")
-    );
+    return hasAnyKeyword(normalized, [
+      "co phuc",
+      "viet phuc",
+      "nhat binh",
+      "ao tac",
+      "ao dai",
+      "truyen thong",
+      "gam",
+    ]);
   };
 
   const isDressRental = (item) => {
     const haystack = `${item?.name || ""} ${item?.category || ""}`;
     const normalized = normalizeText(haystack);
-    return normalized.includes("vay") || normalized.includes("dam");
+    return hasAnyKeyword(normalized, ["vay", "dam", "dress", "gown"]);
   };
 
   const displayedRentProducts =
@@ -822,41 +820,34 @@ const Homepage = ({ initialSection = "" }) => {
 
   const canViewProductDetail = (productId) => Boolean(productId);
 
-  const displayedBuyProducts =
-    buyProducts.length > 0
-      ? buyProducts
-        .filter((item) => hasRealImage(item.imageUrl))
-        .filter((item) => isTraditionalCostume(item))
-        .filter((item) => Number(item.baseRentPrice || 0) > 0)
-        .slice(0, HOMEPAGE_PRODUCT_LIMIT)
-        .map((item) => ({
-          id: item._id,
-          name: item.name,
-          meta:
-            lang === "vi"
-              ? `${item.category} • Thuê từ ${formatCurrency(item.baseRentPrice)}/ngày`
-              : `${item.category} • From ${formatCurrency(item.baseRentPrice)}/day`,
-          imageUrl: item.imageUrl,
-        }))
-      : [];
+  const mapProductCard = (item) => ({
+    id: item._id,
+    name: item.name,
+    meta:
+      lang === "vi"
+        ? `${item.category} • Thuê từ ${formatCurrency(item.baseRentPrice)}/ngày`
+        : `${item.category} • From ${formatCurrency(item.baseRentPrice)}/day`,
+    imageUrl: item.imageUrl,
+  });
 
-  const displayedFittingProducts =
-    fittingProducts.length > 0
-      ? fittingProducts
-        .filter((item) => hasRealImage(item.imageUrl))
-        .filter((item) => isDressRental(item))
-        .filter((item) => Number(item.baseRentPrice || 0) > 0)
-        .slice(0, HOMEPAGE_PRODUCT_LIMIT)
-        .map((item) => ({
-          id: item._id,
-          name: item.name,
-          meta:
-            lang === "vi"
-              ? `${item.category} • Thuê từ ${formatCurrency(item.baseRentPrice)}/ngày`
-              : `${item.category} • From ${formatCurrency(item.baseRentPrice)}/day`,
-          imageUrl: item.imageUrl,
-        }))
-      : [];
+  const rentableWithImage = buyProducts
+    .filter((item) => hasRealImage(item.imageUrl))
+    .filter((item) => Number(item.baseRentPrice || 0) > 0);
+  const traditionalCandidates = rentableWithImage.filter((item) => isTraditionalCostume(item));
+  const displayedBuyProducts = (traditionalCandidates.length > 0 ? traditionalCandidates : rentableWithImage)
+    .slice(0, HOMEPAGE_PRODUCT_LIMIT)
+    .map(mapProductCard);
+
+  const fittingWithImage = fittingProducts
+    .filter((item) => hasRealImage(item.imageUrl))
+    .filter((item) => Number(item.baseRentPrice || 0) > 0);
+  const dressCandidates = fittingWithImage.filter((item) => isDressRental(item));
+  const dressFallback = fittingWithImage.filter(
+    (item) => !displayedBuyProducts.some((chosen) => chosen.id === item._id)
+  );
+  const displayedFittingProducts = (dressCandidates.length > 0 ? dressCandidates : dressFallback)
+    .slice(0, HOMEPAGE_PRODUCT_LIMIT)
+    .map(mapProductCard);
 
   const fallbackBlogPosts = [
     { id: "blog-fallback-1", title: t(lang, "blog.p1.t"), excerpt: t(lang, "blog.p1.d"), thumbnail: "" },
@@ -1225,9 +1216,9 @@ const Homepage = ({ initialSection = "" }) => {
                         <button
                           className="btn ghost"
                           type="button"
-                          onClick={() => scrollToId("#booking")}
+                          onClick={() => scrollToId("#rent")}
                         >
-                          {lang === "vi" ? "Đặt lịch thử đồ" : "Book fitting"}
+                          {t(lang, "hero.btn_view")}
                         </button>
                       </div>
 
@@ -1424,7 +1415,19 @@ const Homepage = ({ initialSection = "" }) => {
             style={{ "--category-columns": displayedCategories.length }}
           >
             {displayedCategories.map((category, index) => (
-              <article className="category-card" key={`${category.slug}-${index}`}>
+              <article
+                className="category-card category-card-clickable"
+                key={`${category.slug}-${index}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigateToBuyCategory(category.value || category.displayName)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigateToBuyCategory(category.value || category.displayName);
+                  }
+                }}
+              >
                 <div className="category-image-wrap">
                   {category.imageUrl ? (
                     <img
@@ -1454,8 +1457,17 @@ const Homepage = ({ initialSection = "" }) => {
                   <ul className="category-children">
                     {category.children.map((child) => (
                       <li key={child.slug}>
-                        <span>{child.displayName}</span>
-                        <strong>{child.count}</strong>
+                        <button
+                          type="button"
+                          className="category-child-btn"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigateToBuyCategory(child.value || child.displayName);
+                          }}
+                        >
+                          <span>{child.displayName}</span>
+                          <strong>{child.count}</strong>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1574,45 +1586,9 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* BOOKING CTA */}
-      <section className="soft" id="booking">
+      {/* FITTING PRODUCTS */}
+      <section className="soft" id="fitting">
         <div className="container">
-          <div className="cta-block">
-            <div>
-              <h2>{t(lang, "booking.title")}</h2>
-              <p>{t(lang, "booking.sub")}</p>
-            </div>
-
-            <form className="form" onSubmit={handleBookingSubmit}>
-              <input
-                className="input"
-                type="date"
-                required
-              />
-              <input
-                className="input"
-                type="time"
-                required
-              />
-              <input
-                className="input"
-                type="number"
-                min="1"
-                defaultValue="1"
-                required
-                placeholder={t(
-                  lang,
-                  "booking.guests"
-                )}
-              />
-              <button
-                className="submit"
-                type="submit"
-              >
-                {t(lang, "booking.btn")}
-              </button>
-            </form>
-          </div>
           <div className="row-head fitting-head">
             <h2>
               {lang === "vi" ? "Váy - đầm cho thuê" : "Dress Rentals"}
@@ -1645,7 +1621,7 @@ const Homepage = ({ initialSection = "" }) => {
                   <p className="pmeta">{product.meta}</p>
                   <div className="pactions">
                     <button className="pbtn primary" type="button">
-                      {t(lang, "booking.btn")}
+                      {t(lang, "btn.rent")}
                     </button>
                     <button
                       className="pbtn"
@@ -1901,14 +1877,6 @@ const Homepage = ({ initialSection = "" }) => {
                 <a href="#packages">
                   {t(lang, "nav.packages")}
                 </a>
-                <Link
-                  to="/booking"
-                  onClick={() => {
-                    setActiveSection("booking");
-                  }}
-                >
-                  {t(lang, "nav.booking")}
-                </Link>
               </div>
             </div>
 
@@ -1958,5 +1926,3 @@ const Homepage = ({ initialSection = "" }) => {
 };
 
 export default Homepage;
-
-

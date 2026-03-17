@@ -138,7 +138,7 @@ export default function Header({ active = "", onSectionNavigate }) {
                   <Link to="/rental/history" className="site-account-item" onClick={() => setMenuOpen(false)}>
                     {LABELS.orderHistory}
                   </Link>
-                  <Link to="/#rent" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                  <Link to="/favorites" className="site-account-item" onClick={() => setMenuOpen(false)}>
                     <Heart size={16} />
                     {LABELS.favorites}
                   </Link>

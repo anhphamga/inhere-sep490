@@ -19,6 +19,7 @@ import { X, Upload, Loader2 } from "lucide-react";
  */
 
 export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:9000/api";
     const [personImage, setPersonImage] = useState(null);
     const [outfitImage, setOutfitImage] = useState(null);
     const [personPreview, setPersonPreview] = useState("");
@@ -109,7 +110,8 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
             if (outfitImage instanceof File) {
                 formData.append("image-apparel", outfitImage);
             } else if (typeof outfitToUse === "string") {
-                const fetchedOutfitFile = await urlToFile(outfitToUse, "apparel-from-product");
+                const outfitUrl = toProxyImageUrl(outfitToUse);
+                const fetchedOutfitFile = await urlToFile(outfitUrl, "apparel-from-product");
                 if (!fetchedOutfitFile) {
                     throw new Error("Không thể tải ảnh sản phẩm để thử đồ. Hãy upload ảnh trang phục thủ công.");
                 }
@@ -119,7 +121,7 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
             // Call backend proxy to API4.ai demo endpoint
             // Demo endpoint is free, no API key required
             const response = await fetch(
-                `${import.meta.env.VITE_API_BASE_URL || "http://localhost:9000/api"}/virtual-try-on/generate`,
+                `${apiBaseUrl}/virtual-try-on/generate`,
                 {
                     method: "POST",
                     body: formData,
@@ -167,6 +169,15 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
         const blob = await response.blob();
         const extension = blob.type === "image/png" ? "png" : "jpg";
         return new File([blob], `${filename}.${extension}`, { type: blob.type || "image/jpeg" });
+    };
+
+    const toProxyImageUrl = (url) => {
+        const sourceUrl = String(url || "").trim();
+        if (!sourceUrl) return "";
+        if (sourceUrl.startsWith("data:") || sourceUrl.startsWith("blob:")) {
+            return sourceUrl;
+        }
+        return `${apiBaseUrl}/proxy-image?url=${encodeURIComponent(sourceUrl)}`;
     };
 
     const handleReset = () => {
