@@ -5,26 +5,80 @@ const GuestVerification = require('../model/GuestVerification.model');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 const { verifyGuestVerificationToken } = require('../utils/jwt');
 const { sendOrderConfirmationEmail } = require('../services/mailService');
-
-const SALE_ORDER_ALLOWED_STATUSES = new Set([
-  'Draft',
-  'PendingPayment',
-  'PendingConfirmation',
-  'Paid',
-  'Confirmed',
-  'Shipping',
-  'Completed',
-  'Cancelled',
-  'Returned',
-  'Unpaid',
-  'Failed',
-  'Refunded',
-]);
+const {
+  SALE_ORDER_ALLOWED_STATUSES,
+  SALE_ORDER_TRANSITIONS,
+  getSaleStatusMeta,
+} = require('../constants/sale-order.constants');
 
 const normalizePaymentMethod = (value = '') => {
   if (value === 'BankTransfer') return 'BankTransfer';
   if (value === 'Online') return 'Online';
   return 'COD';
+};
+
+const buildFallbackHistory = (order) => {
+  const history = [
+    {
+      status: order?.status || '',
+      action: 'order_created',
+      description: 'Don hang duoc tao',
+      updatedBy: order?.staffId || null,
+      updatedAt: order?.createdAt || null,
+    },
+  ];
+
+  const createdAt = new Date(order?.createdAt || 0).getTime();
+  const updatedAt = new Date(order?.updatedAt || 0).getTime();
+  if (updatedAt && createdAt && updatedAt > createdAt) {
+    history.push({
+      status: order?.status || '',
+      action: 'status_synced',
+      description: `Trang thai hien tai: ${order?.status || 'N/A'}`,
+      updatedBy: order?.staffId || null,
+      updatedAt: order?.updatedAt,
+    });
+  }
+
+  return history;
+};
+
+const normalizeHistory = (order) => {
+  const source = Array.isArray(order?.history) && order.history.length > 0
+    ? order.history
+    : buildFallbackHistory(order);
+
+  return source
+    .map((item) => {
+      const status = String(item?.status || order?.status || '').trim();
+      const statusMeta = getSaleStatusMeta(status);
+      return {
+        status,
+        statusLabel: statusMeta.label,
+        action: item?.action || '',
+        description: item?.description || '',
+        updatedAt: item?.updatedAt || null,
+        updatedBy: item?.updatedBy
+          ? {
+            _id: item.updatedBy?._id || item.updatedBy,
+            name: item.updatedBy?.name || '',
+            email: item.updatedBy?.email || '',
+          }
+          : null,
+      };
+    })
+    .sort((a, b) => new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime());
+};
+
+const mapSaleOrderForOwner = (order) => {
+  const statusMeta = getSaleStatusMeta(order?.status);
+  return {
+    ...order,
+    statusLabel: statusMeta.label,
+    statusBadgeClass: statusMeta.badgeClass,
+    availableNextStatuses: SALE_ORDER_TRANSITIONS[order?.status] || [],
+    history: normalizeHistory(order),
+  };
 };
 
 const buildNormalizedSaleItems = (items = [], productMap = new Map()) => {
@@ -77,6 +131,15 @@ const createSaleOrderWithItems = async ({
     guestVerificationMethod,
     guestVerificationId,
     discountAmount: 0,
+    history: [
+      {
+        status: 'PendingConfirmation',
+        action: 'order_created',
+        description: 'Don hang duoc tao',
+        updatedBy: customerId || null,
+        updatedAt: new Date(),
+      },
+    ],
   });
 
   await SaleOrderItem.insertMany(
@@ -419,6 +482,7 @@ exports.getOwnerSaleOrders = async (req, res) => {
       SaleOrder.find(query)
         .populate('customerId', 'name phone email')
         .populate('staffId', 'name phone email')
+        .populate('history.updatedBy', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(pageSize),
@@ -446,14 +510,23 @@ exports.getOwnerSaleOrders = async (req, res) => {
       });
     }
 
+    const mappedData = data.map((order) => mapSaleOrderForOwner(order));
+
     return res.json({
       success: true,
-      data,
+      data: mappedData,
       pagination: {
         page: currentPage,
         limit: pageSize,
         total: normalizedKeyword ? data.length : total,
         pages: Math.max(Math.ceil((normalizedKeyword ? data.length : total) / pageSize), 1),
+      },
+      meta: {
+        statusOptions: Object.keys(SALE_ORDER_TRANSITIONS).map((status) => ({
+          value: status,
+          label: getSaleStatusMeta(status).label,
+          badgeClass: getSaleStatusMeta(status).badgeClass,
+        })),
       },
     });
   } catch (error) {
@@ -486,22 +559,47 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
       });
     }
 
+    if (order.status === normalizedStatus) {
+      return res.status(400).json({
+        success: false,
+        message: 'Don hang da o trang thai nay.',
+      });
+    }
+
+    const allowedNextStatuses = SALE_ORDER_TRANSITIONS[order.status] || [];
+    if (!allowedNextStatuses.includes(normalizedStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Khong the chuyen tu ${order.status} sang ${normalizedStatus}.`,
+        allowedNextStatuses,
+      });
+    }
+
     order.status = normalizedStatus;
     if (!order.staffId) {
       order.staffId = req.user?.id || null;
     }
+    order.history = Array.isArray(order.history) ? order.history : [];
+    order.history.push({
+      status: normalizedStatus,
+      action: 'owner_update_status',
+      description: `Cap nhat trang thai sang ${normalizedStatus}`,
+      updatedBy: req.user?.id || null,
+      updatedAt: new Date(),
+    });
     await order.save();
 
-    const [detail] = await attachSaleOrderItems([
+    const [populated] = await attachSaleOrderItems([
       await SaleOrder.findById(id)
         .populate('customerId', 'name phone email')
-        .populate('staffId', 'name phone email'),
+        .populate('staffId', 'name phone email')
+        .populate('history.updatedBy', 'name email'),
     ]);
 
     return res.json({
       success: true,
       message: 'Cap nhat trang thai don mua thanh cong.',
-      data: detail,
+      data: mapSaleOrderForOwner(populated),
     });
   } catch (error) {
     console.error('Update sale order status error:', error);
