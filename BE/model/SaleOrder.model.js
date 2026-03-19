@@ -45,6 +45,29 @@ const saleOrderSchema = new mongoose.Schema({
     ref: 'GuestVerification',
     default: null
   },
+  idempotencyKey: {
+    type: String,
+    default: null
+  },
+  voucherCode: {
+    type: String,
+    default: null
+  },
+  voucherId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Voucher',
+    default: null
+  },
+  voucherSnapshot: {
+    name: { type: String, default: '' },
+    voucherType: { type: String, default: '' },
+    value: { type: Number, default: 0 },
+    maxDiscount: { type: Number, default: null },
+    appliesTo: { type: String, default: '' },
+    appliesOn: { type: String, default: '' },
+    originalSubtotal: { type: Number, default: 0 },
+    finalSubtotal: { type: Number, default: 0 },
+  },
   discountAmount: {
     type: Number,
     default: 0
@@ -95,5 +118,13 @@ const saleOrderSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+saleOrderSchema.index(
+  { idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: 'string' } }
+  }
+);
 
 module.exports = mongoose.model('SaleOrder', saleOrderSchema);

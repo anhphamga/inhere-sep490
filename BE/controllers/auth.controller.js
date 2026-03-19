@@ -15,6 +15,7 @@ const sanitizeUser = (user) => ({
   status: user.status,
   avatarUrl: user.avatarUrl,
   address: user.address,
+  segment: user.segment,
   gender: user.gender,
   dateOfBirth: user.dateOfBirth,
   createdAt: user.createdAt,
@@ -71,7 +72,8 @@ const signup = async (req, res) => {
       email: normalizedEmail,
       passwordHash,
       authProvider: 'local',
-      status: 'active'
+      status: 'active',
+      segment: 'new_user'
     });
 
     const token = signAccessToken({
@@ -235,7 +237,8 @@ const googleLogin = async (req, res) => {
         passwordHash,
         authProvider: 'google',
         status: 'active',
-        avatarUrl: payload.picture || null
+        avatarUrl: payload.picture || null,
+        segment: 'new_user'
       });
     } else {
       if (user.status === 'locked') {

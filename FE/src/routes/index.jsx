@@ -5,6 +5,7 @@ import BlogPage from '../pages/public/BlogPage'
 import BlogDetailPage from '../pages/public/BlogDetailPage'
 import BookingPage from '../pages/customer/BookingPage'
 import FavoritesPage from '../pages/customer/FavoritesPage'
+import MyVouchersPage from '../pages/customer/MyVouchersPage'
 import ProductDetailPage from '../pages/customer/ProductDetailPage'
 import LoginPage from '../pages/auth/LoginPage'
 import SignupPage from '../pages/auth/SignupPage'
@@ -58,6 +59,7 @@ const AppRoutes = () => {
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/favorites" element={<FavoritesPage />} />
+                <Route path="/my-vouchers" element={<MyVouchersPage />} />
             </Route>
             <Route element={<PrivateRoute roles={['owner']} />}>
                 <Route path="/owner" element={<OwnerLayout />}>

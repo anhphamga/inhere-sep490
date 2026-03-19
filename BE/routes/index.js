@@ -20,6 +20,7 @@ const virtualTryOnRoutes = require('./virtual-try-on.routes');
 const proxyImageRoutes = require('./proxy-image.routes');
 const guestRoutes = require('./guest.routes');
 const orderRoutes = require('./order.routes');
+const voucherRoutes = require('./voucher.routes');
 
 router.use('/users', userRoutes);
 router.use('/auth', authRoutes);
@@ -35,5 +36,6 @@ router.use('/virtual-try-on', virtualTryOnRoutes);
 router.use('/proxy-image', proxyImageRoutes);
 router.use('/guest', guestRoutes);
 router.use('/orders', orderRoutes);
+router.use('/vouchers', voucherRoutes);
 
 module.exports = router;

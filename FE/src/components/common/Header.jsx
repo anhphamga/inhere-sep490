@@ -18,6 +18,7 @@ const LABELS = {
   cta: "ĐẶT LỊCH NGAY",
   login: "Đăng nhập",
   orderHistory: "Lịch sử đơn hàng",
+  vouchers: "Voucher của tôi",
   favorites: "Sản phẩm yêu thích",
   profile: "Tài khoản",
   logout: "Đăng xuất",
@@ -137,6 +138,9 @@ export default function Header({ active = "", onSectionNavigate }) {
                   )}
                   <Link to="/rental/history" className="site-account-item" onClick={() => setMenuOpen(false)}>
                     {LABELS.orderHistory}
+                  </Link>
+                  <Link to="/my-vouchers" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                    {LABELS.vouchers}
                   </Link>
                   <Link to="/favorites" className="site-account-item" onClick={() => setMenuOpen(false)}>
                     <Heart size={16} />

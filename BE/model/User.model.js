@@ -53,6 +53,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  segment: {
+    type: String,
+    default: null
+  },
   gender: {
     type: String,
     enum: ['male', 'female', 'other', null],

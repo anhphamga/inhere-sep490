@@ -1,10 +1,20 @@
+const mongoose = require('mongoose');
 const Product = require('../model/Product.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
 const GuestVerification = require('../model/GuestVerification.model');
+const Voucher = require('../model/Voucher.model');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
+const { normalizeIdempotencyKey, isDuplicateIdempotencyError } = require('../utils/idempotency');
 const { verifyGuestVerificationToken } = require('../utils/jwt');
 const { sendOrderConfirmationEmail } = require('../services/mailService');
+const {
+  validateVoucher,
+  getVoucherByCode,
+  normalizeVoucherCode,
+  buildVoucherSnapshot,
+  repairVoucherUsageCounterIfNeeded,
+} = require('../services/voucher.service');
 const {
   SALE_ORDER_ALLOWED_STATUSES,
   SALE_ORDER_TRANSITIONS,
@@ -115,8 +125,14 @@ const createSaleOrderWithItems = async ({
   guestVerificationId = null,
   note = '',
   items = [],
+  idempotencyKey = null,
+  voucherCode = null,
+  voucherId = null,
+  voucherSnapshot = null,
+  discountAmount = 0,
+  session = null,
 }) => {
-  const saleOrder = await SaleOrder.create({
+  const [saleOrder] = await SaleOrder.create([{
     customerId,
     staffId: null,
     status: 'PendingConfirmation',
@@ -130,7 +146,11 @@ const createSaleOrderWithItems = async ({
     guestEmail,
     guestVerificationMethod,
     guestVerificationId,
-    discountAmount: 0,
+    idempotencyKey,
+    voucherCode,
+    voucherId,
+    voucherSnapshot,
+    discountAmount,
     history: [
       {
         status: 'PendingConfirmation',
@@ -140,7 +160,7 @@ const createSaleOrderWithItems = async ({
         updatedAt: new Date(),
       },
     ],
-  });
+  }], session ? { session } : {});
 
   await SaleOrderItem.insertMany(
     items.map((item) => ({
@@ -151,10 +171,153 @@ const createSaleOrderWithItems = async ({
       size: item.size,
       color: item.color,
       note: note ? `${item.note}${item.note ? ' | ' : ''}${note}` : item.note,
-    }))
+    })),
+    session ? { session } : {}
   );
 
   return saleOrder;
+};
+
+const buildCheckoutSuccessResponse = (saleOrder) => ({
+  success: true,
+  totalPrice: saleOrder.totalAmount,
+  discountAmount: saleOrder.discountAmount || 0,
+  voucherCode: saleOrder.voucherCode,
+  data: {
+    orderId: saleOrder._id,
+    orderType: saleOrder.orderType,
+    status: saleOrder.status,
+    totalAmount: saleOrder.totalAmount,
+  },
+});
+
+const findSaleOrderByIdempotencyKey = async (idempotencyKey) => {
+  if (!idempotencyKey) return null;
+  return SaleOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
+};
+
+const runSaleCheckoutTransaction = async ({
+  createOrderPayload,
+  voucherId = null,
+}) => {
+  const runWithoutTransaction = async () => {
+    const saleOrder = await createSaleOrderWithItems(createOrderPayload);
+
+    if (voucherId) {
+      await Voucher.findByIdAndUpdate(voucherId, {
+        $inc: { usedCount: 1 },
+      });
+    }
+
+    return saleOrder;
+  };
+
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    // Keep order creation, order items, and voucher usage update in one transaction
+    // so either all of them succeed or all of them roll back together.
+    const saleOrder = await createSaleOrderWithItems({
+      ...createOrderPayload,
+      session,
+    });
+
+    if (voucherId) {
+      await Voucher.findByIdAndUpdate(
+        voucherId,
+        { $inc: { usedCount: 1 } },
+        { session }
+      );
+    }
+
+    await session.commitTransaction();
+    return saleOrder;
+  } catch (error) {
+    try {
+      await session.abortTransaction();
+    } catch {
+      // ignore abort errors; the original error/fallback path is more important here
+    }
+
+    if (isTransactionNotSupportedError(error)) {
+      console.warn('MongoDB transactions are not supported in this environment. Falling back to non-transaction sale checkout.');
+      return runWithoutTransaction();
+    }
+
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+};
+
+const isTransactionNotSupportedError = (error) => {
+  const message = String(error?.message || '').toLowerCase();
+  const name = String(error?.name || '').toLowerCase();
+  const codeName = String(error?.codeName || '').toLowerCase();
+
+  return (
+    message.includes('transaction numbers are only allowed on a replica set member or mongos') ||
+    message.includes('transactions are not supported') ||
+    message.includes('cannot use transactions') ||
+    message.includes('replica set') ||
+    message.includes('mongos') ||
+    name.includes('mongoservererror') ||
+    codeName.includes('illegaloperation')
+  );
+};
+
+const applyVoucherForSaleOrder = async ({
+  voucherCode,
+  user,
+  items,
+  subtotal,
+}) => {
+  const normalizedVoucherCode = normalizeVoucherCode(voucherCode);
+
+  if (!normalizedVoucherCode) {
+    return {
+      voucher: null,
+      voucherCode: null,
+      discountAmount: 0,
+      finalSubtotal: subtotal,
+      voucherSnapshot: null,
+    };
+  }
+
+  const voucherResult = await validateVoucher({
+    code: normalizedVoucherCode,
+    user,
+    cartItems: items,
+    subtotal,
+    orderType: 'sale',
+  });
+
+  if (!voucherResult.valid) {
+    return {
+      error: voucherResult,
+    };
+  }
+
+  const voucher = await getVoucherByCode(normalizedVoucherCode);
+  if (!voucher) {
+    return {
+      error: { valid: false, reason: 'VOUCHER_NOT_FOUND' },
+    };
+  }
+
+  return {
+    voucher,
+    voucherCode: voucher.code,
+    discountAmount: Number(voucherResult.discountAmount || 0),
+    finalSubtotal: Number(voucherResult.finalTotal || 0),
+    voucherSnapshot: buildVoucherSnapshot({
+      voucher,
+      originalSubtotal: subtotal,
+      finalSubtotal: Number(voucherResult.finalTotal || 0),
+    }),
+  };
 };
 
 const attachSaleOrderItems = async (orders = []) => {
@@ -232,6 +395,8 @@ const sendOrderConfirmationEmailSafely = async ({ saleOrder, customer }) => {
 };
 
 exports.guestCheckout = async (req, res) => {
+  let idempotencyKey = null;
+
   try {
     const {
       verificationToken,
@@ -243,10 +408,23 @@ exports.guestCheckout = async (req, res) => {
       note = '',
       items = [],
       shippingFee = 0,
+      voucherCode = '',
     } = req.body || {};
+    idempotencyKey = normalizeIdempotencyKey(req);
 
     if (!verificationToken) {
       return res.status(400).json({ success: false, message: 'Thieu token xac minh guest.' });
+    }
+
+    const existingOrder = await findSaleOrderByIdempotencyKey(idempotencyKey);
+    if (existingOrder) {
+      if (existingOrder.voucherId || existingOrder.voucherCode) {
+        await repairVoucherUsageCounterIfNeeded({
+          voucherId: existingOrder.voucherId,
+          voucherCode: existingOrder.voucherCode,
+        });
+      }
+      return res.status(200).json(buildCheckoutSuccessResponse(existingOrder));
     }
 
     let tokenPayload;
@@ -306,10 +484,21 @@ exports.guestCheckout = async (req, res) => {
     const normalizedItems = buildNormalizedSaleItems(items, productMap);
 
     const subtotal = normalizedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    const normalizedShippingFee = Math.max(Number(shippingFee || 0), 0);
-    const totalAmount = subtotal + normalizedShippingFee;
+    const voucherApplication = await applyVoucherForSaleOrder({
+      voucherCode,
+      user: null,
+      items,
+      subtotal,
+    });
+    if (voucherApplication.error) {
+      return res.status(400).json(voucherApplication.error);
+    }
 
-    const saleOrder = await createSaleOrderWithItems({
+    const normalizedShippingFee = Math.max(Number(shippingFee || 0), 0);
+    const totalAmount = voucherApplication.finalSubtotal + normalizedShippingFee;
+
+    const saleOrder = await runSaleCheckoutTransaction({
+      createOrderPayload: {
       customerId: null,
       paymentMethod,
       totalAmount,
@@ -322,6 +511,13 @@ exports.guestCheckout = async (req, res) => {
       guestVerificationId: verification._id,
       note,
       items: normalizedItems,
+      idempotencyKey,
+      voucherCode: voucherApplication.voucherCode,
+      voucherId: voucherApplication.voucher?._id || null,
+      voucherSnapshot: voucherApplication.voucherSnapshot,
+      discountAmount: voucherApplication.discountAmount,
+      },
+      voucherId: voucherApplication.voucher?._id || null,
     });
 
     verification.consumedAt = new Date();
@@ -337,16 +533,21 @@ exports.guestCheckout = async (req, res) => {
       },
     });
 
-    return res.status(201).json({
-      success: true,
-      data: {
-        orderId: saleOrder._id,
-        orderType: saleOrder.orderType,
-        status: saleOrder.status,
-        totalAmount: saleOrder.totalAmount,
-      },
-    });
+    return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
   } catch (error) {
+    if (idempotencyKey && isDuplicateIdempotencyError(error)) {
+      const existingOrder = await findSaleOrderByIdempotencyKey(idempotencyKey);
+      if (existingOrder) {
+        if (existingOrder.voucherId || existingOrder.voucherCode) {
+          await repairVoucherUsageCounterIfNeeded({
+            voucherId: existingOrder.voucherId,
+            voucherCode: existingOrder.voucherCode,
+          });
+        }
+        return res.status(200).json(buildCheckoutSuccessResponse(existingOrder));
+      }
+    }
+
     console.error('Guest checkout error:', error);
     const message = error.message === 'INVALID_PRODUCT_DATA'
       ? 'Khong the xac thuc du lieu san pham trong gio hang.'
@@ -360,6 +561,8 @@ exports.guestCheckout = async (req, res) => {
 };
 
 exports.checkout = async (req, res) => {
+  let idempotencyKey = null;
+
   try {
     const customerId = req.user?.id;
     const {
@@ -371,10 +574,23 @@ exports.checkout = async (req, res) => {
       note = '',
       items = [],
       shippingFee = 0,
+      voucherCode = '',
     } = req.body || {};
+    idempotencyKey = normalizeIdempotencyKey(req);
 
     if (!customerId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const existingOrder = await findSaleOrderByIdempotencyKey(idempotencyKey);
+    if (existingOrder) {
+      if (existingOrder.voucherId || existingOrder.voucherCode) {
+        await repairVoucherUsageCounterIfNeeded({
+          voucherId: existingOrder.voucherId,
+          voucherCode: existingOrder.voucherCode,
+        });
+      }
+      return res.status(200).json(buildCheckoutSuccessResponse(existingOrder));
     }
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -408,10 +624,21 @@ exports.checkout = async (req, res) => {
 
     const normalizedItems = buildNormalizedSaleItems(items, productMap);
     const subtotal = normalizedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    const normalizedShippingFee = Math.max(Number(shippingFee || 0), 0);
-    const totalAmount = subtotal + normalizedShippingFee;
+    const voucherApplication = await applyVoucherForSaleOrder({
+      voucherCode,
+      user: req.user,
+      items,
+      subtotal,
+    });
+    if (voucherApplication.error) {
+      return res.status(400).json(voucherApplication.error);
+    }
 
-    const saleOrder = await createSaleOrderWithItems({
+    const normalizedShippingFee = Math.max(Number(shippingFee || 0), 0);
+    const totalAmount = voucherApplication.finalSubtotal + normalizedShippingFee;
+
+    const saleOrder = await runSaleCheckoutTransaction({
+      createOrderPayload: {
       customerId,
       paymentMethod,
       totalAmount,
@@ -424,6 +651,13 @@ exports.checkout = async (req, res) => {
       guestVerificationId: null,
       note,
       items: normalizedItems,
+      idempotencyKey,
+      voucherCode: voucherApplication.voucherCode,
+      voucherId: voucherApplication.voucher?._id || null,
+      voucherSnapshot: voucherApplication.voucherSnapshot,
+      discountAmount: voucherApplication.discountAmount,
+      },
+      voucherId: voucherApplication.voucher?._id || null,
     });
 
     await sendOrderConfirmationEmailSafely({
@@ -436,16 +670,21 @@ exports.checkout = async (req, res) => {
       },
     });
 
-    return res.status(201).json({
-      success: true,
-      data: {
-        orderId: saleOrder._id,
-        orderType: saleOrder.orderType,
-        status: saleOrder.status,
-        totalAmount: saleOrder.totalAmount,
-      },
-    });
+    return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
   } catch (error) {
+    if (idempotencyKey && isDuplicateIdempotencyError(error)) {
+      const existingOrder = await findSaleOrderByIdempotencyKey(idempotencyKey);
+      if (existingOrder) {
+        if (existingOrder.voucherId || existingOrder.voucherCode) {
+          await repairVoucherUsageCounterIfNeeded({
+            voucherId: existingOrder.voucherId,
+            voucherCode: existingOrder.voucherCode,
+          });
+        }
+        return res.status(200).json(buildCheckoutSuccessResponse(existingOrder));
+      }
+    }
+
     console.error('Checkout error:', error);
     const message = error.message === 'INVALID_PRODUCT_DATA'
       ? 'Khong the xac thuc du lieu san pham trong gio hang.'

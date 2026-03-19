@@ -8,6 +8,15 @@ const Collateral = require('../model/Collateral.model');
 const ReturnRecord = require('../model/ReturnRecord.model');
 const Alert = require('../model/Alert.model');
 const InventoryHistory = require('../model/InventoryHistory.model');
+const Voucher = require('../model/Voucher.model');
+const { normalizeIdempotencyKey, isDuplicateIdempotencyError } = require('../utils/idempotency');
+const {
+    validateVoucher,
+    getVoucherByCode,
+    normalizeVoucherCode,
+    buildVoucherSnapshot,
+    repairVoucherUsageCounterIfNeeded,
+} = require('../services/voucher.service');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LATE_FEE_MULTIPLIER = Number(process.env.LATE_FEE_MULTIPLIER || 1);
@@ -27,6 +36,54 @@ const computeLateDays = (rentEndDate, returnDate = new Date()) => {
     const diff = actual.setHours(0, 0, 0, 0) - end.setHours(0, 0, 0, 0);
     if (diff <= 0) return 0;
     return Math.ceil(diff / DAY_IN_MS);
+};
+
+const applyVoucherForRentOrder = async ({
+    voucherCode,
+    user,
+    items,
+    subtotal
+}) => {
+    const normalizedVoucherCode = normalizeVoucherCode(voucherCode);
+
+    if (!normalizedVoucherCode) {
+        return {
+            voucher: null,
+            voucherCode: null,
+            discountAmount: 0,
+            finalSubtotal: subtotal,
+            voucherSnapshot: null,
+        };
+    }
+
+    const voucherResult = await validateVoucher({
+        code: normalizedVoucherCode,
+        user,
+        cartItems: items,
+        subtotal,
+        orderType: 'rental'
+    });
+
+    if (!voucherResult.valid) {
+        return { error: voucherResult };
+    }
+
+    const voucher = await getVoucherByCode(normalizedVoucherCode);
+    if (!voucher) {
+        return { error: { valid: false, reason: 'VOUCHER_NOT_FOUND' } };
+    }
+
+    return {
+        voucher,
+        voucherCode: voucher.code,
+        discountAmount: Number(voucherResult.discountAmount || 0),
+        finalSubtotal: Number(voucherResult.finalTotal || 0),
+        voucherSnapshot: buildVoucherSnapshot({
+            voucher,
+            originalSubtotal: subtotal,
+            finalSubtotal: Number(voucherResult.finalTotal || 0),
+        })
+    };
 };
 
 /**
@@ -109,10 +166,24 @@ const fetchOrderDetail = async (orderId) => {
     };
 };
 
+const buildRentOrderSuccessResponse = (detail) => ({
+    success: true,
+    totalPrice: detail.totalAmount,
+    discountAmount: detail.discountAmount || 0,
+    voucherCode: detail.voucherCode,
+    data: detail
+});
+
+const findRentOrderByIdempotencyKey = async (idempotencyKey) => {
+    if (!idempotencyKey) return null;
+    return RentOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
+};
+
 exports.createRentOrder = async (req, res) => {
     // 1. Khởi tạo Transaction (nếu MongoDB hỗ trợ replica set)
     let session = null;
     let useTransaction = false;
+    let idempotencyKey = null;
 
     try {
         const isMaster = await mongoose.connection.db.admin().command({ ismaster: 1 });
@@ -133,13 +204,26 @@ exports.createRentOrder = async (req, res) => {
 
     try {
         const userId = req.user?.id;
-        const { rentStartDate, rentEndDate, items = [] } = req.body;
+        const { rentStartDate, rentEndDate, items = [], voucherCode = '' } = req.body;
+        idempotencyKey = normalizeIdempotencyKey(req);
 
         if (!rentStartDate || !rentEndDate || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: 'Vui lòng cung cấp đầy đủ thông tin thuê'
             });
+        }
+
+        const existingOrder = await findRentOrderByIdempotencyKey(idempotencyKey);
+        if (existingOrder) {
+            if (existingOrder.voucherId || existingOrder.voucherCode) {
+                await repairVoucherUsageCounterIfNeeded({
+                    voucherId: existingOrder.voucherId,
+                    voucherCode: existingOrder.voucherCode,
+                });
+            }
+            const detail = await fetchOrderDetail(existingOrder._id);
+            return res.status(200).json(buildRentOrderSuccessResponse(detail));
         }
 
         const resolvedItems = [];
@@ -220,6 +304,16 @@ exports.createRentOrder = async (req, res) => {
             (sum, item) => sum + Number(item.source.finalPrice || item.source.baseRentPrice || item.instance.currentRentPrice || 0),
             0
         );
+        const voucherApplication = await applyVoucherForRentOrder({
+            voucherCode,
+            user: req.user,
+            items,
+            subtotal: computedTotalAmount
+        });
+
+        if (voucherApplication.error) {
+            return res.status(400).json(voucherApplication.error);
+        }
 
         const requestedDeposit = Number(req.body.depositAmount);
         const depositAmount = Number.isFinite(requestedDeposit)
@@ -238,6 +332,11 @@ exports.createRentOrder = async (req, res) => {
             status: 'PendingDeposit',
             rentStartDate,
             rentEndDate,
+            idempotencyKey,
+            voucherCode: voucherApplication.voucherCode,
+            voucherId: voucherApplication.voucher?._id || null,
+            voucherSnapshot: voucherApplication.voucherSnapshot,
+            discountAmount: voucherApplication.discountAmount,
             depositAmount,
             remainingAmount,
             washingFee: 0,
@@ -245,7 +344,7 @@ exports.createRentOrder = async (req, res) => {
             lateDays: 0,
             lateFee: 0,
             compensationFee: 0,
-            totalAmount: Number(req.body.totalAmount) > 0 ? Number(req.body.totalAmount) : computedTotalAmount
+            totalAmount: Number(req.body.totalAmount) > 0 ? Number(req.body.totalAmount) : voucherApplication.finalSubtotal
         }], { session });
 
         // 5. Tạo Order Items
@@ -267,6 +366,20 @@ exports.createRentOrder = async (req, res) => {
             useTransaction ? { session } : {}
         );
 
+        if (voucherApplication.voucher?._id) {
+            if (useTransaction) {
+                await Voucher.findByIdAndUpdate(
+                    voucherApplication.voucher._id,
+                    { $inc: { usedCount: 1 } },
+                    { session }
+                );
+            } else {
+                await Voucher.findByIdAndUpdate(voucherApplication.voucher._id, {
+                    $inc: { usedCount: 1 }
+                });
+            }
+        }
+
         // 6. Hoàn tất thành công (Commit)
         if (session) {
             if (useTransaction) {
@@ -278,12 +391,29 @@ exports.createRentOrder = async (req, res) => {
         // Đoạn này lấy detail ngoài session vì data đã được commit
         const detail = await fetchOrderDetail(rentOrder._id);
 
-        return res.status(201).json({
-            success: true,
-            data: detail
-        });
+        return res.status(201).json(buildRentOrderSuccessResponse(detail));
 
     } catch (error) {
+        if (idempotencyKey && isDuplicateIdempotencyError(error)) {
+            const existingOrder = await findRentOrderByIdempotencyKey(idempotencyKey);
+            if (existingOrder) {
+                if (existingOrder.voucherId || existingOrder.voucherCode) {
+                    await repairVoucherUsageCounterIfNeeded({
+                        voucherId: existingOrder.voucherId,
+                        voucherCode: existingOrder.voucherCode,
+                    });
+                }
+                const detail = await fetchOrderDetail(existingOrder._id);
+                if (session) {
+                    if (useTransaction) {
+                        await session.abortTransaction();
+                    }
+                    await session.endSession();
+                    session = null;
+                }
+                return res.status(200).json(buildRentOrderSuccessResponse(detail));
+            }
+        }
         // CÓ LỖI XẢY RA -> ROLLBACK TRẢ LẠI ĐỒ VỀ TRẠNG THÁI CŨ
         if (session) {
             if (useTransaction) {
