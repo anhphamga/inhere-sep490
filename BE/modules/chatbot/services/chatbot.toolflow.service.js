@@ -4,7 +4,6 @@ const { validateChatInput } = require('../utils/validators');
 const { detectChatIntent } = require('./tool-intent.service');
 const { buildToolPromptContext } = require('./tool-prompt-template.service');
 const { callToolSearch } = require('./tool-api-client.service');
-const { getSuggestedProducts } = require('./product.service');
 const { findFaqAnswer } = require('./faq.service');
 const { getChatSession, saveChatSession } = require('./chat-session.service');
 const {
@@ -44,6 +43,121 @@ const extractDateRangeFromMessage = (message) => {
     dateFrom,
     dateTo,
   };
+};
+
+const parseMoneyValue = (rawNumber, rawUnit = '') => {
+  const normalizedNumber = String(rawNumber || '').replace(',', '.');
+  const base = Number(normalizedNumber);
+
+  if (!Number.isFinite(base) || base <= 0) {
+    return null;
+  }
+
+  const unit = normalizeForMatch(rawUnit);
+  if (!unit) {
+    return Math.round(base);
+  }
+
+  if (['k', 'nghin', 'ngan'].includes(unit)) {
+    return Math.round(base * 1000);
+  }
+
+  if (['tr', 'trieu', 'm'].includes(unit)) {
+    return Math.round(base * 1000000);
+  }
+
+  if (['ty', 't'].includes(unit)) {
+    return Math.round(base * 1000000000);
+  }
+
+  return Math.round(base);
+};
+
+const extractMoneyValues = (message) => {
+  const matched = String(message || '').matchAll(/(\d+(?:[.,]\d+)?)\s*(k|nghin|ngan|trieu|tr|m|ty|t)?/gi);
+  const values = [];
+
+  for (const item of matched) {
+    const parsed = parseMoneyValue(item[1], item[2]);
+    if (parsed !== null) {
+      values.push(parsed);
+    }
+  }
+
+  return values;
+};
+
+const extractProductPriceFiltersFromMessage = (message) => {
+  const normalized = normalizeForMatch(message);
+  const amounts = extractMoneyValues(message);
+
+  if (!amounts.length) {
+    return {};
+  }
+
+  const hasRangeWord = (normalized.includes('tu') && (normalized.includes('den') || normalized.includes('toi')))
+    || normalized.includes('khoang')
+    || normalized.includes('trong khoang');
+
+  if (hasRangeWord && amounts.length >= 2) {
+    const min = Math.min(amounts[0], amounts[1]);
+    const max = Math.max(amounts[0], amounts[1]);
+    return {
+      priceMin: min,
+      priceMax: max,
+    };
+  }
+
+  if (normalized.includes('duoi') || normalized.includes('nho hon') || normalized.includes('it hon') || normalized.includes('max')) {
+    return {
+      priceMax: amounts[0],
+    };
+  }
+
+  if (normalized.includes('tren') || normalized.includes('lon hon') || normalized.includes('toi thieu') || normalized.includes('min')) {
+    return {
+      priceMin: amounts[0],
+    };
+  }
+
+  return {};
+};
+
+const extractProductSortFromMessage = (message) => {
+  const normalized = normalizeForMatch(message);
+
+  if (
+    normalized.includes('dat den re')
+    || normalized.includes('cao den thap')
+    || normalized.includes('giam dan')
+    || normalized.includes('desc')
+  ) {
+    return {
+      sortBy: 'price',
+      sortOrder: 'desc',
+    };
+  }
+
+  if (
+    normalized.includes('re den dat')
+    || normalized.includes('thap den cao')
+    || normalized.includes('tang dan')
+    || normalized.includes('asc')
+  ) {
+    return {
+      sortBy: 'price',
+      sortOrder: 'asc',
+    };
+  }
+
+  if (normalized.includes('moi nhat') || normalized.includes('newest')) {
+    return {
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    };
+  }
+
+  return {};
 };
 
 const inferOrderType = (message) => {
@@ -195,6 +309,23 @@ const buildOrderListMessage = ({ records, message }) => {
   return `Tim thay ${records.length} don gan day. Bam "Xem chi tiet" de mo trang don.`;
 };
 
+const buildProductListMessage = ({ records, message }) => {
+  if (!records.length) {
+    return 'Khong tim thay san pham phu hop.';
+  }
+
+  const normalized = normalizeForMatch(message);
+  if (normalized.includes('dat den re') || normalized.includes('giam dan') || normalized.includes('cao den thap')) {
+    return `Tim thay ${records.length} san pham (sap xep gia tu cao den thap).`;
+  }
+
+  if (normalized.includes('re den dat') || normalized.includes('tang dan') || normalized.includes('thap den cao')) {
+    return `Tim thay ${records.length} san pham (sap xep gia tu thap den cao).`;
+  }
+
+  return `Tim thay ${records.length} san pham phu hop.`;
+};
+
 const getOrdersByType = async ({ actorId, orderType, topK }) => {
   if (orderType === 'sale') {
     return getRecentSaleOrders(actorId, { limit: topK });
@@ -289,6 +420,12 @@ const mapToolResponseToContext = (toolData) => {
 const buildToolPayload = ({ entity, message, requestId, topK }) => {
   const dateFilters = extractDateRangeFromMessage(message);
   const orderType = entity === 'order' ? inferOrderType(message) : null;
+  const productPriceFilters = entity === 'product'
+    ? extractProductPriceFiltersFromMessage(message)
+    : {};
+  const productSortFilters = entity === 'product'
+    ? extractProductSortFromMessage(message)
+    : {};
 
   return {
     entity,
@@ -296,6 +433,8 @@ const buildToolPayload = ({ entity, message, requestId, topK }) => {
     filters: {
       ...dateFilters,
       ...(orderType ? { orderType } : {}),
+      ...productPriceFilters,
+      ...productSortFilters,
       page: 1,
       limit: topK,
     },
@@ -331,33 +470,6 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
 
   const intentInfo = detectChatIntent(message);
   const sessionState = getChatSession({ actor, requestId });
-
-  if (intentInfo.intent === 'PRODUCT') {
-    const products = await getSuggestedProducts({ limit: 5 });
-
-    if (!products.length) {
-      return {
-        type: 'TEXT',
-        answer: 'Hien tai chua co san pham phu hop.',
-        usage: null,
-        model: null,
-        intent: intentInfo.intent,
-        toolData: null,
-        contexts: [],
-      };
-    }
-
-    return {
-      type: 'PRODUCT_LIST',
-      message: 'Duoi day la mot so san pham ban co the tham khao:',
-      data: products,
-      usage: null,
-      model: null,
-      intent: intentInfo.intent,
-      toolData: null,
-      contexts: [],
-    };
-  }
 
   if (intentInfo.intent === 'ORDER' || intentInfo.intent === 'ORDER_DETAIL') {
     const orderType = inferOrderType(message);
@@ -455,6 +567,21 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
       actor,
       requestId,
     });
+  }
+
+  if (intentInfo.intent === 'PRODUCT') {
+    const records = Array.isArray(toolData?.records) ? toolData.records : [];
+
+    return {
+      type: 'PRODUCT_LIST',
+      message: buildProductListMessage({ records, message }),
+      data: records,
+      usage: null,
+      model: null,
+      intent: intentInfo.intent,
+      toolData,
+      contexts: [],
+    };
   }
 
   if (intentInfo.entity && toolData && Array.isArray(toolData.records) && toolData.records.length === 0) {

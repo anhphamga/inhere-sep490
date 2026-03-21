@@ -38,7 +38,7 @@ const getToolSearchConfig = () => {
     maxLimit: Math.max(toNumber(process.env.CHATBOT_TOOL_MAX_LIMIT, 20), 1),
     maxQueryLength: Math.max(toNumber(process.env.CHATBOT_TOOL_MAX_QUERY_LENGTH, 200), 10),
     maxRequestIdLength: Math.max(toNumber(process.env.CHATBOT_TOOL_MAX_REQUEST_ID_LENGTH, 120), 20),
-    allowedEntities: toList(process.env.CHATBOT_TOOL_ALLOWED_ENTITIES, ['user', 'order']),
+    allowedEntities: toList(process.env.CHATBOT_TOOL_ALLOWED_ENTITIES, ['user', 'order', 'product']),
     allowedRoles: toList(process.env.CHATBOT_TOOL_ALLOWED_ROLES, ['owner', 'staff', 'customer']),
     userSearchFields: toList(
       process.env.CHATBOT_TOOL_USER_SEARCH_FIELDS,

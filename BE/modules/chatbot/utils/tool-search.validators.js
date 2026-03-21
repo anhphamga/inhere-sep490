@@ -56,6 +56,14 @@ const validateToolSearchPayload = (payload = {}) => {
   const limit = Math.min(Math.max(toNumber(filters.limit, config.defaultLimit), 1), config.maxLimit);
   const status = sanitizeText(filters.status);
   const orderType = sanitizeText(filters.orderType).toLowerCase();
+  const sortBy = sanitizeText(filters.sortBy).toLowerCase();
+  const sortOrder = sanitizeText(filters.sortOrder).toLowerCase();
+  const priceMin = filters.priceMin === undefined || filters.priceMin === null || filters.priceMin === ''
+    ? null
+    : toNumber(filters.priceMin, Number.NaN);
+  const priceMax = filters.priceMax === undefined || filters.priceMax === null || filters.priceMax === ''
+    ? null
+    : toNumber(filters.priceMax, Number.NaN);
   const dateFrom = ensureIsoDate(filters.dateFrom, 'filters.dateFrom');
   const dateTo = ensureIsoDate(filters.dateTo, 'filters.dateTo');
 
@@ -77,6 +85,57 @@ const validateToolSearchPayload = (payload = {}) => {
     });
   }
 
+  if (sortBy && !['price', 'createdat', 'name'].includes(sortBy)) {
+    throw new ChatbotError('filters.sortBy must be price, createdAt or name', {
+      statusCode: 400,
+      code: 'INVALID_TOOL_SEARCH_FILTER',
+      details: {
+        fieldName: 'filters.sortBy',
+        value: sortBy,
+      },
+    });
+  }
+
+  if (sortOrder && !['asc', 'desc'].includes(sortOrder)) {
+    throw new ChatbotError('filters.sortOrder must be asc or desc', {
+      statusCode: 400,
+      code: 'INVALID_TOOL_SEARCH_FILTER',
+      details: {
+        fieldName: 'filters.sortOrder',
+        value: sortOrder,
+      },
+    });
+  }
+
+  if (priceMin !== null && !Number.isFinite(priceMin)) {
+    throw new ChatbotError('filters.priceMin must be a valid number', {
+      statusCode: 400,
+      code: 'INVALID_TOOL_SEARCH_FILTER',
+      details: {
+        fieldName: 'filters.priceMin',
+        value: filters.priceMin,
+      },
+    });
+  }
+
+  if (priceMax !== null && !Number.isFinite(priceMax)) {
+    throw new ChatbotError('filters.priceMax must be a valid number', {
+      statusCode: 400,
+      code: 'INVALID_TOOL_SEARCH_FILTER',
+      details: {
+        fieldName: 'filters.priceMax',
+        value: filters.priceMax,
+      },
+    });
+  }
+
+  if (priceMin !== null && priceMax !== null && priceMin > priceMax) {
+    throw new ChatbotError('filters.priceMin must be less than or equal to filters.priceMax', {
+      statusCode: 400,
+      code: 'INVALID_TOOL_SEARCH_FILTER',
+    });
+  }
+
   const requestId = sanitizeText(payload.requestId || '');
   if (requestId.length > config.maxRequestIdLength) {
     throw new ChatbotError(`requestId exceeds max length (${config.maxRequestIdLength})`, {
@@ -91,6 +150,10 @@ const validateToolSearchPayload = (payload = {}) => {
     filters: {
       status: status || null,
       orderType: orderType || null,
+      sortBy: sortBy ? (sortBy === 'createdat' ? 'createdAt' : sortBy) : null,
+      sortOrder: sortOrder || null,
+      priceMin,
+      priceMax,
       dateFrom,
       dateTo,
       page,

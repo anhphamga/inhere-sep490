@@ -2,6 +2,7 @@ const ChatbotError = require('../utils/chatbotError');
 const { getToolSearchConfig } = require('../utils/tool-search.config');
 const { searchUserService } = require('./tool-search/search-user.service');
 const { searchOrderService } = require('./tool-search/search-order.service');
+const { searchProductService } = require('./tool-search/search-product.service');
 
 const ensureActorCanSearch = ({ actor }) => {
   const config = getToolSearchConfig();
@@ -35,6 +36,10 @@ const searchToolData = async ({ entity, query, filters, actor }) => {
 
   if (entity === 'order') {
     return searchOrderService({ query, filters, actor });
+  }
+
+  if (entity === 'product') {
+    return searchProductService({ query, filters, actor });
   }
 
   throw new ChatbotError('Unsupported entity for tool search', {

@@ -82,17 +82,48 @@ const isProductIntent = (message) => {
     'san pham',
     'trang phuc',
     'ao dai',
+    'ao',
+    'vay',
+    'dam',
+    'quan',
     'outfit',
     'do mac',
   ]);
   const hasSuggestWord = includesAny(message, ['goi y', 'tu van', 'de xuat', 'tham khao']);
+  const hasSearchWord = includesAny(message, ['tim', 'loc', 'search', 'xem', 'co', 'hien thi']);
+  const hasPriceWord = includesAny(message, [
+    'gia',
+    'duoi',
+    'tren',
+    'tu',
+    'den',
+    're',
+    'dat',
+    'k',
+    'trieu',
+    'vnd',
+  ]);
+  const hasSortWord = includesAny(message, [
+    'sap xep',
+    'tang dan',
+    'giam dan',
+    'cao den thap',
+    'thap den cao',
+    'dat den re',
+    're den dat',
+    'moi nhat',
+  ]);
   const hasOrderContext = hasOrderDomain(message) || includesAny(message, ['don nay', 'don do', 'chi tiet don']);
 
   if (hasOrderContext) {
     return false;
   }
 
-  return hasProductWord && hasSuggestWord;
+  if (hasProductWord && (hasSuggestWord || hasSearchWord || hasPriceWord || hasSortWord)) {
+    return true;
+  }
+
+  return hasProductWord;
 };
 
 const detectChatIntent = (rawMessage) => {
