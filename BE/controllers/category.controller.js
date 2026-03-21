@@ -8,6 +8,50 @@ const normalizeText = (value) => String(value || '').trim();
 
 const toObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null);
 
+const toNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const getLegacyPriceObject = (product = {}) => toObject(product?.price) || null;
+
+const getLegacyVariantList = (product = {}) => (Array.isArray(product?.variants) ? product.variants : []);
+
+const resolveProductPrices = (product = {}) => {
+  const legacyPrice = getLegacyPriceObject(product);
+  const firstVariantWithPrice = getLegacyVariantList(product).find((variant) => toObject(variant?.price));
+  const firstVariantPrice = toObject(firstVariantWithPrice?.price);
+
+  return {
+    baseRentPrice: Math.max(
+      toNumber(
+        product?.baseRentPrice,
+        toNumber(product?.commonRentPrice, toNumber(legacyPrice?.rent, toNumber(firstVariantPrice?.rent, 0)))
+      ),
+      0
+    ),
+    baseSalePrice: Math.max(
+      toNumber(product?.baseSalePrice, toNumber(legacyPrice?.sale, toNumber(firstVariantPrice?.sale, 0))),
+      0
+    ),
+  };
+};
+
+const matchesPurpose = (product = {}, purpose = 'all') => {
+  const normalizedPurpose = normalizeText(purpose).toLowerCase();
+  const prices = resolveProductPrices(product);
+
+  if (normalizedPurpose === 'buy' || normalizedPurpose === 'sale') {
+    return prices.baseSalePrice > 0;
+  }
+
+  if (normalizedPurpose === 'rent' || normalizedPurpose === 'fitting') {
+    return prices.baseRentPrice > 0;
+  }
+
+  return true;
+};
+
 const slugify = (value) =>
   normalizeText(value)
     .normalize('NFD')
@@ -100,11 +144,17 @@ const coalesceCategoryTextExpr = {
   ],
 };
 
-const getProductCategoryStats = async () => {
-  const rows = await Product.find({}).select('category categoryPath images imageUrl colorVariants variants').lean();
+const getProductCategoryStats = async (purpose = 'all') => {
+  const rows = await Product.find({})
+    .select('category categoryPath images imageUrl colorVariants variants baseRentPrice commonRentPrice baseSalePrice price')
+    .lean();
   const map = new Map();
 
   rows.forEach((row) => {
+    if (!matchesPurpose(row, purpose)) {
+      return;
+    }
+
     const imageUrl = collectProductImages(row)[0] || '';
     collectCategoryKeys(row).forEach((key) => {
       const current = map.get(key) || { count: 0, imageUrl: '' };
@@ -177,7 +227,8 @@ const sortNodes = (nodes = []) => {
 const getCategories = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
-    const roots = await buildCategoryTree(lang);
+    const purpose = normalizeText(req.query.purpose || 'all');
+    const roots = await buildCategoryTree(lang, purpose);
 
     return res.status(200).json({
       success: true,
@@ -222,10 +273,10 @@ const validateCategoryInput = async ({ name, slug, parentId, currentId = null })
   return null;
 };
 
-const buildCategoryTree = async (lang = 'vi') => {
+const buildCategoryTree = async (lang = 'vi', purpose = 'all') => {
   const [docs, statsMap] = await Promise.all([
     Category.find({}).sort({ sortOrder: 1, createdAt: 1, _id: 1 }).lean(),
-    getProductCategoryStats(),
+    getProductCategoryStats(purpose),
   ]);
 
   const nodes = docs.map((doc) => toCategoryNode(doc, lang, statsMap));
@@ -407,7 +458,8 @@ const deleteCategory = async (req, res) => {
 const listOwnerCategories = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
-    const categories = await buildCategoryTree(lang);
+    const purpose = normalizeText(req.query.purpose || 'all');
+    const categories = await buildCategoryTree(lang, purpose);
     return res.status(200).json({
       success: true,
       categories,

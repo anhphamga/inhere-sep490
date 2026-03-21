@@ -352,9 +352,7 @@ exports.createRentOrder = async (req, res) => {
             return res.status(400).json(voucherApplication.error);
         }
 
-        const orderTotalAmount = Number(req.body.totalAmount) > 0
-            ? Number(req.body.totalAmount)
-            : voucherApplication.finalSubtotal;
+        const orderTotalAmount = Number(voucherApplication.finalSubtotal || 0);
         const depositAmount = computeExpectedDeposit({ totalAmount: orderTotalAmount });
         const remainingAmount = Math.max(orderTotalAmount - depositAmount, 0);
 

@@ -177,6 +177,18 @@ const year = new Date().getFullYear();
 const AUTO_SLIDE_MS = 5000;
 const CATEGORY_SLIDE_MS = 2800;
 const HOMEPAGE_PRODUCT_LIMIT = 8;
+const SECTION_IDS = ["rent", "buy", "fitting", "packages", "blog", "promo", "contact"];
+const CATEGORY_TYPE_LABELS = {
+  rent: "Cho thuê",
+  sale_or_rent: "Bán / Thuê",
+  service: "Dịch vụ",
+};
+const CATEGORY_LOAD_ERROR = "Không tải được danh mục từ API, đang dùng dữ liệu dự phòng.";
+const FALLBACK_BLOG_POSTS = ["blog.p1", "blog.p2", "blog.p3"].map((prefix, index) => ({
+  id: `blog-fallback-${index + 1}`,
+  titleKey: `${prefix}.t`,
+  excerptKey: `${prefix}.d`,
+}));
 const CONTACT_INFO = {
   phoneDisplay: "0898 199 099",
   phoneHref: "tel:0898199099",
@@ -567,7 +579,7 @@ const Homepage = ({ initialSection = "" }) => {
         setCategoriesLoading(true);
         setCategoriesError("");
 
-        const response = await fetch("/api/categories");
+        const response = await fetch("/api/categories?lang=vi");
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -617,25 +629,17 @@ const Homepage = ({ initialSection = "" }) => {
         setBuyLoading(true);
         setFittingLoading(true);
 
-        const [buyRes, fittingRes] = await Promise.all([
-          fetch("/api/products?purpose=all&limit=200"),
-          fetch("/api/products?purpose=all&limit=200"),
-        ]);
-
-        if (buyRes.ok) {
-          const buyPayload = await buyRes.json();
-          const buyData = Array.isArray(buyPayload?.data) ? buyPayload.data : [];
-          if (isMounted) {
-            setBuyProducts(buyData);
-          }
+        // Hai khu vực dùng cùng một nguồn dữ liệu nên chỉ cần gọi một lần.
+        const response = await fetch("/api/products?purpose=all&limit=200");
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
         }
 
-        if (fittingRes.ok) {
-          const fittingPayload = await fittingRes.json();
-          const fittingData = Array.isArray(fittingPayload?.data) ? fittingPayload.data : [];
-          if (isMounted) {
-            setFittingProducts(fittingData);
-          }
+        const payload = await response.json();
+        const productData = Array.isArray(payload?.data) ? payload.data : [];
+        if (isMounted) {
+          setBuyProducts(productData);
+          setFittingProducts(productData);
         }
       } catch (error) {
         if (isMounted) {
@@ -701,7 +705,7 @@ const Homepage = ({ initialSection = "" }) => {
       return;
     }
 
-    const sectionIds = ["rent", "buy", "fitting", "packages", "blog", "promo", "contact"];
+    const sectionIds = SECTION_IDS;
 
     const handleScroll = () => {
       const offset = 130; // gần bằng chiều cao header + nav
@@ -849,11 +853,12 @@ const Homepage = ({ initialSection = "" }) => {
     .slice(0, HOMEPAGE_PRODUCT_LIMIT)
     .map(mapProductCard);
 
-  const fallbackBlogPosts = [
-    { id: "blog-fallback-1", title: t(lang, "blog.p1.t"), excerpt: t(lang, "blog.p1.d"), thumbnail: "" },
-    { id: "blog-fallback-2", title: t(lang, "blog.p2.t"), excerpt: t(lang, "blog.p2.d"), thumbnail: "" },
-    { id: "blog-fallback-3", title: t(lang, "blog.p3.t"), excerpt: t(lang, "blog.p3.d"), thumbnail: "" },
-  ];
+  const fallbackBlogPosts = FALLBACK_BLOG_POSTS.map((post) => ({
+    id: post.id,
+    title: t(lang, post.titleKey),
+    excerpt: t(lang, post.excerptKey),
+    thumbnail: "",
+  }));
 
   const displayedBlogs =
     blogs.length > 0
@@ -911,7 +916,7 @@ const Homepage = ({ initialSection = "" }) => {
       />
       {false && (
         <>
-          {/* HEADER */}
+          {/* Phần đầu trang cũ */}
           <header className="header">
             <div className="container header-row">
               <a
@@ -1011,7 +1016,7 @@ const Homepage = ({ initialSection = "" }) => {
                 )}
               </div>
             </div>
-            {/* NAVBAR */}
+            {/* Thanh điều hướng cũ */}
             <nav className="nav" aria-label="Primary navigation">
               <div className="container nav-row">
                 <div className="nav-left">
@@ -1123,7 +1128,7 @@ const Homepage = ({ initialSection = "" }) => {
         </>
       )}
 
-      {/* HERO SLIDER */}
+      {/* Cụm banner chính */}
       <section className="hero" id="top">
         <div
           className="slides"
@@ -1392,7 +1397,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* FEATURED CATEGORIES */}
+      {/* Nhóm danh mục nổi bật */}
       <section id="categories">
         <div className="container">
           <h2 className="section-title">
@@ -1478,7 +1483,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* RENT PRODUCTS */}
+      {/* Nhóm sản phẩm thuê */}
       <section className="soft" id="rent">
         <div className="container">
           <div className="row-head">
@@ -1535,7 +1540,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* BUY PRODUCTS */}
+      {/* Nhóm sản phẩm mua */}
       <section id="buy">
         <div className="container">
           <div className="row-head">
@@ -1586,7 +1591,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* FITTING PRODUCTS */}
+      {/* Nhóm váy đầm cho thuê */}
       <section className="soft" id="fitting">
         <div className="container">
           <div className="row-head fitting-head">
@@ -1638,7 +1643,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* PACKAGES */}
+      {/* Nhóm gói dịch vụ */}
       <section id="packages">
         <div className="container">
           <h2 className="section-title">
@@ -1695,7 +1700,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
+      {/* Nhóm đánh giá khách hàng */}
       <section className="soft" id="reviews">
         <div className="container">
           <h2 className="section-title">
@@ -1728,7 +1733,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* BLOG */}
+      {/* Nhóm bài viết */}
       <section id="blog">
         <div className="container">
           <div className="row-head">
@@ -1774,7 +1779,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* PROMO / CONTACT */}
+      {/* Nhóm ưu đãi và liên hệ */}
       <section className="soft" id="promo">
         <div className="container">
           <h2 className="section-title">
@@ -1845,7 +1850,7 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* Chân trang */}
       <footer>
         <div className="container">
           <div className="footer-grid">
