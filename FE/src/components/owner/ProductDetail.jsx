@@ -154,7 +154,7 @@ export default function ProductDetail({ productId, onBack }) {
         let mounted = true
         const loadCategories = async () => {
             try {
-                const response = await fetch('/api/categories')
+                const response = await fetch('/api/categories?lang=vi')
                 const payload = response.ok ? await response.json() : { categories: [] }
                 if (!mounted) return
                 const tree = normalizeCategoryTree(payload?.categories)

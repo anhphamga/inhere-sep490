@@ -106,7 +106,10 @@ export default function MyVouchersPage() {
                 <div className="mt-4 space-y-2 text-sm text-[#6d6257]">
                   <p>Đơn tối thiểu: {formatMoney(voucher.minOrderValue)}</p>
                   <p>Hết hạn: {voucher.endDate ? new Date(voucher.endDate).toLocaleString('vi-VN') : 'Không giới hạn'}</p>
-                  <p>Giới hạn cá nhân: {voucher.usageLimitPerUser ?? 'Không giới hạn'}</p>
+                  <p>
+                    Giới hạn mỗi tài khoản:{' '}
+                    {voucher.usageLimitPerUser ? `Tối đa ${voucher.usageLimitPerUser} lần` : 'Không giới hạn'}
+                  </p>
                 </div>
               </article>
             ))}

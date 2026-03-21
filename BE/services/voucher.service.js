@@ -7,8 +7,8 @@ const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const Category = require('../model/Category.model');
 
-const VALID_SALE_STATUSES = ['Paid', 'Completed'];
-const VALID_RENT_STATUSES = ['Completed'];
+const INVALID_SALE_STATUSES = ['Cancelled', 'Failed', 'Refunded'];
+const INVALID_RENT_STATUSES = ['Cancelled'];
 const ALLOWED_VOUCHER_TYPES = ['percent', 'fixed'];
 const ALLOWED_APPLIES_TO = ['both', 'sale', 'rental'];
 const ALLOWED_APPLIES_ON = ['subtotal'];
@@ -97,9 +97,12 @@ const parseVoucherDate = (value) => {
 
 const getVoucherUsageLimitTotal = (voucher) => {
   if (voucher?.usageLimitTotal === null || voucher?.usageLimitTotal === undefined) {
-    return voucher?.usageLimit ?? null;
+    const legacyUsageLimit = voucher?.usageLimit ?? null;
+    return legacyUsageLimit !== null && legacyUsageLimit !== undefined && Number(legacyUsageLimit) <= 0
+      ? null
+      : legacyUsageLimit;
   }
-  return voucher.usageLimitTotal;
+  return Number(voucher.usageLimitTotal) <= 0 ? null : voucher.usageLimitTotal;
 };
 
 const getVoucherMessage = (reason, context = {}) => {
@@ -334,10 +337,10 @@ const buildVoucherOrderQuery = ({ voucher, userId, orderType }) => {
   if (userId) query.customerId = userId;
 
   if (orderType === 'sale') {
-    query.status = { $in: VALID_SALE_STATUSES };
+    query.status = { $nin: INVALID_SALE_STATUSES };
     query.orderType = 'Buy';
   } else if (orderType === 'rental') {
-    query.status = { $in: VALID_RENT_STATUSES };
+    query.status = { $nin: INVALID_RENT_STATUSES };
   }
 
   return query;
@@ -383,9 +386,9 @@ const repairVoucherUsageCounterIfNeeded = async ({ voucherId, voucherCode }) => 
   });
 
   const currentUsedCount = Math.max(toFiniteNumber(voucher.usedCount, 0), 0);
-  const effectiveUsageCount = Math.max(currentUsedCount, actualUsageCount);
+  const effectiveUsageCount = Math.max(actualUsageCount, 0);
 
-  if (actualUsageCount > currentUsedCount) {
+  if (actualUsageCount !== currentUsedCount) {
     await Voucher.findByIdAndUpdate(voucher._id, { usedCount: actualUsageCount });
   }
 
@@ -406,11 +409,11 @@ const hasEligibleHistoricalOrders = async ({ userId }) => {
     SaleOrder.countDocuments({
       customerId: userId,
       orderType: 'Buy',
-      status: { $in: VALID_SALE_STATUSES },
+      status: { $nin: INVALID_SALE_STATUSES },
     }),
     RentOrder.countDocuments({
       customerId: userId,
-      status: { $in: VALID_RENT_STATUSES },
+      status: { $nin: INVALID_RENT_STATUSES },
     }),
   ]);
 
@@ -546,8 +549,10 @@ const normalizeVoucherAdminInput = async (payload, { existingVoucherId = null } 
   const appliesTo = String(payload?.appliesTo || 'both').trim().toLowerCase();
   const appliesOn = String(payload?.appliesOn || 'subtotal').trim().toLowerCase();
   const minOrderValue = normalizeNullableNumber(payload?.minOrderValue);
-  const usageLimitTotal = normalizeNullableNumber(payload?.usageLimitTotal);
-  const usageLimitPerUser = normalizeNullableNumber(payload?.usageLimitPerUser);
+  const rawUsageLimitTotal = normalizeNullableNumber(payload?.usageLimitTotal);
+  const rawUsageLimitPerUser = normalizeNullableNumber(payload?.usageLimitPerUser);
+  const usageLimitTotal = rawUsageLimitTotal !== null && Number.isFinite(rawUsageLimitTotal) && rawUsageLimitTotal <= 0 ? null : rawUsageLimitTotal;
+  const usageLimitPerUser = rawUsageLimitPerUser !== null && Number.isFinite(rawUsageLimitPerUser) && rawUsageLimitPerUser <= 0 ? null : rawUsageLimitPerUser;
   const startDate = parseDateOrNull(payload?.startDate, 'startDate');
   const endDate = parseDateOrNull(payload?.endDate, 'endDate');
   const isActive = payload?.isActive === undefined ? true : normalizeBoolean(payload?.isActive, true);
@@ -584,11 +589,11 @@ const normalizeVoucherAdminInput = async (payload, { existingVoucherId = null } 
   if (minOrderValue !== null && (!Number.isFinite(minOrderValue) || minOrderValue < 0)) {
     errors.push({ field: 'minOrderValue', message: 'minOrderValue phai lon hon hoac bang 0.' });
   }
-  if (usageLimitTotal !== null && (!Number.isFinite(usageLimitTotal) || usageLimitTotal < 0)) {
-    errors.push({ field: 'usageLimitTotal', message: 'usageLimitTotal phai lon hon hoac bang 0.' });
+  if (rawUsageLimitTotal !== null && (!Number.isFinite(rawUsageLimitTotal) || !Number.isInteger(rawUsageLimitTotal) || rawUsageLimitTotal < 1)) {
+    errors.push({ field: 'usageLimitTotal', message: 'usageLimitTotal phai la so nguyen lon hon hoac bang 1, hoac de trong neu khong gioi han.' });
   }
-  if (usageLimitPerUser !== null && (!Number.isFinite(usageLimitPerUser) || usageLimitPerUser < 0)) {
-    errors.push({ field: 'usageLimitPerUser', message: 'usageLimitPerUser phai lon hon hoac bang 0.' });
+  if (rawUsageLimitPerUser !== null && (!Number.isFinite(rawUsageLimitPerUser) || !Number.isInteger(rawUsageLimitPerUser) || rawUsageLimitPerUser < 1)) {
+    errors.push({ field: 'usageLimitPerUser', message: 'usageLimitPerUser phai la so nguyen lon hon hoac bang 1, hoac de trong neu khong gioi han.' });
   }
 
   if (errors.length > 0) {
@@ -757,8 +762,20 @@ const listVouchers = async (query = {}) => {
     Voucher.countDocuments(mongoQuery),
   ]);
 
+  const repairedVouchers = await Promise.all(vouchers.map(async (voucher) => {
+    const repaired = await repairVoucherUsageCounterIfNeeded({
+      voucherId: voucher._id,
+      voucherCode: voucher.code,
+    });
+
+    return {
+      voucher: repaired?.voucher || voucher,
+      effectiveUsageCount: repaired?.effectiveUsageCount ?? Math.max(toFiniteNumber(voucher?.usedCount, 0), 0),
+    };
+  }));
+
   return {
-    data: vouchers.map((voucher) => serializeVoucher(voucher, { effectiveUsageCount: voucher.usedCount })),
+    data: repairedVouchers.map(({ voucher, effectiveUsageCount }) => serializeVoucher(voucher, { effectiveUsageCount })),
     pagination: {
       page,
       limit,
@@ -783,6 +800,7 @@ const listMyVouchers = async ({ user, query = {} }) => {
   const sortOrder = String(query.sortOrder || '').trim().toLowerCase() === 'asc' ? 1 : -1;
   const search = String(query.search || '').trim();
   const now = new Date();
+  const userHasEligibleHistoricalOrders = await hasEligibleHistoricalOrders({ userId: normalizedUser._id });
 
   const mongoQuery = { isActive: true };
 
@@ -823,7 +841,11 @@ const listMyVouchers = async ({ user, query = {} }) => {
       continue;
     }
 
-    if (voucher?.usageLimitPerUser !== null && voucher?.usageLimitPerUser !== undefined) {
+    if (voucher?.firstOrderOnly && userHasEligibleHistoricalOrders) {
+      continue;
+    }
+
+    if (voucher?.usageLimitPerUser !== null && voucher?.usageLimitPerUser !== undefined && Number(voucher.usageLimitPerUser) > 0) {
       const userUsageCount = await countVoucherUsage({ voucher, userId: normalizedUser._id });
       if (userUsageCount >= Number(voucher.usageLimitPerUser)) {
         continue;
@@ -940,8 +962,21 @@ const validateVoucher = async ({
 
   const normalizedUser = await enrichUserWithDefaultSegmentIfEligible(await normalizeUserDocument(user));
   const userId = normalizedUser?._id || normalizedUser?.id || null;
+  const userHasEligibleHistoricalOrders = userId
+    ? await hasEligibleHistoricalOrders({ userId })
+    : false;
 
-  if (voucher?.usageLimitPerUser !== null && voucher?.usageLimitPerUser !== undefined) {
+  if (voucher?.firstOrderOnly) {
+    if (!userId) {
+      return buildInvalidResponse('USER_REQUIRED', { voucher, subtotal: normalizedSubtotal });
+    }
+
+    if (userHasEligibleHistoricalOrders) {
+      return buildInvalidResponse('FIRST_ORDER_ONLY', { voucher, subtotal: normalizedSubtotal });
+    }
+  }
+
+  if (voucher?.usageLimitPerUser !== null && voucher?.usageLimitPerUser !== undefined && Number(voucher.usageLimitPerUser) > 0) {
     if (!userId) {
       return buildInvalidResponse('USER_REQUIRED', { voucher, subtotal: normalizedSubtotal });
     }
@@ -951,10 +986,6 @@ const validateVoucher = async ({
       return buildInvalidResponse('USAGE_LIMIT_PER_USER_EXCEEDED', { voucher, subtotal: normalizedSubtotal });
     }
   }
-
-  // Business rule update:
-  // vouchers remain usable once per account even after the customer has previous orders.
-  // Per-user usage is controlled by usageLimitPerUser instead of firstOrderOnly.
 
   if (!checkUserSegmentEligibility(voucher, normalizedUser)) {
     return buildInvalidResponse('USER_SEGMENT_NOT_ELIGIBLE', { voucher, subtotal: normalizedSubtotal });

@@ -108,7 +108,7 @@ const voucherSchema = new mongoose.Schema({
   strict: false
 });
 
-voucherSchema.pre('validate', function normalizeVoucherBeforeValidate(next) {
+voucherSchema.pre('validate', function normalizeVoucherBeforeValidate() {
   if (typeof this.code === 'string') {
     this.code = this.code.trim().toUpperCase();
   }
@@ -128,8 +128,6 @@ voucherSchema.pre('validate', function normalizeVoucherBeforeValidate(next) {
   if (this.usageLimitTotal === null || this.usageLimitTotal === undefined) {
     this.usageLimitTotal = this.usageLimit;
   }
-
-  next();
 });
 
 module.exports = mongoose.model('Voucher', voucherSchema);
