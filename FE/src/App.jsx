@@ -3,7 +3,7 @@ import AppRoutes from './routes'
 import { BuyCartProvider } from './contexts/BuyCartContext'
 import { FavoritesProvider } from './contexts/FavoritesContext'
 import { RentalCartProvider } from './contexts/RentalCartContext'
-import Chatbot from './features/chatbot/components/Chatbot'
+import Chatbot from './components/chatbot/Chatbot'
 
 function App() {
   return (

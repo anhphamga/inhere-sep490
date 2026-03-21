@@ -5,6 +5,7 @@ const { detectChatIntent } = require('./tool-intent.service');
 const { buildToolPromptContext } = require('./tool-prompt-template.service');
 const { callToolSearch } = require('./tool-api-client.service');
 const { getSuggestedProducts } = require('./product.service');
+const { findFaqAnswer } = require('./faq.service');
 const { getChatSession, saveChatSession } = require('./chat-session.service');
 const {
   getRecentSaleOrders,
@@ -114,7 +115,7 @@ const formatDate = (value) => {
 
 const buildUserAnswer = ({ records }) => {
   if (!records.length) {
-    return 'Toi khong tim thay thong tin phu hop.';
+    return 'Khong tim thay thong tin phu hop.';
   }
 
   const user = records[0];
@@ -127,7 +128,7 @@ const buildUserAnswer = ({ records }) => {
 
 const buildOrderAnswer = ({ records, message }) => {
   if (!records.length) {
-    return 'Toi khong tim thay thong tin phu hop.';
+    return 'Khong tim thay thong tin phu hop.';
   }
 
   const source = isLatestQuery(message) ? [records[0]] : records;
@@ -304,6 +305,30 @@ const buildToolPayload = ({ entity, message, requestId, topK }) => {
 
 const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
   const { message, topK } = validateChatInput(payload);
+
+  const faq = findFaqAnswer(message);
+  if (faq) {
+    return {
+      type: 'TEXT',
+      answer: faq.answer,
+      usage: null,
+      model: 'faq-direct',
+      intent: 'FAQ',
+      toolData: null,
+      contexts: [
+        {
+          id: 'faq-direct',
+          score: faq.score,
+          metadata: {
+            source: 'customer-faq-50-qa.md',
+            matchedQuestion: faq.question,
+          },
+          preview: faq.question,
+        },
+      ],
+    };
+  }
+
   const intentInfo = detectChatIntent(message);
   const sessionState = getChatSession({ actor, requestId });
 
@@ -378,8 +403,8 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
     if (!Array.isArray(orderData) || orderData.length === 0) {
       return {
         type: 'ORDER',
-        message: 'Toi khong tim thay thong tin phu hop.',
-        answer: 'Toi khong tim thay thong tin phu hop.',
+        message: 'Khong tim thay thong tin phu hop.',
+        answer: 'Khong tim thay thong tin phu hop.',
         data: [],
         usage: null,
         model: null,
@@ -435,7 +460,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
   if (intentInfo.entity && toolData && Array.isArray(toolData.records) && toolData.records.length === 0) {
     return {
       type: 'TEXT',
-      answer: 'Toi khong tim thay thong tin phu hop.',
+      answer: 'Khong tim thay thong tin phu hop.',
       usage: null,
       model: null,
       intent: intentInfo.intent,
@@ -451,7 +476,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
         intent: intentInfo.intent,
         toolData,
         message,
-      }) || 'Toi khong tim thay thong tin phu hop.',
+      }) || 'Khong tim thay thong tin phu hop.',
       usage: null,
       model: null,
       intent: intentInfo.intent,
@@ -492,3 +517,4 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
 module.exports = {
   chatWithTools,
 };
+

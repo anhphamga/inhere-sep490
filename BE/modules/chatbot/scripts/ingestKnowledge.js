@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const path = require('path');
 
 const chatbotService = require('../services/chatbot.service');
+const vectorStore = require('../vector-store/chromaVectorStore');
 
 const KNOWLEDGE_DIR = path.join(__dirname, '..', 'knowledge');
 
@@ -32,6 +33,13 @@ const loadKnowledgeDocuments = async () => {
 
 const main = async () => {
   try {
+    const shouldReset = (process.env.CHATBOT_INGEST_RESET || 'true').toLowerCase() !== 'false';
+    if (shouldReset) {
+      await vectorStore.resetCollection();
+      // eslint-disable-next-line no-console
+      console.log('Knowledge collection reset completed.');
+    }
+
     const docs = await loadKnowledgeDocuments();
 
     if (!docs.length) {

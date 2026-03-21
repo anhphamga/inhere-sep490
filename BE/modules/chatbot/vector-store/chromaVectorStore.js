@@ -60,6 +60,29 @@ class ChromaVectorStore {
     }
   }
 
+  async resetCollection() {
+    try {
+      await this.client.deleteCollection({
+        name: this.collectionName,
+      });
+    } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
+      if (!message.includes('not found') && !message.includes('does not exist')) {
+        throw new ChatbotError('Failed to reset Chroma collection', {
+          statusCode: 500,
+          code: 'CHROMA_RESET_FAILED',
+          details: {
+            message: error.message,
+            collectionName: this.collectionName,
+          },
+        });
+      }
+    }
+
+    this.collection = null;
+    await this.getCollection();
+  }
+
   async upsertMany(entries) {
     if (!entries.length) {
       return 0;

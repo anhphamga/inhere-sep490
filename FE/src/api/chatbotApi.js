@@ -1,4 +1,4 @@
-import axiosClient from '../../../config/axios'
+import axiosClient from '../config/axios'
 
 export const sendChatMessage = async ({ message, topK = 4 }) => {
   try {

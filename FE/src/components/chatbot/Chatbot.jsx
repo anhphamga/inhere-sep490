@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../../contexts/AuthContext'
-import { sendChatMessage } from '../api/chatbotApi'
+import { useAuth } from '../../contexts/AuthContext'
+import { sendChatMessage } from '../../api/chatbotApi'
 
 const MAX_INPUT_LENGTH = 1200
 const CHAT_HISTORY_KEY = 'inhere_chatbot_history_v1'
@@ -11,7 +11,7 @@ const initialMessages = [
   {
     id: 'welcome-bot',
     role: 'bot',
-    text: 'Xin chao! Toi la tro ly RAG. Ban co the hoi ve thong tin tai khoan, don hang, hoac goi y san pham.',
+    text: 'Xin chao! Toi la tro ly INHERE. Ban co the hoi ve thong tin tai khoan, don hang, hoac goi y san pham.',
     type: 'TEXT',
     data: null,
   },

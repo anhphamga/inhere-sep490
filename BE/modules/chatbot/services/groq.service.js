@@ -6,6 +6,15 @@ const toNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const sanitizeAnswer = (value) => {
+  return String(value || '')
+    .replace(/\/api\/[\w\-/:]+/gi, 'API nội bộ')
+    .replace(/\/(cart|rental|buy|owner|auth|users|orders|products|categories|alerts|virtual-try-on)[\w\-/:]*/gi, 'trang phù hợp')
+    .replace(/\b(backend|database|endpoint|api)\b/gi, 'hệ thống')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+};
+
 const buildSystemPrompt = (contextBlocks) => {
   const contextText = contextBlocks.length > 0
     ? contextBlocks.map((block, index) => `(${index + 1}) ${block}`).join('\n')
@@ -16,7 +25,7 @@ const buildSystemPrompt = (contextBlocks) => {
     'Answer only from the provided context.',
     'Never mention API, endpoint, backend, database, or internal systems.',
     'Never give technical implementation guidance.',
-    'If context is missing, reply exactly: "Toi khong tim thay thong tin phu hop."',
+    'If context is missing, reply exactly: "Tôi không tìm thấy thông tin phù hợp."',
     'Keep answers concise and direct, maximum 3 sentences.',
     `Context:\n${contextText}`,
   ].join('\n\n');
@@ -71,7 +80,7 @@ const generateResponse = async ({ question, contextBlocks }) => {
   }
 
   return {
-    answer: content,
+    answer: sanitizeAnswer(content),
     usage: payload?.usage || null,
     model,
   };

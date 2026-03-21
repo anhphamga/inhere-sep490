@@ -31,8 +31,8 @@ Tạo file `.env` trong thư mục BE:
 MONGO_URI=mongodb://localhost:27017/inhere
 PORT=9000
 NODE_ENV=development
-JWT_SECRET=replace_with_strong_secret
-JWT_EXPIRES_IN=7d
+JWT_ACCESS_SECRET=replace_with_access_secret
+JWT_REFRESH_SECRET=replace_with_refresh_secret
 OWNER_NAME=System Owner
 OWNER_EMAIL=owner@inhere.local
 OWNER_PHONE=0900000000

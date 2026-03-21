@@ -1,7 +1,8 @@
 ﻿const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../model/User.model');
-const { signAccessToken } = require('../utils/jwt');
+const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt');
+const { addRefreshToken, hasRefreshToken, removeRefreshToken } = require('../utils/refreshTokenStore');
 const { hasGoogleClientId, verifyGoogleIdToken } = require('../utils/googleAuth');
 const { hasSmtpConfig, sendResetPasswordEmail } = require('../utils/mailer');
 
@@ -20,6 +21,22 @@ const sanitizeUser = (user) => ({
   createdAt: user.createdAt,
   updatedAt: user.updatedAt
 });
+
+const createAuthTokens = (user) => {
+  const tokenPayload = {
+    userId: user._id.toString(),
+    role: user.role
+  };
+
+  const accessToken = signAccessToken(tokenPayload);
+  const refreshToken = signRefreshToken(tokenPayload);
+  addRefreshToken(refreshToken);
+
+  return {
+    accessToken,
+    refreshToken
+  };
+};
 
 const handleDuplicateKeyError = (error, res) => {
   if (error?.code !== 11000) {
@@ -74,16 +91,14 @@ const signup = async (req, res) => {
       status: 'active'
     });
 
-    const token = signAccessToken({
-      userId: user._id.toString(),
-      role: user.role
-    });
+    const { accessToken, refreshToken } = createAuthTokens(user);
 
     return res.status(201).json({
       success: true,
       message: 'Signup successful',
       data: {
-        token,
+        accessToken,
+        refreshToken,
         user: sanitizeUser(user)
       }
     });
@@ -162,16 +177,14 @@ const login = async (req, res) => {
       });
     }
 
-    const token = signAccessToken({
-      userId: user._id.toString(),
-      role: user.role
-    });
+    const { accessToken, refreshToken } = createAuthTokens(user);
 
     return res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
-        token,
+        accessToken,
+        refreshToken,
         user: sanitizeUser(user)
       }
     });
@@ -264,16 +277,14 @@ const googleLogin = async (req, res) => {
       }
     }
 
-    const token = signAccessToken({
-      userId: user._id.toString(),
-      role: user.role
-    });
+    const { accessToken, refreshToken } = createAuthTokens(user);
 
     return res.status(200).json({
       success: true,
       message: 'Google login successful',
       data: {
-        token,
+        accessToken,
+        refreshToken,
         user: sanitizeUser(user)
       }
     });
@@ -409,7 +420,62 @@ const resetPassword = async (req, res) => {
   }
 };
 
+const refresh = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'refreshToken is required'
+      });
+    }
+
+    if (!hasRefreshToken(refreshToken)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid refresh token'
+      });
+    }
+
+    const payload = verifyRefreshToken(refreshToken);
+    const user = await User.findById(payload.userId);
+
+    if (!user || user.status === 'locked') {
+      removeRefreshToken(refreshToken);
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized'
+      });
+    }
+
+    const accessToken = signAccessToken({
+      userId: user._id.toString(),
+      role: user.role
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Refresh successful',
+      data: {
+        accessToken
+      }
+    });
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid refresh token'
+    });
+  }
+};
+
 const logout = async (req, res) => {
+  const { refreshToken } = req.body || {};
+
+  if (refreshToken) {
+    removeRefreshToken(refreshToken);
+  }
+
   return res.status(200).json({
     success: true,
     message: 'Logout successful'
@@ -447,6 +513,7 @@ module.exports = {
   googleLogin,
   forgotPassword,
   resetPassword,
+  refresh,
   logout,
   getCurrentUser
 };
