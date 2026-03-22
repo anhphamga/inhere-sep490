@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Header from "../../components/common/Header";
 import ProductGallery from "../../components/product-detail/ProductGallery";
 import ProductInfo from "../../components/product-detail/ProductInfo";
@@ -8,6 +8,7 @@ import ProductActions from "../../components/product-detail/ProductActions";
 import ProductDescription from "../../components/product-detail/ProductDescription";
 import RelatedProducts from "../../components/product-detail/RelatedProducts";
 import { useBuyCart } from "../../contexts/BuyCartContext";
+import { useFavorites } from "../../contexts/FavoritesContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
 
 const I18N = {
@@ -19,6 +20,9 @@ const I18N = {
     breadcrumbBuy: "Mua trang phục",
     toastRent: "Đã thêm vào đơn thuê",
     toastBuy: "Đã thêm vào giỏ hàng",
+    toastFavoriteAdded: "Đã thêm vào danh sách yêu thích",
+    toastFavoriteRemoved: "Đã xóa khỏi danh sách yêu thích",
+    toastFavoriteLogin: "Vui lòng đăng nhập để thêm sản phẩm yêu thích",
     toastError: "Vui lòng chọn biến thể hợp lệ",
     policyTitle: "Chính sách",
     policyDeposit: "Đặt cọc 50% khi giữ lịch",
@@ -33,6 +37,9 @@ const I18N = {
     breadcrumbBuy: "Buy outfits",
     toastRent: "Added to rental flow",
     toastBuy: "Added to cart",
+    toastFavoriteAdded: "Added to favorites",
+    toastFavoriteRemoved: "Removed from favorites",
+    toastFavoriteLogin: "Please log in to add favorite products",
     toastError: "Please select a valid variant",
     policyTitle: "Policies",
     policyDeposit: "50% deposit for booking",
@@ -84,8 +91,10 @@ const formatCurrency = (value, lang = "vi") => {
 export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { addItem } = useRentalCart();
   const { addItem: addBuyItem } = useBuyCart();
+  const { isFavorite, toggleFavorite } = useFavorites();
   const lang = "vi";
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState(null);
@@ -235,6 +244,11 @@ export default function ProductDetailPage() {
     return imagesByColor[selectedColor] || baseImages;
   }, [imagesByColor, selectedColor, baseImages]);
 
+  const productIsFavorite = useMemo(() => {
+    if (!product?._id) return false;
+    return isFavorite(product._id);
+  }, [isFavorite, product?._id]);
+
   useEffect(() => {
     if (selectedImageIndex < currentImagesByColor.length) return;
     setSelectedImageIndex(0);
@@ -302,12 +316,46 @@ export default function ProductDetailPage() {
     setTimeout(() => setToast(""), 2000);
   };
 
+  const today = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  const rentStartDateTime = useMemo(() => {
+    if (!rentStartDate || !rentStartTime) return null;
+    return new Date(`${rentStartDate}T${rentStartTime}`);
+  }, [rentStartDate, rentStartTime]);
+
+  const rentEndDateTime = useMemo(() => {
+    if (!rentEndDate || !rentEndTime) return null;
+    return new Date(`${rentEndDate}T${rentEndTime}`);
+  }, [rentEndDate, rentEndTime]);
+
+  const rentalDays = useMemo(() => {
+    if (!rentStartDateTime || !rentEndDateTime) return 0;
+    const diffMs = rentEndDateTime - rentStartDateTime;
+    if (diffMs <= 0) return 0;
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  }, [rentEndDateTime, rentStartDateTime]);
+
+  const totalRentPrice = useMemo(() => {
+    if (!rentalDays) return 0;
+    return rentalDays * currentRentPrice;
+  }, [rentalDays, currentRentPrice]);
+
+  const resetRentModal = useCallback(() => {
+    setShowDateModal(false);
+    setRentStartDate("");
+    setRentEndDate("");
+    setRentStartTime("09:00");
+    setRentEndTime("09:00");
+  }, []);
+
   const handleRent = async () => {
     if (!canSubmit) {
       showToast(t.toastError);
       return;
     }
     // Hiển thị modal chọn ngày trước
+    if (!rentStartDate) setRentStartDate(today);
+    if (!rentEndDate) setRentEndDate(today);
     setShowDateModal(true);
   };
 
@@ -319,6 +367,11 @@ export default function ProductDetailPage() {
 
     if (new Date(rentStartDate) > new Date(rentEndDate)) {
       showToast('Ngày kết thúc phải lớn hơn ngày bắt đầu');
+      return;
+    }
+
+    if (!rentStartDateTime || !rentEndDateTime || rentEndDateTime <= rentStartDateTime) {
+      showToast("Thoi gian tra phai sau thoi gian nhan");
       return;
     }
 
@@ -339,7 +392,7 @@ export default function ProductDetailPage() {
       });
       showToast(t.toastRent);
       // Đóng modal và chuyển đến trang checkout
-      setShowDateModal(false);
+      resetRentModal();
       navigate('/cart');
     } catch {
       showToast('Có lỗi xảy ra');
@@ -370,6 +423,25 @@ export default function ProductDetailPage() {
     } finally {
       setLoadingAction("");
     }
+  };
+
+  const handleToggleFavorite = () => {
+    if (!product?._id) return;
+
+    const result = toggleFavorite({
+      id: product._id,
+      name: product.name,
+      imageUrl: currentImagesByColor[0] || product.imageUrl || "",
+      price: Number(product.baseSalePrice || product.baseRentPrice || 0),
+    });
+
+    if (!result.ok && result.reason === "AUTH_REQUIRED") {
+      showToast(t.toastFavoriteLogin);
+      navigate("/login", { state: { from: location } });
+      return;
+    }
+
+    showToast(result.added ? t.toastFavoriteAdded : t.toastFavoriteRemoved);
   };
 
   const getSwatchClass = (color) => {
@@ -413,6 +485,8 @@ export default function ProductDetailPage() {
                   onSelectImage={setSelectedImageIndex}
                   loading={loading}
                   productName={product.name || "product"}
+                  isFavorite={productIsFavorite}
+                  onToggleFavorite={handleToggleFavorite}
                 />
 
                 <ProductInfo
@@ -472,108 +546,129 @@ export default function ProductDetailPage() {
 
       {/* Date Selection Modal */}
       {showDateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[calc(100vh-2rem)] w-full max-w-md overflow-auto rounded-2xl border border-amber-100 bg-linear-to-b from-amber-50/60 to-white p-6 shadow-xl">
-            <h3 className="mb-4 text-xl font-bold">Chọn ngày thuê</h3>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Ngày bắt đầu
-                  </label>
-                  <input
-                    type="date"
-                    value={rentStartDate}
-                    onChange={(e) => setRentStartDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Giờ nhận
-                  </label>
-                  <input
-                    type="time"
-                    value={rentStartTime}
-                    onChange={(e) => setRentStartTime(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Ngày kết thúc
-                  </label>
-                  <input
-                    type="date"
-                    value={rentEndDate}
-                    onChange={(e) => setRentEndDate(e.target.value)}
-                    min={rentStartDate || new Date().toISOString().split('T')[0]}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Giờ trả
-                  </label>
-                  <input
-                    type="time"
-                    value={rentEndTime}
-                    onChange={(e) => setRentEndTime(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-
-              {rentStartDate && rentEndDate && (
-                <div className="rounded-lg bg-amber-50 p-3 text-sm">
-                  <p className="font-medium text-amber-800">
-                    Số ngày thuê: {(() => {
-                      const start = new Date(rentStartDate + 'T' + rentStartTime);
-                      const end = new Date(rentEndDate + 'T' + rentEndTime);
-                      const diffMs = end - start;
-                      const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-                      return days > 0 ? days : 1;
-                    })()} ngày
-                  </p>
-                  <p className="text-amber-700">
-                    Tổng tiền: {((() => {
-                      const start = new Date(rentStartDate + 'T' + rentStartTime);
-                      const end = new Date(rentEndDate + 'T' + rentEndTime);
-                      const diffMs = end - start;
-                      const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-                      return days > 0 ? days : 1;
-                    })() * currentRentPrice).toLocaleString('vi-VN')}đ
-                  </p>
-                </div>
-              )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-[2px]">
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-auto rounded-[28px] border border-amber-100/80 bg-gradient-to-br from-amber-50 via-white to-white p-5 shadow-2xl sm:p-6">
+            <div className="mb-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">Dat lich thue</p>
+              <h3 className="mt-2 text-2xl font-bold text-slate-900">Chon ngay thue</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Chon ngay gio nhan va tra do. He thong se tinh tong tien tam tinh ngay ben duoi.
+              </p>
             </div>
 
-            <div className="mt-5 flex gap-3">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                <p className="text-sm font-semibold text-slate-900">Nhan trang phuc</p>
+                <p className="mt-1 text-xs text-slate-500">Bat dau thoi gian ban muon nhan do</p>
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Ngay bat dau
+                    </label>
+                    <input
+                      type="date"
+                      value={rentStartDate}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setRentStartDate(nextValue);
+                        if (!rentEndDate || rentEndDate < nextValue) {
+                          setRentEndDate(nextValue);
+                        }
+                      }}
+                      min={today}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Gio nhan
+                    </label>
+                    <input
+                      type="time"
+                      value={rentStartTime}
+                      onChange={(e) => setRentStartTime(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                <p className="text-sm font-semibold text-slate-900">Tra trang phuc</p>
+                <p className="mt-1 text-xs text-slate-500">Ngay tra phai sau ngay gio nhan</p>
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Ngay ket thuc
+                    </label>
+                    <input
+                      type="date"
+                      value={rentEndDate}
+                      onChange={(e) => setRentEndDate(e.target.value)}
+                      min={rentStartDate || today}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Gio tra
+                    </label>
+                    <input
+                      type="time"
+                      value={rentEndTime}
+                      onChange={(e) => setRentEndTime(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">Tam tinh don thue</p>
+                    <p className="mt-1 text-xs text-amber-800/80">Gia thue tinh theo so ngay va duoc lam tron len theo ngay.</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs uppercase tracking-wide text-amber-700">Gia / ngay</p>
+                    <p className="text-sm font-semibold text-amber-950">{currentRentPrice.toLocaleString("vi-VN")}d</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-xl bg-white/80 px-3 py-2">
+                    <p className="text-slate-500">So ngay thue</p>
+                    <p className="mt-1 font-semibold text-slate-900">{rentalDays || 0} ngay</p>
+                  </div>
+                  <div className="rounded-xl bg-white/80 px-3 py-2">
+                    <p className="text-slate-500">Tong tien</p>
+                    <p className="mt-1 font-semibold text-slate-900">{totalRentPrice.toLocaleString("vi-VN")}d</p>
+                  </div>
+                </div>
+
+                {rentStartDate && rentEndDate && rentalDays === 0 && (
+                  <p className="mt-3 text-sm font-medium text-rose-600">
+                    Vui long chon gio tra sau gio nhan de tao khoang thue hop le.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row">
               <button
                 type="button"
-                onClick={() => {
-                  setShowDateModal(false);
-                  setRentStartDate('');
-                  setRentEndDate('');
-                  setRentStartTime('09:00');
-                  setRentEndTime('09:00');
-                }}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+                onClick={resetRentModal}
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                Hủy
+                Huy
               </button>
               <button
                 type="button"
                 onClick={handleConfirmRent}
-                disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate}
-                className="flex-1 rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-700 disabled:bg-amber-300"
+                disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate || rentalDays === 0}
+                className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-300"
               >
-                {loadingAction === "rent" ? "Đang xử lý..." : "Xác nhận"}
+                {loadingAction === "rent" ? "Dang xu ly..." : "Xac nhan"}
               </button>
             </div>
           </div>

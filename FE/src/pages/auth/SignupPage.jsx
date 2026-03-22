@@ -7,7 +7,7 @@ import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const phoneRegex = /^\d{10,11}$/
+const phoneRegex = /^(0|\+84)\d{9,10}$/
 
 const SignupPage = () => {
   const navigate = useNavigate()
@@ -30,7 +30,7 @@ const SignupPage = () => {
     setError('')
 
     const trimmedName = form.name.trim()
-    const trimmedPhone = form.phone.trim()
+    const trimmedPhone = form.phone.replace(/\s+/g, '').trim()
     const trimmedEmail = form.email.trim().toLowerCase()
 
     if (!trimmedName || !trimmedPhone || !trimmedEmail || !form.password || !form.confirmPassword) {
@@ -44,7 +44,7 @@ const SignupPage = () => {
     }
 
     if (!phoneRegex.test(trimmedPhone)) {
-      setError('Số điện thoại phải gồm 10-11 chữ số')
+      setError('Số điện thoại không hợp lệ')
       return
     }
 

@@ -8,6 +8,24 @@ const Collateral = require('../model/Collateral.model');
 const ReturnRecord = require('../model/ReturnRecord.model');
 const Alert = require('../model/Alert.model');
 const InventoryHistory = require('../model/InventoryHistory.model');
+const Voucher = require('../model/Voucher.model');
+const { writeAuditLog } = require('../services/auditLog.service');
+const {
+    applyLatePenalty,
+    computeExpectedDeposit,
+    handleNoShow,
+    validateDeposit,
+    validatePickup,
+    validateReturn,
+} = require('../services/rentOrderGuardService');
+const { normalizeIdempotencyKey, isDuplicateIdempotencyError } = require('../utils/idempotency');
+const {
+    validateVoucher,
+    getVoucherByCode,
+    normalizeVoucherCode,
+    buildVoucherSnapshot,
+    repairVoucherUsageCounterIfNeeded,
+} = require('../services/voucher.service');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LATE_FEE_MULTIPLIER = Number(process.env.LATE_FEE_MULTIPLIER || 1);
@@ -27,6 +45,54 @@ const computeLateDays = (rentEndDate, returnDate = new Date()) => {
     const diff = actual.setHours(0, 0, 0, 0) - end.setHours(0, 0, 0, 0);
     if (diff <= 0) return 0;
     return Math.ceil(diff / DAY_IN_MS);
+};
+
+const applyVoucherForRentOrder = async ({
+    voucherCode,
+    user,
+    items,
+    subtotal
+}) => {
+    const normalizedVoucherCode = normalizeVoucherCode(voucherCode);
+
+    if (!normalizedVoucherCode) {
+        return {
+            voucher: null,
+            voucherCode: null,
+            discountAmount: 0,
+            finalSubtotal: subtotal,
+            voucherSnapshot: null,
+        };
+    }
+
+    const voucherResult = await validateVoucher({
+        code: normalizedVoucherCode,
+        user,
+        cartItems: items,
+        subtotal,
+        orderType: 'rental'
+    });
+
+    if (!voucherResult.valid) {
+        return { error: voucherResult };
+    }
+
+    const voucher = await getVoucherByCode(normalizedVoucherCode);
+    if (!voucher) {
+        return { error: { valid: false, reason: 'VOUCHER_NOT_FOUND' } };
+    }
+
+    return {
+        voucher,
+        voucherCode: voucher.code,
+        discountAmount: Number(voucherResult.discountAmount || 0),
+        finalSubtotal: Number(voucherResult.finalTotal || 0),
+        voucherSnapshot: buildVoucherSnapshot({
+            voucher,
+            originalSubtotal: subtotal,
+            finalSubtotal: Number(voucherResult.finalTotal || 0),
+        })
+    };
 };
 
 /**
@@ -109,10 +175,52 @@ const fetchOrderDetail = async (orderId) => {
     };
 };
 
+const buildRentOrderSuccessResponse = (detail) => ({
+    success: true,
+    totalPrice: detail.totalAmount,
+    discountAmount: detail.discountAmount || 0,
+    voucherCode: detail.voucherCode,
+    data: detail
+});
+
+const snapshotOrderForAudit = (order) => ({
+    status: order?.status,
+    staffId: safeObjectId(order?.staffId),
+    depositAmount: Number(order?.depositAmount || 0),
+    remainingAmount: Number(order?.remainingAmount || 0),
+    totalAmount: Number(order?.totalAmount || 0),
+    lateDays: Number(order?.lateDays || 0),
+    lateFee: Number(order?.lateFee || 0),
+    damageFee: Number(order?.damageFee || 0),
+    compensationFee: Number(order?.compensationFee || 0),
+    depositForfeited: Boolean(order?.depositForfeited),
+    pickupAt: order?.pickupAt || null,
+    returnedAt: order?.returnedAt || null,
+    noShowAt: order?.noShowAt || null,
+});
+
+const auditOrderChange = async (req, action, orderId, before, after) => (
+    writeAuditLog({
+        req,
+        user: req.user,
+        action,
+        resource: 'RentOrder',
+        resourceId: orderId,
+        before,
+        after,
+    })
+);
+
+const findRentOrderByIdempotencyKey = async (idempotencyKey) => {
+    if (!idempotencyKey) return null;
+    return RentOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
+};
+
 exports.createRentOrder = async (req, res) => {
     // 1. Khởi tạo Transaction (nếu MongoDB hỗ trợ replica set)
     let session = null;
     let useTransaction = false;
+    let idempotencyKey = null;
 
     try {
         const isMaster = await mongoose.connection.db.admin().command({ ismaster: 1 });
@@ -133,13 +241,26 @@ exports.createRentOrder = async (req, res) => {
 
     try {
         const userId = req.user?.id;
-        const { rentStartDate, rentEndDate, items = [] } = req.body;
+        const { rentStartDate, rentEndDate, items = [], voucherCode = '' } = req.body;
+        idempotencyKey = normalizeIdempotencyKey(req);
 
         if (!rentStartDate || !rentEndDate || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({
                 success: false,
                 message: 'Vui lòng cung cấp đầy đủ thông tin thuê'
             });
+        }
+
+        const existingOrder = await findRentOrderByIdempotencyKey(idempotencyKey);
+        if (existingOrder) {
+            if (existingOrder.voucherId || existingOrder.voucherCode) {
+                await repairVoucherUsageCounterIfNeeded({
+                    voucherId: existingOrder.voucherId,
+                    voucherCode: existingOrder.voucherCode,
+                });
+            }
+            const detail = await fetchOrderDetail(existingOrder._id);
+            return res.status(200).json(buildRentOrderSuccessResponse(detail));
         }
 
         const resolvedItems = [];
@@ -220,16 +341,20 @@ exports.createRentOrder = async (req, res) => {
             (sum, item) => sum + Number(item.source.finalPrice || item.source.baseRentPrice || item.instance.currentRentPrice || 0),
             0
         );
+        const voucherApplication = await applyVoucherForRentOrder({
+            voucherCode,
+            user: req.user,
+            items,
+            subtotal: computedTotalAmount
+        });
 
-        const requestedDeposit = Number(req.body.depositAmount);
-        const depositAmount = Number.isFinite(requestedDeposit)
-            ? Math.max(requestedDeposit, 0)
-            : Math.round(computedTotalAmount * 0.5);
-            
-        const requestedRemaining = Number(req.body.remainingAmount);
-        const remainingAmount = Number.isFinite(requestedRemaining)
-            ? Math.max(requestedRemaining, 0)
-            : Math.max(computedTotalAmount - depositAmount, 0);
+        if (voucherApplication.error) {
+            return res.status(400).json(voucherApplication.error);
+        }
+
+        const orderTotalAmount = Number(voucherApplication.finalSubtotal || 0);
+        const depositAmount = computeExpectedDeposit({ totalAmount: orderTotalAmount });
+        const remainingAmount = Math.max(orderTotalAmount - depositAmount, 0);
 
         // 4. Tạo Order (Lưu ý mảng [] khi dùng create với session)
         const [rentOrder] = await RentOrder.create([{
@@ -238,6 +363,11 @@ exports.createRentOrder = async (req, res) => {
             status: 'PendingDeposit',
             rentStartDate,
             rentEndDate,
+            idempotencyKey,
+            voucherCode: voucherApplication.voucherCode,
+            voucherId: voucherApplication.voucher?._id || null,
+            voucherSnapshot: voucherApplication.voucherSnapshot,
+            discountAmount: voucherApplication.discountAmount,
             depositAmount,
             remainingAmount,
             washingFee: 0,
@@ -245,7 +375,7 @@ exports.createRentOrder = async (req, res) => {
             lateDays: 0,
             lateFee: 0,
             compensationFee: 0,
-            totalAmount: Number(req.body.totalAmount) > 0 ? Number(req.body.totalAmount) : computedTotalAmount
+            totalAmount: orderTotalAmount
         }], { session });
 
         // 5. Tạo Order Items
@@ -267,6 +397,20 @@ exports.createRentOrder = async (req, res) => {
             useTransaction ? { session } : {}
         );
 
+        if (voucherApplication.voucher?._id) {
+            if (useTransaction) {
+                await Voucher.findByIdAndUpdate(
+                    voucherApplication.voucher._id,
+                    { $inc: { usedCount: 1 } },
+                    { session }
+                );
+            } else {
+                await Voucher.findByIdAndUpdate(voucherApplication.voucher._id, {
+                    $inc: { usedCount: 1 }
+                });
+            }
+        }
+
         // 6. Hoàn tất thành công (Commit)
         if (session) {
             if (useTransaction) {
@@ -278,12 +422,29 @@ exports.createRentOrder = async (req, res) => {
         // Đoạn này lấy detail ngoài session vì data đã được commit
         const detail = await fetchOrderDetail(rentOrder._id);
 
-        return res.status(201).json({
-            success: true,
-            data: detail
-        });
+        return res.status(201).json(buildRentOrderSuccessResponse(detail));
 
     } catch (error) {
+        if (idempotencyKey && isDuplicateIdempotencyError(error)) {
+            const existingOrder = await findRentOrderByIdempotencyKey(idempotencyKey);
+            if (existingOrder) {
+                if (existingOrder.voucherId || existingOrder.voucherCode) {
+                    await repairVoucherUsageCounterIfNeeded({
+                        voucherId: existingOrder.voucherId,
+                        voucherCode: existingOrder.voucherCode,
+                    });
+                }
+                const detail = await fetchOrderDetail(existingOrder._id);
+                if (session) {
+                    if (useTransaction) {
+                        await session.abortTransaction();
+                    }
+                    await session.endSession();
+                    session = null;
+                }
+                return res.status(200).json(buildRentOrderSuccessResponse(detail));
+            }
+        }
         // CÓ LỖI XẢY RA -> ROLLBACK TRẢ LẠI ĐỒ VỀ TRẠNG THÁI CŨ
         if (session) {
             if (useTransaction) {
@@ -386,7 +547,7 @@ exports.payDeposit = async (req, res) => {
         const { method = 'Cash' } = req.body;
         const userId = req.user?.id;
 
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
@@ -399,6 +560,16 @@ exports.payDeposit = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: `Khong the dat coc voi trang thai \"${order.status}\"`
+            });
+        }
+
+        try {
+            validateDeposit(order, order.depositAmount);
+        } catch (guardError) {
+            return res.status(guardError.statusCode || 400).json({
+                success: false,
+                message: guardError.message,
+                details: guardError.details,
             });
         }
 
@@ -426,6 +597,7 @@ exports.payDeposit = async (req, res) => {
             paidAt: new Date()
         });
 
+        const before = snapshotOrderForAudit(order);
         order.status = 'Deposited';
         await order.save();
 
@@ -444,6 +616,22 @@ exports.payDeposit = async (req, res) => {
                 );
             }
         }
+
+        await writeAuditLog({
+            req,
+            user: req.user,
+            action: 'orders_rent.deposit.confirm',
+            resource: 'Deposit',
+            resourceId: deposit._id,
+            before: null,
+            after: {
+                orderId: id,
+                amount: Number(deposit.amount || 0),
+                method: deposit.method,
+                status: deposit.status,
+            },
+        });
+        await auditOrderChange(req, 'orders_rent.deposit.confirm', order._id, before, snapshotOrderForAudit(order));
 
         return res.json({
             success: true,
@@ -469,7 +657,7 @@ exports.cancelRentOrder = async (req, res) => {
         const { id } = req.params;
         const userId = req.user?.id;
 
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
@@ -486,6 +674,7 @@ exports.cancelRentOrder = async (req, res) => {
             });
         }
 
+        const before = snapshotOrderForAudit(order);
         order.status = 'Cancelled';
         await order.save();
 
@@ -498,6 +687,8 @@ exports.cancelRentOrder = async (req, res) => {
         if (previousStatus === 'Deposited') {
             await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Refunded' });
         }
+
+        await auditOrderChange(req, 'orders_rent.order.cancel', order._id, before, snapshotOrderForAudit(order));
 
         return res.json({
             success: true,
@@ -558,7 +749,7 @@ exports.confirmRentOrder = async (req, res) => {
         const { id } = req.params;
         const staffId = req.user?.id;
 
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
@@ -570,10 +761,13 @@ exports.confirmRentOrder = async (req, res) => {
             });
         }
 
+        const before = snapshotOrderForAudit(order);
         order.staffId = staffId;
         order.status = 'Confirmed';
         order.confirmedAt = new Date();
         await order.save();
+
+        await auditOrderChange(req, 'orders_rent.order.confirm', order._id, before, snapshotOrderForAudit(order));
 
         return res.json({
             success: true,
@@ -592,7 +786,7 @@ exports.confirmRentOrder = async (req, res) => {
 
 const isOwnerOrStaff = (req, order) => {
     const role = String(req.user?.role || '').toLowerCase();
-    if (['owner', 'staff'].includes(role)) return true;
+    if (['owner', 'manager', 'staff'].includes(role)) return true;
     if (!order) return false;
     return String(order.customerId) === String(req.user?.id);
 };
@@ -605,7 +799,7 @@ exports.confirmPickup = async (req, res) => {
         const { id } = req.params;
         const { collateral, collectRemaining = true } = req.body;
 
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
@@ -619,6 +813,16 @@ exports.confirmPickup = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: `Khong the xac nhan lay do voi trang thai "${order.status}"`
+            });
+        }
+
+        try {
+            await validatePickup(order, { collectRemaining });
+        } catch (guardError) {
+            return res.status(guardError.statusCode || 400).json({
+                success: false,
+                message: guardError.message,
+                details: guardError.details,
             });
         }
 
@@ -681,6 +885,7 @@ exports.confirmPickup = async (req, res) => {
         }
 
         // 3) Update trạng thái đơn và món đồ
+        const before = snapshotOrderForAudit(order);
         order.status = 'Renting';
         order.pickupAt = new Date();
         await order.save(txOptions);
@@ -705,6 +910,8 @@ exports.confirmPickup = async (req, res) => {
             await InventoryHistory.insertMany(historyDocs, txOptions);
         }
 
+        await auditOrderChange(req, 'orders_rent.pickup.complete', order._id, before, snapshotOrderForAudit(order));
+
         return res.json({
             success: true,
             message: 'Xac nhan khach da nhan do thanh cong',
@@ -719,7 +926,7 @@ exports.confirmPickup = async (req, res) => {
 exports.markWaitingReturn = async (req, res) => {
     try {
         const { id } = req.params;
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
 
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
@@ -729,8 +936,11 @@ exports.markWaitingReturn = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Don phai o trang thai dang thue' });
         }
 
+        const before = snapshotOrderForAudit(order);
         order.status = 'WaitingReturn';
         await order.save();
+
+        await auditOrderChange(req, 'orders_rent.return.process', order._id, before, snapshotOrderForAudit(order));
 
         return res.json({
             success: true,
@@ -755,7 +965,7 @@ exports.confirmReturn = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Vui long cung cap danh sach san pham tra' });
         }
 
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
@@ -771,8 +981,18 @@ exports.confirmReturn = async (req, res) => {
             });
         }
 
-        const lateDays = computeLateDays(order.rentEndDate, new Date());
-        const lateFee = lateDays * LATE_FEE_MULTIPLIER;
+        try {
+            await validateReturn(order, new Date());
+        } catch (guardError) {
+            return res.status(guardError.statusCode || 400).json({
+                success: false,
+                message: guardError.message,
+                details: guardError.details,
+            });
+        }
+
+        const lateDays = Number(order.lateDays || 0);
+        const lateFee = Number(order.lateFee || 0);
         const totalDamageFee = returnedItems.reduce((sum, item) => sum + Number(item.damageFee || 0), 0);
         const conditions = new Set(returnedItems.map((item) => item.condition));
         const returnCondition = conditions.has('Damaged')
@@ -802,16 +1022,37 @@ exports.confirmReturn = async (req, res) => {
         ))[0];
 
         const instanceIds = returnedItems.map((item) => item.productInstanceId).filter(Boolean);
+        const before = snapshotOrderForAudit(order);
 
         for (const item of returnedItems) {
             const instanceId = item.productInstanceId;
             if (!instanceId) continue;
 
             const targetLifecycle = item.condition === 'Damaged' ? 'Repair' : 'Washing';
+            const beforeInstance = await ProductInstance.findById(instanceId).lean();
             await ProductInstance.updateOne(
                 { _id: instanceId },
                 { lifecycleStatus: targetLifecycle }
             );
+            const afterInstance = await ProductInstance.findById(instanceId).lean();
+
+            await writeAuditLog({
+                req,
+                user: req.user,
+                action: 'inventory.item.update_condition',
+                resource: 'ProductInstance',
+                resourceId: instanceId,
+                before: beforeInstance ? {
+                    conditionLevel: beforeInstance.conditionLevel,
+                    conditionScore: beforeInstance.conditionScore,
+                    lifecycleStatus: beforeInstance.lifecycleStatus,
+                } : null,
+                after: afterInstance ? {
+                    conditionLevel: afterInstance.conditionLevel,
+                    conditionScore: afterInstance.conditionScore,
+                    lifecycleStatus: afterInstance.lifecycleStatus,
+                } : null,
+            });
 
             await InventoryHistory.findOneAndUpdate(
                 { productInstanceId: instanceId, status: 'Rented', endDate: null },
@@ -836,7 +1077,34 @@ exports.confirmReturn = async (req, res) => {
         order.returnedAt = new Date();
         order.status = returnedCount >= totalItems ? 'Returned' : 'WaitingReturn';
 
+        const latePenalty = applyLatePenalty(order, lateDays);
+        if (!latePenalty.applied && order.status === 'Late') {
+            order.status = returnedCount >= totalItems ? 'Returned' : 'WaitingReturn';
+        }
+
         await order.save();
+
+        await writeAuditLog({
+            req,
+            user: req.user,
+            action: lateDays >= 3 ? 'orders_rent.penalty.apply' : 'orders_rent.return.process',
+            resource: 'ReturnRecord',
+            resourceId: returnRecord._id,
+            before: null,
+            after: {
+                condition: returnRecord.condition,
+                lateDays: returnRecord.lateDays,
+                lateFee: returnRecord.lateFee,
+                damageFee: returnRecord.damageFee,
+            },
+        });
+        await auditOrderChange(
+            req,
+            lateDays >= 3 ? 'orders_rent.penalty.apply' : 'orders_rent.return.process',
+            order._id,
+            before,
+            snapshotOrderForAudit(order)
+        );
 
         return res.json({
             success: true,
@@ -856,7 +1124,7 @@ exports.finalizeRentOrder = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
@@ -878,8 +1146,11 @@ exports.finalizeRentOrder = async (req, res) => {
 
         // Chỉ chuyển sang Returned để khách thanh toán số tiền còn lại
         // Không tạo payment hay xử lý tiền ở bước này
+        const before = snapshotOrderForAudit(order);
         order.status = 'Returned';
         await order.save();
+
+        await auditOrderChange(req, 'orders_rent.order.finalize', order._id, before, snapshotOrderForAudit(order));
 
         return res.json({
             success: true,
@@ -897,7 +1168,7 @@ exports.completeRentOrder = async (req, res) => {
         const { id } = req.params;
         const { method = 'Cash' } = req.body;
 
-        const order = await RentOrder.findById(id);
+        const order = req.order || await RentOrder.findById(id);
         if (!order) {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
@@ -993,12 +1264,8 @@ exports.markNoShow = async (req, res) => {
             });
         }
 
-        order.status = 'NoShow';
-        order.noShowAt = new Date();
-        order.depositForfeited = true;
-        await order.save();
-
-        await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Forfeited' });
+        const before = snapshotOrderForAudit(order);
+        await handleNoShow(order);
 
         const items = await RentOrderItem.find({ orderId: id }).lean();
         const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
@@ -1017,6 +1284,8 @@ exports.markNoShow = async (req, res) => {
             message: `Don ${order._id} da coc nhung khong den nhan do`,
             actionRequired: true
         });
+
+        await auditOrderChange(req, 'orders_rent.no_show.mark', order._id, before, snapshotOrderForAudit(order));
 
         return res.json({
             success: true,
@@ -1053,6 +1322,7 @@ exports.completeWashing = async (req, res) => {
         }
 
         // Nếu đơn đang ở trạng thái Returned, xử lý thanh toán và chuyển sang Completed
+        const before = snapshotOrderForAudit(order);
         if (order.status === 'Returned') {
             // 1) Tính toán tình trạng tiền (cấn trừ cọc)
             const heldDeposit = await Deposit.findOne({ orderId: id, status: 'Held' });
@@ -1110,6 +1380,8 @@ exports.completeWashing = async (req, res) => {
             order.completedAt = new Date();
             await order.save();
         }
+
+        await auditOrderChange(req, 'orders_rent.washing.complete', order._id, before, snapshotOrderForAudit(order));
 
         return res.json({
             success: true,

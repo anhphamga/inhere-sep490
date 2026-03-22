@@ -314,28 +314,35 @@ export default function RentalDetailPage() {
               <h2 className="text-xl font-semibold mb-4">Sản phẩm thuê ({order.items?.length || 0})</h2>
               <div className="space-y-4">
                 {order.items?.map((item, index) => (
-                  <div key={index} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                    <img
-                      src={item.productInstanceId?.productId?.images?.[0] || '/placeholder.png'}
-                      alt={item.productInstanceId?.productId?.name}
-                      className="w-20 h-20 object-cover rounded"
-                    />
-                    <div className="flex-1">
-                      <p className="font-semibold">{item.productInstanceId?.productId?.name}</p>
-                      <p className="text-sm text-gray-500">
-                        Size: {item.size} | Màu: {item.color}
-                      </p>
-                      <p className="text-sm">
-                        Tình trạng: <span className="text-gray-600">{item.condition || 'Tốt'}</span>
-                      </p>
+                  <Link
+                    key={index}
+                    to={`/products/${item.productInstanceId?.productId?._id}`}
+                    className="block rounded-lg bg-gray-50 p-4 transition hover:bg-white hover:shadow-sm"
+                  >
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={item.productInstanceId?.productId?.images?.[0] || '/placeholder.png'}
+                        alt={item.productInstanceId?.productId?.name}
+                        className="w-20 h-20 object-cover rounded"
+                      />
+                      <div className="flex-1">
+                        <p className="font-semibold">{item.productInstanceId?.productId?.name}</p>
+                        <p className="text-sm text-gray-500">
+                          Size: {item.size} | Màu: {item.color}
+                        </p>
+                        <p className="text-sm">
+                          Tình trạng: <span className="text-gray-600">{item.condition || 'Tốt'}</span>
+                        </p>
+                        <p className="mt-2 text-xs font-medium text-pink-600">Bấm để xem sản phẩm và thuê lại</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-pink-600">
+                          {item.finalPrice?.toLocaleString('vi-VN')}đ
+                        </p>
+                        <p className="text-xs text-gray-500">/ngày</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-pink-600">
-                        {item.finalPrice?.toLocaleString('vi-VN')}đ
-                      </p>
-                      <p className="text-xs text-gray-500">/ngày</p>
-                    </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>

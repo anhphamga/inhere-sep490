@@ -4,6 +4,8 @@ import BuyPage from '../pages/public/BuyPage'
 import BlogPage from '../pages/public/BlogPage'
 import BlogDetailPage from '../pages/public/BlogDetailPage'
 import BookingPage from '../pages/customer/BookingPage'
+import FavoritesPage from '../pages/customer/FavoritesPage'
+import MyVouchersPage from '../pages/customer/MyVouchersPage'
 import ProductDetailPage from '../pages/customer/ProductDetailPage'
 import LoginPage from '../pages/auth/LoginPage'
 import SignupPage from '../pages/auth/SignupPage'
@@ -29,10 +31,11 @@ import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen'
 import OwnerInventoryScreen from '../pages/owner/OwnerInventoryScreen'
 // Rental pages
 import RentalCheckoutPage from '../pages/RentalCheckoutPage'
-import RentalHistoryPage from '../pages/RentalHistoryPage'
 import RentalDetailPage from '../pages/RentalDetailPage'
 import BuyCheckoutPage from '../pages/BuyCheckoutPage'
 import CartPage from '../pages/CartPage'
+import OrderHistoryPage from '../pages/OrderHistoryPage'
+import OrderDetailPage from '../pages/OrderDetailPage'
 
 const AppRoutes = () => {
     return (
@@ -51,11 +54,15 @@ const AppRoutes = () => {
 
             {/* Rental Routes */}
             <Route path="/rental/checkout" element={<RentalCheckoutPage />} />
-            <Route path="/rental/history" element={<RentalHistoryPage />} />
+            <Route path="/rental/history" element={<Navigate to="/orders/history" replace />} />
             <Route path="/rental/:id" element={<RentalDetailPage />} />
 
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/favorites" element={<FavoritesPage />} />
+                <Route path="/my-vouchers" element={<MyVouchersPage />} />
+                <Route path="/orders/history" element={<OrderHistoryPage />} />
+                <Route path="/orders/:id" element={<OrderDetailPage />} />
             </Route>
             <Route element={<PrivateRoute roles={['owner']} />}>
                 <Route path="/owner" element={<OwnerLayout />}>

@@ -1,13 +1,11 @@
 /**
- * FILE TẬP HỢP TẤT CẢ ROUTES
- * File này sẽ import tất cả routes của các model và export ra
- * server.js chỉ cần import file này là có tất cả routes
+ * FILE TAP HOP TAT CA ROUTES
+ * File nay import tat ca routes va export cho server.js
  */
 
 const express = require('express');
 const router = express.Router();
 
-// Import routes của từng model
 const userRoutes = require('./user.routes');
 const authRoutes = require('./auth.routes');
 const blogRoutes = require('./blog.routes');
@@ -19,10 +17,12 @@ const rentOrderRoutes = require('./rent-order.routes');
 const alertRoutes = require('./alert.routes');
 const fittingBookingRoutes = require('./fitting-booking.routes');
 const virtualTryOnRoutes = require('./virtual-try-on.routes');
-// const orderRoutes = require('./order.routes');
-// ... thêm các routes khác ở đây
+const proxyImageRoutes = require('./proxy-image.routes');
+const guestRoutes = require('./guest.routes');
+const orderRoutes = require('./order.routes');
+const voucherRoutes = require('./voucher.routes');
+const chatbotRoutes = require('../modules/chatbot/routes/chatbot.routes');
 
-// Mount routes với prefix cho từng module
 router.use('/users', userRoutes);
 router.use('/auth', authRoutes);
 router.use('/blogs', blogRoutes);
@@ -34,7 +34,11 @@ router.use('/rent-orders', rentOrderRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/fitting-bookings', fittingBookingRoutes);
 router.use('/virtual-try-on', virtualTryOnRoutes);
-// router.use('/orders', orderRoutes);
-// ... thêm prefix tương ứng
+router.use('/proxy-image', proxyImageRoutes);
+router.use('/guest', guestRoutes);
+router.use('/orders', orderRoutes);
+router.use('/vouchers', voucherRoutes);
+router.use('/chatbot', chatbotRoutes);
+router.use('/vouchers', voucherRoutes);
 
 module.exports = router;

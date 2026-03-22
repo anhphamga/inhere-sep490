@@ -1,30 +1,32 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { getMeApi, googleLoginApi, loginApi, logoutApi, signupApi } from '../services/auth.service'
-import { setAuthToken } from '../config/axios'
+import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, setAuthToken } from '../config/axios'
 
 const AuthContext = createContext(null)
 
-const TOKEN_KEY = 'inhere_token'
 const USER_KEY = 'inhere_user'
 
 const getStoredAuth = () => {
-    const localToken = localStorage.getItem(TOKEN_KEY)
+    const localToken = localStorage.getItem(ACCESS_TOKEN_KEY)
+    const localRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
     const localUser = localStorage.getItem(USER_KEY)
 
-    if (localToken && localUser) {
+    if (localToken && localRefreshToken && localUser) {
         return {
             token: localToken,
+            refreshToken: localRefreshToken,
             user: JSON.parse(localUser),
             storage: 'local'
         }
     }
 
-    const sessionToken = sessionStorage.getItem(TOKEN_KEY)
+    const sessionToken = sessionStorage.getItem(ACCESS_TOKEN_KEY)
     const sessionUser = sessionStorage.getItem(USER_KEY)
 
-    if (sessionToken && sessionUser) {
+    if (sessionToken && localRefreshToken && sessionUser) {
         return {
             token: sessionToken,
+            refreshToken: localRefreshToken,
             user: JSON.parse(sessionUser),
             storage: 'session'
         }
@@ -32,6 +34,7 @@ const getStoredAuth = () => {
 
     return {
         token: null,
+        refreshToken: null,
         user: null,
         storage: 'local'
     }
@@ -40,28 +43,40 @@ const getStoredAuth = () => {
 export const AuthProvider = ({ children }) => {
     const initialAuth = getStoredAuth()
     const [token, setToken] = useState(initialAuth.token)
+    const [refreshToken, setRefreshToken] = useState(initialAuth.refreshToken)
     const [user, setUser] = useState(initialAuth.user)
     const [loading, setLoading] = useState(true)
     const [storageMode, setStorageMode] = useState(initialAuth.storage)
 
-    const persistSession = useCallback((nextToken, nextUser, options = {}) => {
+    const persistSession = useCallback((nextToken, nextRefreshToken, nextUser, options = {}) => {
         const rememberMe = options.rememberMe ?? true
         const targetStorage = rememberMe ? localStorage : sessionStorage
         const fallbackStorage = rememberMe ? sessionStorage : localStorage
 
         setToken(nextToken)
+        setRefreshToken(nextRefreshToken)
         setUser(nextUser)
         setStorageMode(rememberMe ? 'local' : 'session')
 
-        fallbackStorage.removeItem(TOKEN_KEY)
+        fallbackStorage.removeItem(ACCESS_TOKEN_KEY)
         fallbackStorage.removeItem(USER_KEY)
 
         if (nextToken) {
-            targetStorage.setItem(TOKEN_KEY, nextToken)
+            localStorage.setItem(ACCESS_TOKEN_KEY, nextToken)
+            if (targetStorage === sessionStorage) {
+                targetStorage.setItem(ACCESS_TOKEN_KEY, nextToken)
+            }
             setAuthToken(nextToken)
         } else {
-            targetStorage.removeItem(TOKEN_KEY)
+            localStorage.removeItem(ACCESS_TOKEN_KEY)
+            sessionStorage.removeItem(ACCESS_TOKEN_KEY)
             setAuthToken(null)
+        }
+
+        if (nextRefreshToken) {
+            localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken)
+        } else {
+            localStorage.removeItem(REFRESH_TOKEN_KEY)
         }
 
         if (nextUser) {
@@ -72,12 +87,13 @@ export const AuthProvider = ({ children }) => {
     }, [])
 
     const clearSession = useCallback(() => {
-        localStorage.removeItem(TOKEN_KEY)
+        localStorage.removeItem(ACCESS_TOKEN_KEY)
+        localStorage.removeItem(REFRESH_TOKEN_KEY)
         localStorage.removeItem(USER_KEY)
-        sessionStorage.removeItem(TOKEN_KEY)
+        sessionStorage.removeItem(ACCESS_TOKEN_KEY)
         sessionStorage.removeItem(USER_KEY)
         setStorageMode('local')
-        persistSession(null, null)
+        persistSession(null, null, null)
     }, [persistSession])
 
     useEffect(() => {
@@ -93,7 +109,7 @@ export const AuthProvider = ({ children }) => {
 
             try {
                 const response = await getMeApi()
-                persistSession(token, response.data, { rememberMe: storageMode !== 'session' })
+                persistSession(token, refreshToken, response.data, { rememberMe: storageMode !== 'session' })
             } catch {
                 clearSession()
             } finally {
@@ -102,11 +118,11 @@ export const AuthProvider = ({ children }) => {
         }
 
         initialize()
-    }, [clearSession, persistSession, storageMode, token])
+    }, [clearSession, persistSession, refreshToken, storageMode, token])
 
     const login = useCallback(async (payload, options = {}) => {
         const response = await loginApi(payload)
-        persistSession(response.data.token, response.data.user, {
+        persistSession(response.data.accessToken, response.data.refreshToken, response.data.user, {
             rememberMe: options.rememberMe ?? true
         })
         return response.data
@@ -114,7 +130,7 @@ export const AuthProvider = ({ children }) => {
 
     const loginWithGoogle = useCallback(async (payload, options = {}) => {
         const response = await googleLoginApi(payload)
-        persistSession(response.data.token, response.data.user, {
+        persistSession(response.data.accessToken, response.data.refreshToken, response.data.user, {
             rememberMe: options.rememberMe ?? true
         })
         return response.data
@@ -122,13 +138,13 @@ export const AuthProvider = ({ children }) => {
 
     const signup = useCallback(async (payload) => {
         const response = await signupApi(payload)
-        persistSession(response.data.token, response.data.user, { rememberMe: true })
+        persistSession(response.data.accessToken, response.data.refreshToken, response.data.user, { rememberMe: true })
         return response.data
     }, [persistSession])
 
     const logout = useCallback(async () => {
         try {
-            await logoutApi()
+            await logoutApi({ refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY) })
         } catch {
             // ignore logout API errors and always clear local session
         } finally {
@@ -142,12 +158,13 @@ export const AuthProvider = ({ children }) => {
         }
 
         const response = await getMeApi()
-        persistSession(token, response.data, { rememberMe: storageMode !== 'session' })
+        persistSession(token, refreshToken, response.data, { rememberMe: storageMode !== 'session' })
         return response.data
-    }, [persistSession, storageMode, token])
+    }, [persistSession, refreshToken, storageMode, token])
 
     const value = useMemo(() => ({
         token,
+        refreshToken,
         user,
         loading,
         isAuthenticated: Boolean(token && user),
@@ -157,7 +174,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         refreshMe,
         clearSession
-    }), [token, user, loading, login, loginWithGoogle, signup, logout, refreshMe, clearSession])
+    }), [token, refreshToken, user, loading, login, loginWithGoogle, signup, logout, refreshMe, clearSession])
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

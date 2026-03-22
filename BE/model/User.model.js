@@ -3,9 +3,21 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
   role: {
     type: String,
-    enum: ['owner', 'staff', 'customer'],
+    enum: ['owner', 'manager', 'staff', 'customer'],
     required: true,
     default: 'customer'
+  },
+  roleLevel: {
+    type: Number,
+    default: 0
+  },
+  directPermissions: {
+    type: [String],
+    default: []
+  },
+  deniedPermissions: {
+    type: [String],
+    default: []
   },
   name: {
     type: String,
@@ -14,11 +26,17 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
     required: false,
-    default: null
+    default: null,
+    set: (value) => {
+      if (value === undefined || value === null) return null;
+      const normalized = String(value).replace(/\s+/g, '').trim();
+      return normalized || null;
+    }
   },
   email: {
     type: String,
-    required: true
+    required: true,
+    set: (value) => String(value || '').trim().toLowerCase()
   },
   passwordHash: {
     type: String,
@@ -53,6 +71,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  segment: {
+    type: String,
+    default: null
+  },
   gender: {
     type: String,
     enum: ['male', 'female', 'other', null],
@@ -70,6 +92,16 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-userSchema.index({ email: 1, authProvider: 1 }, { unique: true });
+userSchema.index({ email: 1 }, { unique: true });
+userSchema.index(
+  { phone: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: {
+      phone: { $type: 'string' }
+    }
+  }
+);
 
 module.exports = mongoose.model('User', userSchema);

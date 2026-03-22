@@ -56,7 +56,40 @@ const sendResetPasswordEmail = async ({ to, name, resetLink, expiresInMinutes })
   });
 };
 
+const sendGuestVerificationEmail = async ({ to, code, expiresInMinutes }) => {
+  const transporter = createTransporter();
+  const from = process.env.SMTP_FROM || `INHERE <${process.env.SMTP_USER}>`;
+  const subject = 'Ma xac minh thanh toan INHERE';
+  const text = [
+    'Xin chao,',
+    '',
+    `Ma xac minh cua ban la: ${code}`,
+    `Ma se het han sau ${expiresInMinutes} phut.`,
+    '',
+    'Neu ban khong thuc hien yeu cau nay, hay bo qua email nay.',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+      <h2>Xac minh thong tin truoc khi thanh toan</h2>
+      <p>Ma xac minh cua ban:</p>
+      <p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p>
+      <p>Ma se het han sau <strong>${expiresInMinutes} phut</strong>.</p>
+      <p>Neu ban khong thuc hien yeu cau nay, hay bo qua email nay.</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+    html,
+  });
+};
+
 module.exports = {
   hasSmtpConfig,
+  sendGuestVerificationEmail,
   sendResetPasswordEmail
 };

@@ -87,7 +87,7 @@ export default function ProductsList({ onSelectProduct }) {
 
         const loadCategories = async () => {
             try {
-                const response = await fetch('/api/categories')
+                const response = await fetch('/api/categories?lang=vi')
                 const payload = response.ok ? await response.json() : { categories: [] }
                 if (!mounted) {
                     return

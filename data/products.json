@@ -33,7 +33,11 @@
   "buyoutValue": 0,
   "categoryPath": {
     "parent": "Áo Dài Cho Thuê",
-    "child": "Áo Dài Cách Tân Cho Thuê"
+    "child": "Áo Dài Cách Tân Cho Thuê",
+    "ancestors": [
+      "Áo Dài Cho Thuê",
+      "Áo Dài Cách Tân Cho Thuê"
+    ]
   },
   "color": "Trắng",
   "colorVariants": [
@@ -43,7 +47,7 @@
         "https://hoianoutfit.com/wp-content/uploads/2026/02/co-dau-1.jpg"
       ],
       "_id": {
-        "$oid": "69b278b588911cb1061f1abf"
+        "$oid": "69b7ce4983816e63df3d2534"
       }
     }
   ],
@@ -55,7 +59,7 @@
   "pricingMode": "common",
   "size": "M",
   "updatedAt": {
-    "$date": "2026-03-12T08:26:29.191Z"
+    "$date": "2026-03-16T09:32:57.293Z"
   },
   "variantMatrix": []
 },
@@ -9453,9 +9457,7 @@
     "$oid": "69b2a2f51c07deb9121e1893"
   },
   "name": "Việt Phục Áo Tấc Xanh Da Trời Lụa 1 Lớp",
-  "category": {
-    "parent": "Cổ Phục Cho Thuê tại Hội An"
-  },
+  "category": "Cổ Phục Cho Thuê tại Hội An",
   "pricingMode": "common",
   "commonRentPrice": 220000,
   "baseRentPrice": 220000,
@@ -9465,18 +9467,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2025/01/BC932672-8CDC-4A5D-B594-ADCBCDFB5D04_1_201_a-300x364.jpeg"
+  ],
   "sourcePage": 7,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Cổ Phục Cho Thuê tại Hội An",
+    "child": "",
+    "ancestors": [
+      "Cổ Phục Cho Thuê tại Hội An"
+    ]
+  },
+  "color": "xanh da trời",
+  "colorVariants": [
+    {
+      "name": "xanh da trời",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2025/01/BC932672-8CDC-4A5D-B594-ADCBCDFB5D04_1_201_a-300x364.jpeg"
+      ],
+      "_id": {
+        "$oid": "69b7d9e26977596d17736c8f"
+      }
+    }
+  ],
+  "size": "XL",
+  "sizes": [
+    "XL"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:22:26.507Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e1894"
   },
   "name": "Việt Phục Nhật Bình Đỏ",
-  "category": {
-    "parent": "Cổ Phục Cho Thuê tại Hội An"
-  },
+  "category": "Cổ Phục Cho Thuê tại Hội An",
   "pricingMode": "common",
   "commonRentPrice": 350000,
   "baseRentPrice": 350000,
@@ -9486,18 +9515,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2025/01/2C26FCC0-2203-46E2-97B2-FAFC86CD497F_1_201_a-300x364.jpeg"
+  ],
   "sourcePage": 7,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Cổ Phục Cho Thuê tại Hội An",
+    "child": "",
+    "ancestors": [
+      "Cổ Phục Cho Thuê tại Hội An"
+    ]
+  },
+  "color": "đỏ",
+  "colorVariants": [
+    {
+      "name": "đỏ",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2025/01/2C26FCC0-2203-46E2-97B2-FAFC86CD497F_1_201_a-300x364.jpeg"
+      ],
+      "_id": {
+        "$oid": "69b7d9956977596d17736c47"
+      }
+    }
+  ],
+  "size": "L",
+  "sizes": [
+    "L"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:21:09.650Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e1895"
   },
   "name": "Váy vintage cho thuê VT01",
-  "category": {
-    "parent": "Cho thuê váy đầm Hội An"
-  },
+  "category": "Váy vintage",
   "pricingMode": "common",
   "commonRentPrice": 0,
   "baseRentPrice": 0,
@@ -9507,18 +9563,46 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2023/02/vay-vintage-cho-thue-hoi-an-2.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Cho thuê váy đầm Hội An",
+    "child": "Váy vintage",
+    "ancestors": [
+      "Cho thuê váy đầm Hội An",
+      "Váy vintage"
+    ]
+  },
+  "color": "vàng",
+  "colorVariants": [
+    {
+      "name": "vàng",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2023/02/vay-vintage-cho-thue-hoi-an-2.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d9c26977596d17736c6c"
+      }
+    }
+  ],
+  "size": "XL",
+  "sizes": [
+    "XL"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:21:54.410Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e1896"
   },
   "name": "Cổ Phục Áo Tấc Vàng Đồng",
-  "category": {
-    "parent": "Cổ Phục Cho Thuê tại Hội An"
-  },
+  "category": "Cổ Phục Cho Thuê tại Hội An",
   "pricingMode": "common",
   "commonRentPrice": 220000,
   "baseRentPrice": 220000,
@@ -9528,18 +9612,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/cho-thue-co-phuc-o-hoi-an-1-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Cổ Phục Cho Thuê tại Hội An",
+    "child": "",
+    "ancestors": [
+      "Cổ Phục Cho Thuê tại Hội An"
+    ]
+  },
+  "color": "vàng đồng",
+  "colorVariants": [
+    {
+      "name": "vàng đồng",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/cho-thue-co-phuc-o-hoi-an-1-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d9536977596d17736c01"
+      }
+    }
+  ],
+  "size": "XL",
+  "sizes": [
+    "XL"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:20:03.226Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e1897"
   },
   "name": "Cổ Phục Áo Tấc Xanh Dương",
-  "category": {
-    "parent": "Cổ Phục Cho Thuê tại Hội An"
-  },
+  "category": "Cổ Phục Cho Thuê tại Hội An",
   "pricingMode": "common",
   "commonRentPrice": 220000,
   "baseRentPrice": 220000,
@@ -9549,18 +9660,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/cho-thue-co-phuc-o-hoi-an-3-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Cổ Phục Cho Thuê tại Hội An",
+    "child": "",
+    "ancestors": [
+      "Cổ Phục Cho Thuê tại Hội An"
+    ]
+  },
+  "color": "xanh dương",
+  "colorVariants": [
+    {
+      "name": "xanh dương",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/cho-thue-co-phuc-o-hoi-an-3-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d90f6977596d17736bd2"
+      }
+    }
+  ],
+  "size": "XL",
+  "sizes": [
+    "XL"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:18:55.835Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e1898"
   },
   "name": "Cổ Phục Áo Tấc Xanh Cốm",
-  "category": {
-    "parent": "Cổ Phục Cho Thuê tại Hội An"
-  },
+  "category": "Cổ Phục Cho Thuê tại Hội An",
   "pricingMode": "common",
   "commonRentPrice": 220000,
   "baseRentPrice": 220000,
@@ -9570,18 +9708,47 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/cho-thue-co-phuc-o-hoi-an-0-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Cổ Phục Cho Thuê tại Hội An",
+    "child": "",
+    "ancestors": [
+      "Cổ Phục Cho Thuê tại Hội An"
+    ]
+  },
+  "color": "xanh cốm",
+  "colorVariants": [
+    {
+      "name": "xanh cốm",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/cho-thue-co-phuc-o-hoi-an-0-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d8bd6977596d17736baf"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE",
+    "XXL",
+    "XL"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:17:33.331Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e1899"
   },
   "name": "Voan Cài Tóc Cô Dâu",
-  "category": {
-    "parent": "Phụ kiện chụp ảnh cho thuê"
-  },
+  "category": "Phụ kiện chụp ảnh cho thuê",
   "pricingMode": "common",
   "commonRentPrice": 50000,
   "baseRentPrice": 50000,
@@ -9591,18 +9758,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-6-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Phụ kiện chụp ảnh cho thuê",
+    "child": "",
+    "ancestors": [
+      "Phụ kiện chụp ảnh cho thuê"
+    ]
+  },
+  "color": "trắng",
+  "colorVariants": [
+    {
+      "name": "trắng",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-6-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d8146977596d17736b73"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:14:44.860Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e189a"
   },
   "name": "Ô Trong Chụp Ảnh Dưới Mưa OT01",
-  "category": {
-    "parent": "Phụ kiện chụp ảnh cho thuê"
-  },
+  "category": "Phụ kiện chụp ảnh cho thuê",
   "pricingMode": "common",
   "commonRentPrice": 30000,
   "baseRentPrice": 30000,
@@ -9612,18 +9806,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-5-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Phụ kiện chụp ảnh cho thuê",
+    "child": "",
+    "ancestors": [
+      "Phụ kiện chụp ảnh cho thuê"
+    ]
+  },
+  "color": "trong suốt",
+  "colorVariants": [
+    {
+      "name": "trong suốt",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-5-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d7fc6977596d17736b50"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:14:20.931Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e189b"
   },
   "name": "Búp Sen Giả Cho Thuê",
-  "category": {
-    "parent": "Phụ kiện chụp ảnh cho thuê"
-  },
+  "category": "Phụ kiện chụp ảnh cho thuê",
   "pricingMode": "common",
   "commonRentPrice": 10000,
   "baseRentPrice": 10000,
@@ -9633,18 +9854,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-0-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Phụ kiện chụp ảnh cho thuê",
+    "child": "",
+    "ancestors": [
+      "Phụ kiện chụp ảnh cho thuê"
+    ]
+  },
+  "color": "trắng",
+  "colorVariants": [
+    {
+      "name": "trắng",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-0-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d7d96977596d17736b2d"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:13:45.179Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e189c"
   },
   "name": "Nón Lá Cho Thuê",
-  "category": {
-    "parent": "Phụ kiện chụp ảnh cho thuê"
-  },
+  "category": "Phụ kiện chụp ảnh cho thuê",
   "pricingMode": "common",
   "commonRentPrice": 20000,
   "baseRentPrice": 20000,
@@ -9654,18 +9902,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-1-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Phụ kiện chụp ảnh cho thuê",
+    "child": "",
+    "ancestors": [
+      "Phụ kiện chụp ảnh cho thuê"
+    ]
+  },
+  "color": "trắng",
+  "colorVariants": [
+    {
+      "name": "trắng",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-1-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d7be6977596d17736b0a"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:13:18.841Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e189d"
   },
   "name": "Nón Mũ Cói Cho Thuê",
-  "category": {
-    "parent": "Phụ kiện chụp ảnh cho thuê"
-  },
+  "category": "Phụ kiện chụp ảnh cho thuê",
   "pricingMode": "common",
   "commonRentPrice": 25000,
   "baseRentPrice": 25000,
@@ -9675,18 +9950,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-2-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Phụ kiện chụp ảnh cho thuê",
+    "child": "",
+    "ancestors": [
+      "Phụ kiện chụp ảnh cho thuê"
+    ]
+  },
+  "color": "trắng",
+  "colorVariants": [
+    {
+      "name": "trắng",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-2-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d7a46977596d17736ae7"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:12:52.043Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e189e"
   },
   "name": "Guốc Mộc Cho Thuê 2p",
-  "category": {
-    "parent": "Phụ kiện chụp ảnh cho thuê"
-  },
+  "category": "Phụ kiện chụp ảnh cho thuê",
   "pricingMode": "common",
   "commonRentPrice": 20000,
   "baseRentPrice": 20000,
@@ -9696,18 +9998,45 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-3-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Phụ kiện chụp ảnh cho thuê",
+    "child": "",
+    "ancestors": [
+      "Phụ kiện chụp ảnh cho thuê"
+    ]
+  },
+  "color": "gỗ",
+  "colorVariants": [
+    {
+      "name": "gỗ",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-3-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d77d6977596d17736ac4"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:12:13.476Z"
+  },
+  "variantMatrix": []
 },
 {
   "_id": {
     "$oid": "69b2a2f51c07deb9121e189f"
   },
   "name": "Túi cói cho thuê",
-  "category": {
-    "parent": "Phụ kiện chụp ảnh cho thuê"
-  },
+  "category": "Phụ kiện chụp ảnh cho thuê",
   "pricingMode": "common",
   "commonRentPrice": 25000,
   "baseRentPrice": 25000,
@@ -9717,7 +10046,36 @@
   "likeCount": 0,
   "isDraft": false,
   "description": "",
-  "images": [],
+  "images": [
+    "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-4-300x300.jpg"
+  ],
   "sourcePage": 8,
-  "source": "https://hoianoutfit.com/cua-hang/"
+  "source": "https://hoianoutfit.com/cua-hang/",
+  "categoryPath": {
+    "parent": "Phụ kiện chụp ảnh cho thuê",
+    "child": "",
+    "ancestors": [
+      "Phụ kiện chụp ảnh cho thuê"
+    ]
+  },
+  "color": "nâu lạnh",
+  "colorVariants": [
+    {
+      "name": "nâu lạnh",
+      "images": [
+        "https://hoianoutfit.com/wp-content/uploads/2022/08/thue-phu-kien-chup-anh-hoi-an-4-300x300.jpg"
+      ],
+      "_id": {
+        "$oid": "69b7d75d6977596d17736aa1"
+      }
+    }
+  ],
+  "size": "FREE SIZE",
+  "sizes": [
+    "FREE SIZE"
+  ],
+  "updatedAt": {
+    "$date": "2026-03-16T10:11:41.184Z"
+  },
+  "variantMatrix": []
 }]

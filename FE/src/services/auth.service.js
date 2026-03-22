@@ -6,6 +6,7 @@ import {
   googleLoginRequest,
   loginRequest,
   logoutRequest,
+  refreshRequest,
   resetPasswordRequest,
   signupRequest,
   updateProfileRequest,
@@ -37,8 +38,13 @@ export const resetPasswordApi = async (payload) => {
   return response.data
 }
 
-export const logoutApi = async () => {
-  const response = await logoutRequest()
+export const refreshTokenApi = async (payload) => {
+  const response = await refreshRequest(payload)
+  return response.data
+}
+
+export const logoutApi = async (payload) => {
+  const response = await logoutRequest(payload)
   return response.data
 }
 

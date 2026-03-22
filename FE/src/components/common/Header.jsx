@@ -18,6 +18,7 @@ const LABELS = {
   cta: "ĐẶT LỊCH NGAY",
   login: "Đăng nhập",
   orderHistory: "Lịch sử đơn hàng",
+  vouchers: "Voucher của tôi",
   favorites: "Sản phẩm yêu thích",
   profile: "Tài khoản",
   logout: "Đăng xuất",
@@ -32,6 +33,7 @@ export default function Header({ active = "", onSectionNavigate }) {
   const { isAuthenticated, logout, user } = useAuth();
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
 
   const isHomePage = location.pathname === "/";
   const dashboardPath = getRouteByRole(user?.role);
@@ -61,6 +63,11 @@ export default function Header({ active = "", onSectionNavigate }) {
     setMenuOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setSearchValue(params.get("q") || "");
+  }, [location.pathname, location.search]);
+
   const getSectionHref = (section) => (isHomePage ? `#${section}` : `/#${section}`);
 
   const handleSectionClick = (event, section) => {
@@ -70,6 +77,17 @@ export default function Header({ active = "", onSectionNavigate }) {
 
     event.preventDefault();
     onSectionNavigate(section);
+  };
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    const keyword = searchValue.trim();
+    const params = new URLSearchParams();
+    if (keyword) params.set("q", keyword);
+    navigate({
+      pathname: "/buy",
+      search: params.toString() ? `?${params.toString()}` : "",
+    });
   };
 
   return (
@@ -118,10 +136,13 @@ export default function Header({ active = "", onSectionNavigate }) {
                       {LABELS.dashboard}
                     </Link>
                   )}
-                  <Link to="/rental/history" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                  <Link to="/orders/history" className="site-account-item" onClick={() => setMenuOpen(false)}>
                     {LABELS.orderHistory}
                   </Link>
-                  <Link to="/#rent" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                  <Link to="/my-vouchers" className="site-account-item" onClick={() => setMenuOpen(false)}>
+                    {LABELS.vouchers}
+                  </Link>
+                  <Link to="/favorites" className="site-account-item" onClick={() => setMenuOpen(false)}>
                     <Heart size={16} />
                     {LABELS.favorites}
                   </Link>
@@ -175,7 +196,15 @@ export default function Header({ active = "", onSectionNavigate }) {
           </div>
 
           <div className="site-nav-right">
-            <input className="site-search" type="search" placeholder={LABELS.search} />
+            <form onSubmit={handleSearchSubmit}>
+              <input
+                className="site-search"
+                type="search"
+                placeholder={LABELS.search}
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+              />
+            </form>
             <Link to="/booking" className="site-cta">
               {LABELS.cta}
             </Link>

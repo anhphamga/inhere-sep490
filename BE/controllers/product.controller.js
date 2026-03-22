@@ -2,6 +2,8 @@ const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
+const { hasPermission } = require('../services/accessControl.service');
+const { writeAuditLog } = require('../services/auditLog.service');
 const { hasCloudinaryConfig, uploadImageBuffer } = require('../utils/cloudinary');
 const {
   getRequestLang,
@@ -28,6 +30,8 @@ const normalizeImages = (images) => {
 };
 
 const normalizeText = (value) => String(value || '').trim();
+
+const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const parseJsonLike = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -522,11 +526,32 @@ const getProducts = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 50);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const category = normalizeText(req.query.category);
+    const search = normalizeText(req.query.search);
     const skip = (page - 1) * limit;
 
     const withCategory = (filter) => applyCategoryFilter(filter, category);
 
     const filter = withCategory({});
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), 'i');
+      filter.$and = [
+        ...(Array.isArray(filter.$and) ? filter.$and : []),
+        {
+          $or: [
+            { name: { $regex: regex } },
+            { 'name.vi': { $regex: regex } },
+            { 'name.en': { $regex: regex } },
+            { category: { $regex: regex } },
+            { 'category.vi': { $regex: regex } },
+            { 'category.en': { $regex: regex } },
+            { color: { $regex: regex } },
+            { size: { $regex: regex } },
+            { sizes: { $elemMatch: { $regex: regex } } },
+            { 'colorVariants.name': { $regex: regex } },
+          ],
+        },
+      ];
+    }
     const allProducts = await Product.find(filter).sort({ createdAt: -1 }).lean();
     const normalizedProducts = allProducts.map((product) => sanitizeProduct(product, {}, lang));
 
@@ -1318,6 +1343,7 @@ const updateProductInstance = async (req, res) => {
     } = req.body;
 
     const instance = await ProductInstance.findById(id);
+    const canUpdateCondition = hasPermission(req.access, 'inventory.item.update_condition');
 
     if (!instance) {
       return res.status(404).json({
@@ -1327,6 +1353,15 @@ const updateProductInstance = async (req, res) => {
     }
 
     // Cập nhật các trường được gửi lên
+    const before = instance.toObject();
+
+    if ((conditionLevel !== undefined || conditionScore !== undefined) && !canUpdateCondition) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden - missing permission'
+      });
+    }
+
     if (conditionLevel) instance.conditionLevel = conditionLevel;
     if (conditionScore !== undefined) instance.conditionScore = conditionScore;
     if (lifecycleStatus) instance.lifecycleStatus = lifecycleStatus;
@@ -1339,6 +1374,30 @@ const updateProductInstance = async (req, res) => {
     // Populate để trả về
     const updatedInstance = await ProductInstance.findById(id)
       .populate('productId', 'name images category');
+
+    await writeAuditLog({
+      req,
+      user: req.user,
+      action: 'inventory.item.update_condition',
+      resource: 'ProductInstance',
+      resourceId: updatedInstance._id,
+      before: {
+        conditionLevel: before.conditionLevel,
+        conditionScore: before.conditionScore,
+        lifecycleStatus: before.lifecycleStatus,
+        currentRentPrice: before.currentRentPrice,
+        currentSalePrice: before.currentSalePrice,
+        note: before.note,
+      },
+      after: {
+        conditionLevel: updatedInstance.conditionLevel,
+        conditionScore: updatedInstance.conditionScore,
+        lifecycleStatus: updatedInstance.lifecycleStatus,
+        currentRentPrice: updatedInstance.currentRentPrice,
+        currentSalePrice: updatedInstance.currentSalePrice,
+        note: updatedInstance.note,
+      },
+    });
 
     res.json({
       success: true,

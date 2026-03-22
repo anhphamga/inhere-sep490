@@ -207,7 +207,6 @@ const OwnerLayout = () => {
                                 type="button"
                                 className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                                 onClick={() => {
-                                    localStorage.removeItem('token')
                                     localStorage.removeItem('accessToken')
                                     localStorage.removeItem('refreshToken')
                                     navigate('/login')

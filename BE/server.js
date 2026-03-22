@@ -4,6 +4,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const seedOwnerAccount = require('./utils/seedOwner');
 const { startAutoCancelJob } = require('./utils/autoCancelPendingOrders');
+const { syncDefaultRoles } = require('./services/accessControl.service');
 
 const app = express();
 
@@ -40,6 +41,7 @@ const PORT = process.env.PORT || 9000;
 const bootstrap = async () => {
   try {
     await connectDB();
+    await syncDefaultRoles();
     await seedOwnerAccount();
 
     // Bật cron job tự động hủy đơn PendingDeposit quá 30 phút

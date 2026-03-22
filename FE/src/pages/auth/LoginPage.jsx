@@ -9,7 +9,7 @@ import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const phoneRegex = /^\d{10,11}$/
+const phoneRegex = /^(0|\+84)\d{9,10}$/
 
 const LoginPage = () => {
   const navigate = useNavigate()
@@ -107,7 +107,7 @@ const LoginPage = () => {
     event.preventDefault()
     setError('')
 
-    const identifier = form.identifier.trim()
+    const identifier = form.identifier.replace(/\s+/g, '').trim()
     const password = form.password
 
     if (!identifier || !password) {
@@ -119,7 +119,7 @@ const LoginPage = () => {
     const isPhone = phoneRegex.test(identifier)
 
     if (!isEmail && !isPhone) {
-      setError('Vui lòng nhập đúng Email hoặc SĐT 10-11 số')
+      setError('Vui lòng nhập đúng Email hoặc số điện thoại hợp lệ')
       return
     }
 
