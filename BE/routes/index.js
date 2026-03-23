@@ -21,6 +21,7 @@ const proxyImageRoutes = require('./proxy-image.routes');
 const guestRoutes = require('./guest.routes');
 const orderRoutes = require('./order.routes');
 const voucherRoutes = require('./voucher.routes');
+const reviewRoutes = require('./review.routes');
 const chatbotRoutes = require('../modules/chatbot/routes/chatbot.routes');
 
 router.use('/users', userRoutes);
@@ -38,6 +39,7 @@ router.use('/proxy-image', proxyImageRoutes);
 router.use('/guest', guestRoutes);
 router.use('/orders', orderRoutes);
 router.use('/vouchers', voucherRoutes);
+router.use('/reviews', reviewRoutes);
 router.use('/chatbot', chatbotRoutes);
 router.use('/vouchers', voucherRoutes);
 

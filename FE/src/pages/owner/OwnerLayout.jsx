@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
+  MessageSquareText,
   PanelLeft,
   PanelRight,
   ReceiptText,
@@ -35,6 +36,7 @@ const navItems = [
   { to: '/owner/staff', labelKey: 'sidebar.staff', icon: BadgeCheck },
   { to: '/owner/shifts', labelKey: 'sidebar.shifts', icon: CalendarClock },
   { to: '/owner/orders', labelKey: 'sidebar.orders', icon: ReceiptText },
+  { to: '/owner/reviews', label: 'Quản lí đánh giá', icon: MessageSquareText },
   { to: '/owner/promotions', labelKey: 'sidebar.vouchers', icon: Megaphone },
   { to: '/owner/membership', labelKey: 'sidebar.membership', icon: CreditCard },
   { to: '/owner/alerts', labelKey: 'sidebar.alerts', icon: Bell },
@@ -53,6 +55,7 @@ const pageTitleMap = {
   shifts: 'pageTitles.shiftManagement',
   orders: 'pageTitles.rentOrders',
   promotions: 'pageTitles.vouchers',
+  reviews: 'pageTitles.reviews',
   membership: 'pageTitles.membership',
   alerts: 'pageTitles.alerts',
   reports: 'pageTitles.analytics',
@@ -97,7 +100,9 @@ const OwnerLayout = () => {
   const isStaffSubView = currentSegment === 'staff-calendar' || currentSegment === 'staff-analytics'
   const showBackButton = isUserDetail || isProductDetail || isStaffSubView
 
-  let title = t(pageTitleMap[currentSegment], t('pageTitles.owner'))
+  let title = currentSegment === 'reviews'
+    ? 'Quản lí đánh giá'
+    : t(pageTitleMap[currentSegment], t('pageTitles.owner'))
   if (isUserDetail) title = t('pageTitles.userDetail')
   if (isProductDetail) title = t('pageTitles.productDetail')
 
@@ -168,7 +173,7 @@ const OwnerLayout = () => {
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0 text-current" />
-                <span>{t(item.labelKey)}</span>
+                <span>{item.label || t(item.labelKey)}</span>
               </NavLink>
             )
           })}

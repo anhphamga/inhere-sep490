@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTranslate } from '../../hooks/useTranslate';
 
 const formatDate = (date) => {
   const d = new Date(date);
@@ -15,7 +14,6 @@ const formatDate = (date) => {
 };
 
 export default function StaffLayout({ children }) {
-  const { t } = useTranslate();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -45,19 +43,20 @@ export default function StaffLayout({ children }) {
   };
 
   const sidebarMenu = [
-    { to: '/staff', label: t('staff.dashboard'), icon: 'ðŸ“Š' },
-    { to: '/staff/shifts', label: t('staff.shiftRegistration'), icon: '📅' },
-    { to: '/staff/rent-orders', label: t('staff.rentOrders'), icon: 'ðŸ“‹' },
-    { to: '/staff/rent-order', label: t('staff.createRentOrder'), icon: 'âž•' },
-    { to: '/staff/sale-order', label: t('staff.createSaleOrder'), icon: 'ðŸ›’' },
-    { to: '/staff/fitting', label: t('staff.fittingBookings'), icon: 'ðŸ‘—' },
-    { to: '/staff/return', label: t('staff.returns'), icon: 'ðŸ“„' },
+    { to: '/staff', label: 'Tổng quan', icon: 'DB' },
+    { to: '/staff/shifts', label: 'Đăng ký ca làm', icon: 'CL' },
+    { to: '/staff/rent-orders', label: 'Đơn thuê', icon: 'DT' },
+    { to: '/staff/reviews', label: 'Quản lí đánh giá', icon: 'DG' },
+    { to: '/staff/rent-order', label: 'Tạo đơn thuê', icon: 'TD' },
+    { to: '/staff/sale-order', label: 'Tạo đơn bán', icon: 'TB' },
+    { to: '/staff/fitting', label: 'Lịch thử đồ', icon: 'LT' },
+    { to: '/staff/return', label: 'Trả đồ', icon: 'TR' },
   ];
 
   const notifications = [
-    { id: 1, text: 'KhÃ¡ch Ä‘áº·t lá»‹ch thá»­ má»›i - 14:00 ngÃ y 23/02', unread: true },
-    { id: 2, text: 'ÄÆ¡n quÃ¡ háº¡n - #HD005 - KhÃ¡ch D', unread: true },
-    { id: 3, text: 'ÄÆ¡n #001 - Tráº£ Ä‘á»“ trong 1 ngÃ y', unread: false },
+    { id: 1, text: 'Khách đặt lịch thử đồ mới - 14:00 ngày 23/02', unread: true },
+    { id: 2, text: 'Đơn quá hạn - #HD005 - Khách D', unread: true },
+    { id: 3, text: 'Đơn #001 - Trả đồ trong 1 ngày', unread: false },
   ];
 
   const unreadCount = notifications.filter((n) => n.unread).length;
@@ -66,7 +65,7 @@ export default function StaffLayout({ children }) {
     <div className="flex min-h-screen bg-white">
       <aside className="flex w-56 flex-col border-r border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-6 py-5">
-          <h1 className="text-xl font-bold text-indigo-600">{t('staff.brand')}</h1>
+          <h1 className="text-xl font-bold text-indigo-600">INHERE Nhân sự</h1>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-4">
@@ -82,7 +81,7 @@ export default function StaffLayout({ children }) {
               }
               end={m.to === '/staff'}
             >
-              <span className="text-xl">{m.icon}</span>
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-indigo-50 px-1 text-[10px] font-bold text-indigo-600">{m.icon}</span>
               {m.label}
             </NavLink>
           ))}
@@ -90,13 +89,13 @@ export default function StaffLayout({ children }) {
 
         <div className="space-y-2 border-t border-gray-200 p-4">
           <Link to="/profile" className="flex items-center gap-3 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50">
-            <span className="text-lg">ðŸ‘¤</span> {t('staff.profile')}
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-gray-100 text-xs font-bold">TK</span> Tài khoản
           </Link>
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-red-600 hover:bg-red-50"
           >
-            <span className="text-lg">ðŸšª</span> {t('common.logout')}
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-red-50 text-xs font-bold">OUT</span> Đăng xuất
           </button>
         </div>
       </aside>
@@ -108,12 +107,12 @@ export default function StaffLayout({ children }) {
               {user?.avatarUrl ? (
                 <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
               ) : (
-                <span className="text-xl">ðŸ‘¤</span>
+                <span className="text-xs font-bold text-gray-600">NV</span>
               )}
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
-                {t('staff.greeting')}, {user?.name || t('sidebar.staffRole')} <span className="font-normal text-gray-600">| {t('sidebar.staffRole').toUpperCase()}</span>
+                Xin chào, {user?.name || 'Nhân viên'} <span className="font-normal text-gray-600">| NHÂN VIÊN</span>
               </h2>
               <p className="text-xs text-gray-500">{formatDate(currentTime)}</p>
             </div>
@@ -123,7 +122,7 @@ export default function StaffLayout({ children }) {
             onClick={() => setNotificationOpen(!notificationOpen)}
             className="relative flex h-11 w-11 items-center justify-center rounded-full border-2 border-gray-300 hover:bg-indigo-50"
           >
-            ðŸ””
+            <span className="text-lg">!</span>
             {unreadCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
                 {unreadCount}
@@ -131,7 +130,7 @@ export default function StaffLayout({ children }) {
             )}
             {notificationOpen && (
               <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
-                <div className="border-b border-gray-200 p-4 font-semibold">{t('staff.notifications')}</div>
+                <div className="border-b border-gray-200 p-4 font-semibold">Thông báo</div>
                 {notifications.map((n) => (
                   <div
                     key={n.id}
@@ -152,4 +151,3 @@ export default function StaffLayout({ children }) {
     </div>
   );
 }
-

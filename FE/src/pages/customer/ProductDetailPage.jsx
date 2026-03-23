@@ -7,9 +7,12 @@ import VariantSelector from "../../components/product-detail/VariantSelector";
 import ProductActions from "../../components/product-detail/ProductActions";
 import ProductDescription from "../../components/product-detail/ProductDescription";
 import RelatedProducts from "../../components/product-detail/RelatedProducts";
+import ReviewList from "../../components/review/ReviewList";
+import ReviewSummary from "../../components/review/ReviewSummary";
 import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useFavorites } from "../../contexts/FavoritesContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
+import { getProductReviewsApi } from "../../services/review.service";
 
 const I18N = {
   vi: {
@@ -105,6 +108,11 @@ export default function ProductDetailPage() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [loadingAction, setLoadingAction] = useState("");
   const [toast, setToast] = useState("");
+  const [reviews, setReviews] = useState([]);
+  const [reviewSummary, setReviewSummary] = useState({ averageRating: 0, reviewCount: 0, breakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewFilter, setReviewFilter] = useState("all");
+  const [reviewPagination, setReviewPagination] = useState({ page: 1, pages: 1, total: 0, limit: 5 });
 
   // Date selection modal state
   const [showDateModal, setShowDateModal] = useState(false);
@@ -311,9 +319,49 @@ export default function ProductDetailPage() {
     };
   }, [product?._id]);
 
+  const fetchReviews = useCallback(async ({ page = 1, append = false, starFilter = reviewFilter } = {}) => {
+    if (!product?._id) return;
+
+    try {
+      setReviewLoading(true);
+      const params = {
+        page,
+        limit: 5,
+      };
+      if (starFilter !== "all") {
+        params.rating = Number(starFilter);
+      }
+
+      const response = await getProductReviewsApi(product._id, params);
+      const items = Array.isArray(response?.data) ? response.data : [];
+
+      setReviewSummary(response?.summary || { averageRating: 0, reviewCount: 0, breakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
+      setReviewPagination(response?.pagination || { page: 1, pages: 1, total: 0, limit: 5 });
+      setReviews((prev) => (append ? [...prev, ...items] : items));
+    } catch (error) {
+      console.error("Fetch reviews error:", error);
+      if (!append) {
+        setReviews([]);
+      }
+    } finally {
+      setReviewLoading(false);
+    }
+  }, [product?._id, reviewFilter]);
+
+  useEffect(() => {
+    if (!product?._id) return;
+    fetchReviews({ page: 1, append: false, starFilter: reviewFilter });
+  }, [fetchReviews, product?._id, reviewFilter]);
+
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(""), 2000);
+  };
+
+  const handleLoadMoreReviews = () => {
+    const nextPage = Number(reviewPagination?.page || 1) + 1;
+    if (nextPage > Number(reviewPagination?.pages || 1)) return;
+    fetchReviews({ page: nextPage, append: true, starFilter: reviewFilter });
   };
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
@@ -527,6 +575,40 @@ export default function ProductDetailPage() {
               {/* Description Section */}
               <section className="border-t border-slate-200 pt-4">
                 <ProductDescription description={product.description} />
+              </section>
+
+              <section className="border-t border-slate-200 pt-4">
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold text-slate-900">Đánh giá khách hàng</h3>
+                      <p className="mt-1 text-sm text-slate-500">Tổng hợp trải nghiệm thực tế từ người đã mua sản phẩm.</p>
+                    </div>
+                    <div className="w-full md:w-[220px]">
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Lọc theo sao</label>
+                      <select
+                        value={reviewFilter}
+                        onChange={(event) => setReviewFilter(event.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-slate-100"
+                      >
+                        <option value="all">Tất cả</option>
+                        <option value="5">5 sao</option>
+                        <option value="4">4 sao</option>
+                        <option value="3">3 sao</option>
+                        <option value="2">2 sao</option>
+                        <option value="1">1 sao</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <ReviewSummary summary={reviewSummary} />
+                  <ReviewList
+                    reviews={reviews}
+                    loading={reviewLoading}
+                    pagination={reviewPagination}
+                    onLoadMore={handleLoadMoreReviews}
+                  />
+                </div>
               </section>
 
               {/* Related Products Section */}

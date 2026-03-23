@@ -312,6 +312,7 @@ function normalizeBuyOrders(orders = []) {
   return orders.map((order) => {
     const shippingFee = Number(order.shippingFee || 0)
     const subtotal = Number(order.voucherSnapshot?.originalSubtotal || (Number(order.totalAmount || 0) - shippingFee))
+    const canReview = ['Completed', 'Returned', 'Refunded'].includes(String(order.status || ''))
 
     return {
       id: order._id,
@@ -326,12 +327,16 @@ function normalizeBuyOrders(orders = []) {
       customerNote: order.note || '',
       detailPath: `/orders/${order._id}`,
       actions: [],
+      canReview,
       items: (order.items || []).map((item) => ({
         id: item._id,
+        orderId: order._id,
+        productId: item.productId?._id,
         image: getImageUrl(item.productId?.images),
         name: getProductName(item.productId),
         variant: `${item.size || 'FREE SIZE'} / ${item.color || 'Mặc định'}`,
         quantity: Number(item.quantity || 1),
+        review: item.review || { isReviewed: false, canReview },
       })),
     }
   }).map((order) => ({
@@ -446,7 +451,7 @@ function OrderFilters({
   )
 }
 
-function OrderItem({ item, type }) {
+function OrderItem({ item, type, order }) {
   return (
     <div className="flex gap-4 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
       <img
@@ -477,6 +482,27 @@ function OrderItem({ item, type }) {
             <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
               Số ngày thuê: <span className="font-medium text-slate-700">{item.rentalDays} ngày</span>
             </div>
+          </div>
+        ) : null}
+
+        {type === 'buy' ? (
+          <div className="mt-3">
+            {item?.review?.isReviewed ? (
+              <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                Đã đánh giá
+              </span>
+            ) : order?.canReview ? (
+              <Link
+                to={order.detailPath}
+                className="inline-flex rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+              >
+                Đánh giá sản phẩm
+              </Link>
+            ) : (
+              <span className="text-xs text-slate-500">
+                Chỉ có thể đánh giá sau khi đơn hàng đã giao thành công
+              </span>
+            )}
           </div>
         ) : null}
       </div>
@@ -625,7 +651,7 @@ function OrderCard({ order }) {
 
           <div className="space-y-3">
             {order.items.map((item) => (
-              <OrderItem key={item.id} item={item} type={order.type} />
+              <OrderItem key={item.id} item={item} type={order.type} order={order} />
             ))}
           </div>
         </div>

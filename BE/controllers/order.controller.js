@@ -20,6 +20,10 @@ const {
   SALE_ORDER_TRANSITIONS,
   getSaleStatusMeta,
 } = require('../constants/sale-order.constants');
+const {
+  REVIEWABLE_SALE_STATUSES,
+  getReviewedMapForOrders,
+} = require('../services/review.service');
 
 const normalizePaymentMethod = (value = '') => {
   if (value === 'BankTransfer') return 'BankTransfer';
@@ -32,7 +36,7 @@ const buildFallbackHistory = (order) => {
     {
       status: order?.status || '',
       action: 'order_created',
-      description: 'Don hang duoc tao',
+      description: 'Đơn hàng được tạo',
       updatedBy: order?.staffId || null,
       updatedAt: order?.createdAt || null,
     },
@@ -44,7 +48,7 @@ const buildFallbackHistory = (order) => {
     history.push({
       status: order?.status || '',
       action: 'status_synced',
-      description: `Trang thai hien tai: ${order?.status || 'N/A'}`,
+      description: `Trạng thái hiện tại: ${order?.status || 'N/A'}`,
       updatedBy: order?.staffId || null,
       updatedAt: order?.updatedAt,
     });
@@ -155,7 +159,7 @@ const createSaleOrderWithItems = async ({
       {
         status: 'PendingConfirmation',
         action: 'order_created',
-        description: 'Don hang duoc tao',
+        description: 'Đơn hàng được tạo',
         updatedBy: customerId || null,
         updatedAt: new Date(),
       },
@@ -339,6 +343,54 @@ const attachSaleOrderItems = async (orders = []) => {
     ...order.toObject(),
     items: groupedItems[String(order._id)] || [],
   }));
+};
+
+const attachReviewStatesForCustomer = async (orders = [], customerId = '') => {
+  if (!Array.isArray(orders) || orders.length === 0 || !customerId) return orders;
+
+  const orderIds = orders.map((order) => order?._id).filter(Boolean);
+  const reviewMap = await getReviewedMapForOrders({
+    userId: customerId,
+    orderIds,
+  });
+
+  return orders.map((order) => {
+    const canReviewByStatus = REVIEWABLE_SALE_STATUSES.has(String(order?.status || ''));
+    const nextItems = Array.isArray(order?.items) ? order.items.map((item) => {
+      const key = `${String(order?._id)}::${String(item?.productId?._id || item?.productId)}`;
+      const matchedReview = reviewMap.get(key);
+
+      if (matchedReview) {
+        return {
+          ...item,
+          review: {
+            isReviewed: true,
+            canReview: false,
+            reviewId: matchedReview._id,
+            rating: matchedReview.rating,
+            comment: matchedReview.comment || '',
+            images: Array.isArray(matchedReview.images) ? matchedReview.images : [],
+            createdAt: matchedReview.createdAt || null,
+          },
+        };
+      }
+
+      return {
+        ...item,
+        review: {
+          isReviewed: false,
+          canReview: canReviewByStatus,
+          reviewId: null,
+          reason: canReviewByStatus ? '' : 'Chỉ có thể đánh giá sau khi đơn hàng đã giao thành công',
+        },
+      };
+    }) : [];
+
+    return {
+      ...order,
+      items: nextItems,
+    };
+  });
 };
 
 const getProductDisplayName = (product = {}) => {
@@ -804,10 +856,11 @@ exports.getMySaleOrders = async (req, res) => {
       .sort({ createdAt: -1 });
 
     const attachedOrders = await attachSaleOrderItems(orders);
+    const ordersWithReviewState = await attachReviewStatesForCustomer(attachedOrders, customerId);
 
     return res.json({
       success: true,
-      data: attachedOrders.map((order) => mapSaleOrderForOwner(order)),
+      data: ordersWithReviewState.map((order) => mapSaleOrderForOwner(order)),
     });
   } catch (error) {
     console.error('Get my sale orders error:', error);
@@ -847,10 +900,11 @@ exports.getMySaleOrderById = async (req, res) => {
     }
 
     const [attachedOrder] = await attachSaleOrderItems([order]);
+    const [orderWithReviewState] = await attachReviewStatesForCustomer([attachedOrder], customerId);
 
     return res.json({
       success: true,
-      data: mapSaleOrderForOwner(attachedOrder),
+      data: mapSaleOrderForOwner(orderWithReviewState),
     });
   } catch (error) {
     console.error('Get my sale order detail error:', error);
@@ -907,7 +961,7 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
     order.history.push({
       status: normalizedStatus,
       action: actorRole === 'staff' ? 'staff_update_status' : 'owner_update_status',
-      description: `Cap nhat trang thai sang ${normalizedStatus}`,
+      description: `Cập nhật trạng thái sang ${normalizedStatus}`,
       updatedBy: req.user?.id || null,
       updatedAt: new Date(),
     });

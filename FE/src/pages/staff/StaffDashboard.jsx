@@ -1,19 +1,17 @@
 import { Link } from 'react-router-dom';
-import { useTranslate } from '../../hooks/useTranslate';
 
 export default function StaffDashboard() {
-  const { t } = useTranslate();
   const stats = [
-    { label: 'ĐƠN THUÊ HÔM NAY', value: '5', icon: '📋', color: '#4f46e5' },
-    { label: 'CHỜ TRẢ ĐỒ', value: '12', icon: '📦', color: '#059669' },
-    { label: 'ĐẶT LỊCH THỬ ĐỒ', value: '8', icon: '📅', color: '#d97706' },
-    { label: 'THÔNG BÁO MỚI', value: '3', icon: '🔔', color: '#dc2626' },
+    { label: 'ĐƠN THUÊ HÔM NAY', value: '5', icon: 'DT', color: '#4f46e5' },
+    { label: 'CHỜ TRẢ ĐỒ', value: '12', icon: 'TR', color: '#059669' },
+    { label: 'ĐẶT LỊCH THỬ ĐỒ', value: '8', icon: 'LT', color: '#d97706' },
+    { label: 'THÔNG BÁO MỚI', value: '3', icon: 'TB', color: '#dc2626' },
   ];
 
   const todayTasks = [
-    { label: 'đơn cần trả hôm nay', value: 5, icon: '↩️', color: '#4f46e5' },
-    { label: 'lịch thử lúc 14:00', value: 3, icon: '👗', color: '#db2777' },
-    { label: 'đơn quá hạn', value: 2, icon: '⚠️', color: '#f59e0b' },
+    { label: 'đơn cần trả hôm nay', value: 5, icon: 'RT', color: '#4f46e5' },
+    { label: 'lịch thử lúc 14:00', value: 3, icon: 'FT', color: '#db2777' },
+    { label: 'đơn quá hạn', value: 2, icon: 'AL', color: '#f59e0b' },
   ];
 
   const recentOrders = [
@@ -31,7 +29,7 @@ export default function StaffDashboard() {
   return (
     <>
       <div className="mb-8">
-        <h3 className="mb-4 text-sm font-semibold uppercase text-gray-600">{t('staff.todayTasks')}</h3>
+        <h3 className="mb-4 text-sm font-semibold uppercase text-gray-600">Công việc hôm nay</h3>
         <div className="grid grid-cols-3 gap-4">
           {todayTasks.map((task, index) => (
             <div key={index} className="rounded-xl border border-gray-200 bg-white p-6 text-center">
@@ -45,13 +43,13 @@ export default function StaffDashboard() {
       </div>
 
       <div className="mb-8">
-        <h3 className="mb-4 text-sm font-semibold uppercase text-gray-600">{t('staff.overview')}</h3>
+        <h3 className="mb-4 text-sm font-semibold uppercase text-gray-600">Tổng quan</h3>
         <div className="grid grid-cols-4 gap-4">
           {stats.map((item) => (
             <div key={item.label} className="rounded-xl border border-gray-200 border-l-4 bg-white p-6" style={{ borderLeftColor: item.color }}>
               <div className="mb-1 text-3xl font-bold text-gray-900">{item.value}</div>
               <div className="text-xs font-semibold uppercase text-gray-600">{item.label}</div>
-              <span className="mt-3 block text-2xl">{item.icon}</span>
+              <span className="mt-3 block text-base font-semibold text-gray-700">{item.icon}</span>
             </div>
           ))}
         </div>
@@ -60,8 +58,8 @@ export default function StaffDashboard() {
       <div className="grid grid-cols-2 gap-8">
         <div className="rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-            <h3 className="font-semibold">{t('staff.recentOrders')}</h3>
-            <Link to="/staff/rent-orders" className="text-sm text-indigo-600 hover:underline">{t('staff.viewAll')}</Link>
+            <h3 className="font-semibold">Đơn gần nhất</h3>
+            <Link to="/staff/rent-orders" className="text-sm text-indigo-600 hover:underline">Xem tất cả</Link>
           </div>
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50">
@@ -92,8 +90,8 @@ export default function StaffDashboard() {
         <div className="rounded-xl border border-gray-200 bg-white">
           <div className="border-b border-gray-200 px-6 py-4">
             <div className="flex items-center gap-2">
-              <span className="text-lg">⚠️</span>
-              <h3 className="font-semibold">{t('staff.recentNotifications')}</h3>
+              <span className="text-lg">!</span>
+              <h3 className="font-semibold">Thông báo gần đây</h3>
             </div>
           </div>
           <div className="max-h-64 divide-y divide-gray-200 overflow-y-auto">
@@ -113,4 +111,3 @@ export default function StaffDashboard() {
     </>
   );
 }
-

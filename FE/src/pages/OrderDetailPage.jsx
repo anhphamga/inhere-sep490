@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CreditCard, MapPin, Package, ReceiptText, Truck, UserRound } from 'lucide-react'
 import Header from '../components/common/Header'
+import ReviewForm from '../components/review/ReviewForm'
 import { useAuth } from '../contexts/AuthContext'
 import { getMySaleOrderByIdApi } from '../services/order.service'
+import { createReviewApi, updateReviewApi } from '../services/review.service'
 
 const statusClassMap = {
   PendingConfirmation: 'bg-amber-50 text-amber-700 ring-amber-200',
@@ -58,6 +60,10 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
+  const [reviewModalOpen, setReviewModalOpen] = useState(false)
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
+  const [activeReviewItem, setActiveReviewItem] = useState(null)
 
   const fetchOrderDetail = useCallback(async () => {
     try {
@@ -94,6 +100,54 @@ export default function OrderDetailPage() {
     return Number(order.voucherSnapshot?.originalSubtotal || 0)
       || (order.items || []).reduce((sum, item) => sum + Number(item.unitPrice || 0) * Number(item.quantity || 1), 0)
   }, [order])
+
+  const showToast = (message) => {
+    setToast(message)
+    setTimeout(() => setToast(''), 2200)
+  }
+
+  const canReviewOrder = useMemo(() => {
+    return ['Completed', 'Returned', 'Refunded'].includes(String(order?.status || ''))
+  }, [order?.status])
+
+  const openReviewModal = (item) => {
+    setActiveReviewItem(item)
+    setReviewModalOpen(true)
+  }
+
+  const closeReviewModal = () => {
+    setReviewModalOpen(false)
+    setActiveReviewItem(null)
+  }
+
+  const handleSubmitReview = async (payload) => {
+    try {
+      setReviewSubmitting(true)
+      if (payload?.reviewId) {
+        await updateReviewApi(payload.reviewId, {
+          rating: payload.rating,
+          comment: payload.comment,
+          images: payload.images,
+        })
+      } else {
+        await createReviewApi({
+          productId: payload.productId,
+          orderId: payload.orderId,
+          rating: payload.rating,
+          comment: payload.comment,
+          images: payload.images,
+        })
+      }
+
+      showToast('Gửi đánh giá thành công')
+      closeReviewModal()
+      await fetchOrderDetail()
+    } catch (submitError) {
+      showToast(submitError?.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại')
+    } finally {
+      setReviewSubmitting(false)
+    }
+  }
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -204,7 +258,40 @@ export default function OrderDetailPage() {
                               {item.size || 'FREE SIZE'} / {item.color || 'Mặc định'}
                             </p>
                             {item.note ? <p className="mt-2 text-xs text-slate-500">Ghi chú: {item.note}</p> : null}
-                            <p className="mt-3 text-xs font-medium text-slate-700">Bấm để xem sản phẩm và mua lại</p>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {item?.review?.isReviewed ? (
+                                <>
+                                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                    Đã đánh giá
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      openReviewModal(item)
+                                    }}
+                                    className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                                  >
+                                    Xem đánh giá
+                                  </button>
+                                </>
+                              ) : canReviewOrder ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    openReviewModal(item)
+                                  }}
+                                  className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                                >
+                                  Đánh giá sản phẩm
+                                </button>
+                              ) : (
+                                <span className="text-xs text-slate-500">
+                                  Chỉ có thể đánh giá sau khi đơn hàng đã giao thành công
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-semibold text-slate-900">{formatCurrency(item.unitPrice)}</p>
@@ -297,6 +384,27 @@ export default function OrderDetailPage() {
           </aside>
         </div>
       </main>
+
+      {toast ? (
+        <div className="fixed right-4 top-20 z-50 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
+          {toast}
+        </div>
+      ) : null}
+
+      <ReviewForm
+        open={reviewModalOpen}
+        onClose={closeReviewModal}
+        product={activeReviewItem?.productId}
+        orderId={order?._id}
+        initialReview={activeReviewItem?.review?.isReviewed ? {
+          _id: activeReviewItem.review.reviewId,
+          rating: activeReviewItem.review.rating,
+          comment: activeReviewItem.review.comment,
+          images: activeReviewItem.review.images,
+        } : null}
+        submitting={reviewSubmitting}
+        onSubmit={handleSubmitReview}
+      />
     </div>
   )
 }

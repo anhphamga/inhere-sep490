@@ -15,6 +15,7 @@ const RentOrder = require('./RentOrder.model');
 const RentOrderItem = require('./RentOrderItem.model');
 const Role = require('./Role.model');
 const ReturnRecord = require('./ReturnRecord.model');
+const Review = require('./Review.model');
 const SaleOrder = require('./SaleOrder.model');
 const SaleOrderItem = require('./SaleOrderItem.model');
 const Shift = require('./Shift.model');
@@ -41,6 +42,7 @@ const syncModelIndexes = async () => {
         RentOrderItem.syncIndexes(),
         Role.syncIndexes(),
         ReturnRecord.syncIndexes(),
+        Review.syncIndexes(),
         SaleOrder.syncIndexes(),
         SaleOrderItem.syncIndexes(),
         Shift.syncIndexes(),
@@ -68,6 +70,7 @@ module.exports = {
     RentOrderItem,
     Role,
     ReturnRecord,
+    Review,
     SaleOrder,
     SaleOrderItem,
     Shift,

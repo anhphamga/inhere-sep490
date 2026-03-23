@@ -4,12 +4,14 @@ import StaffLayout from './StaffLayout';
 import StaffDashboard from './StaffDashboard';
 import StaffRentOrders from './StaffRentOrders';
 import StaffShiftRegistration from './StaffShiftRegistration';
+import StaffReviewsPage from './StaffReviewsPage';
 import OrdersList from '../../components/owner/OrdersList';
 
 const STAFF_PLACEHOLDER_TITLES = {
   'rent-order': 'staff.createRentOrder',
   'sale-order': 'staff.createSaleOrder',
   shifts: 'staff.shiftRegistration',
+  reviews: 'staff.reviewManagement',
   fitting: 'staff.fittingBookings',
   return: 'staff.returns',
 };
@@ -36,6 +38,10 @@ const StaffPage = () => {
 
     if (subPath === 'shifts') {
       return <StaffShiftRegistration />;
+    }
+
+    if (subPath === 'reviews') {
+      return <StaffReviewsPage />;
     }
 
     return (

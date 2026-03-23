@@ -444,6 +444,8 @@ const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
     depositAmount: prices.depositAmount,
     buyoutValue: prices.buyoutValue,
     likeCount: product.likeCount || 0,
+    averageRating: Math.max(Number(product.averageRating || 0), 0),
+    reviewCount: Math.max(Number(product.reviewCount || 0), 0),
     totalQuantity: quantity.totalQuantity || 0,
     availableQuantity: quantity.availableQuantity || 0,
     createdAt: product.createdAt,
