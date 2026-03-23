@@ -26,6 +26,7 @@ const conditionLevelOptions = [
 const lifecycleStatusOptions = [
   { value: '', label: 'Tất cả trạng thái' },
   { value: 'Available', label: 'Có sẵn' },
+  { value: 'Reserved', label: 'Đang giữ đồ' },
   { value: 'Rented', label: 'Đang thuê' },
   { value: 'Washing', label: 'Đang giặt' },
   { value: 'Repair', label: 'Đang sửa' },
@@ -41,6 +42,7 @@ const conditionLevelColors = {
 
 const lifecycleStatusColors = {
   Available: 'bg-green-100 text-green-800',
+  Reserved: 'bg-amber-100 text-amber-800',
   Rented: 'bg-purple-100 text-purple-800',
   Washing: 'bg-cyan-100 text-cyan-800',
   Repair: 'bg-orange-100 text-orange-800',
@@ -324,6 +326,7 @@ export default function OwnerInventoryScreen() {
                           className="px-2 py-1 border border-gray-300 rounded text-sm"
                         >
                           <option value="Available">Có sẵn</option>
+                          <option value="Reserved">Đang giữ đồ</option>
                           <option value="Rented">Đang thuê</option>
                           <option value="Washing">Đang giặt</option>
                           <option value="Repair">Đang sửa</option>
@@ -332,6 +335,7 @@ export default function OwnerInventoryScreen() {
                       ) : (
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${lifecycleStatusColors[instance.lifecycleStatus] || 'bg-gray-100'}`}>
                           {instance.lifecycleStatus === 'Available' ? 'Có sẵn' :
+                           instance.lifecycleStatus === 'Reserved' ? 'Đang giữ đồ' :
                            instance.lifecycleStatus === 'Rented' ? 'Đang thuê' :
                            instance.lifecycleStatus === 'Washing' ? 'Đang giặt' :
                            instance.lifecycleStatus === 'Repair' ? 'Đang sửa' :

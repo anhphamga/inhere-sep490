@@ -19,7 +19,7 @@ export default function AdminLayout() {
     return mockCurrentUserByRole[user?.role] || user;
   }, [user]);
 
-  if (!['owner', 'staff', 'manager'].includes(resolvedUser?.role)) {
+  if (!['owner', 'staff'].includes(resolvedUser?.role)) {
     return <Navigate to="/" replace />;
   }
 

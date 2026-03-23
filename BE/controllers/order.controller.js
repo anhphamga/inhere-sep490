@@ -27,7 +27,7 @@ const {
 
 const normalizePaymentMethod = (value = '') => {
   if (value === 'BankTransfer') return 'BankTransfer';
-  if (value === 'Online') return 'Online';
+  if (value === 'Online' || value === 'PayOS') return 'Online';
   return 'COD';
 };
 
@@ -136,11 +136,15 @@ const createSaleOrderWithItems = async ({
   discountAmount = 0,
   session = null,
 }) => {
+  const normalizedMethod = normalizePaymentMethod(paymentMethod);
+  // Đơn thanh toán online (PayOS): cần xác nhận thanh toán trước khi chuyển sang PendingConfirmation
+  const initialStatus = normalizedMethod === 'Online' ? 'PendingPayment' : 'PendingConfirmation';
+
   const [saleOrder] = await SaleOrder.create([{
     customerId,
     staffId: null,
-    status: 'PendingConfirmation',
-    paymentMethod: normalizePaymentMethod(paymentMethod),
+    status: initialStatus,
+    paymentMethod: normalizedMethod,
     totalAmount,
     shippingFee,
     shippingAddress,

@@ -41,11 +41,11 @@ const rentOrderItemSchema = new mongoose.Schema({
   },
   size: {
     type: String,
-    required: true
+    default: ''
   },
   color: {
     type: String,
-    required: true
+    default: ''
   },
   note: {
     type: String,
