@@ -24,6 +24,9 @@ export const completeWashingRequest = (orderId, payload) => axiosClient.put(`/re
 // Xác nhận đơn thuê (Staff)
 export const confirmRentOrderRequest = (id) => axiosClient.put(`/rent-orders/${id}/confirm`)
 
+// Chuyển sang chờ lấy đồ (Staff) - Confirmed → WaitingPickup
+export const markWaitingPickupRequest = (id) => axiosClient.put(`/rent-orders/${id}/waiting-pickup`)
+
 // Xác nhận khách lấy đồ (Staff)
 export const confirmPickupRequest = (id, payload) => axiosClient.put(`/rent-orders/${id}/pickup`, payload)
 
@@ -38,3 +41,12 @@ export const finalizeRentOrderRequest = (id, payload) => axiosClient.put(`/rent-
 
 // Xác nhận hoàn tất đơn (Staff) - xử lý tiền cọc và chuyển sang Completed
 export const completeRentOrderRequest = (id, payload) => axiosClient.put(`/rent-orders/${id}/complete`, payload)
+
+// Tìm kiếm khách hàng theo SĐT/tên/email (Staff walk-in)
+export const searchCustomersRequest = (q) => axiosClient.get('/rent-orders/customers/search', { params: { q } })
+
+// Tạo đơn thuê tại chỗ cho khách walk-in (Staff)
+export const createWalkInOrderRequest = (payload) => axiosClient.post('/rent-orders/walk-in', payload)
+
+// Tạo hồ sơ khách nhanh cho khách chưa có tài khoản (Staff walk-in)
+export const createGuestCustomerRequest = (payload) => axiosClient.post('/rent-orders/customers/guest', payload)

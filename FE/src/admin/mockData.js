@@ -45,30 +45,6 @@ export const mockCurrentUserByRole = {
       'customers.contact.read_masked',
     ],
   },
-  manager: {
-    id: 'u-manager-1',
-    name: 'Khanh Vo',
-    email: 'manager@inhere.vn',
-    role: 'manager',
-    avatarUrl: '',
-    permissions: [
-      'orders_rent.order.list',
-      'orders_rent.order.confirm',
-      'orders_rent.pickup.complete',
-      'orders_rent.return.process',
-      'orders_rent.return.finalize',
-      'orders_rent.order.finalize',
-      'orders_rent.penalty.apply',
-      'orders_rent.no_show.mark',
-      'orders_rent.washing.complete',
-      'inventory.item.read',
-      'inventory.item.update',
-      'inventory.item.update_condition',
-      'inventory.item.update_lifecycle',
-      'analytics.revenue.read',
-      'customers.contact.read_full',
-    ],
-  },
 };
 
 export const dashboardStats = {

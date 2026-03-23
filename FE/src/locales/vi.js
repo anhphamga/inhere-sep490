@@ -49,7 +49,6 @@ export const vi = {
     adminSuite: 'Khu quản trị',
     ownerRole: 'Chủ cửa hàng',
     staffRole: 'Nhân viên',
-    managerRole: 'Quản lý',
   },
   header: {
     controlCenter: 'Trung tâm điều hành thuê đồ',

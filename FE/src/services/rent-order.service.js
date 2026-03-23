@@ -5,13 +5,17 @@ import {
   confirmPickupRequest,
   confirmRentOrderRequest,
   confirmReturnRequest,
+  createGuestCustomerRequest,
   createRentOrderRequest,
+  createWalkInOrderRequest,
   finalizeRentOrderRequest,
   getAllRentOrdersRequest,
   getMyRentOrdersRequest,
   getRentOrderByIdRequest,
   markNoShowRequest,
-  payDepositRequest
+  markWaitingPickupRequest,
+  payDepositRequest,
+  searchCustomersRequest
 } from '../api/rent-order.api'
 
 export const createRentOrderApi = async (payload) => {
@@ -49,6 +53,11 @@ export const confirmRentOrderApi = async (id) => {
   return response.data
 }
 
+export const markWaitingPickupApi = async (id) => {
+  const response = await markWaitingPickupRequest(id)
+  return response.data
+}
+
 export const confirmPickupApi = async (id, payload = {}) => {
   const response = await confirmPickupRequest(id, payload)
   return response.data
@@ -76,5 +85,20 @@ export const finalizeRentOrderApi = async (id, payload = {}) => {
 
 export const completeRentOrderApi = async (id, payload = {}) => {
   const response = await completeRentOrderRequest(id, payload)
+  return response.data
+}
+
+export const searchCustomersApi = async (q) => {
+  const response = await searchCustomersRequest(q)
+  return response.data
+}
+
+export const createWalkInOrderApi = async (payload) => {
+  const response = await createWalkInOrderRequest(payload)
+  return response.data
+}
+
+export const createGuestCustomerApi = async (payload) => {
+  const response = await createGuestCustomerRequest(payload)
   return response.data
 }

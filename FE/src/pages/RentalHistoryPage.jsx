@@ -134,7 +134,9 @@ export default function RentalHistoryPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <p className="text-sm text-gray-500">
-                      Mã đơn: <span className="font-mono">{order._id.slice(-8)}</span>
+                      Mã đơn: <span className="font-mono font-semibold text-slate-800">
+                        {order.orderCode || `#${String(order._id || '').slice(-8).toUpperCase()}`}
+                      </span>
                     </p>
                     <p className="text-sm text-gray-500">
                       Ngày tạo: {new Date(order.createdAt).toLocaleDateString('vi-VN')}

@@ -286,7 +286,9 @@ export default function RentalDetailPage() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Mã đơn</p>
-                  <p className="font-mono font-medium">{order._id}</p>
+                  <p className="font-mono font-medium">
+                    {order.orderCode || `#${String(order._id || '').slice(-8).toUpperCase()}`}
+                  </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Ngày tạo</p>
@@ -396,10 +398,16 @@ export default function RentalDetailPage() {
               </div>
 
               {/* Phí phát sinh */}
-              {(order.washingFee > 0 || order.damageFee > 0) && (
+              {(order.washingFee > 0 || order.damageFee > 0 || order.lateFee > 0 || order.compensationFee > 0) && (
                 <div className="border-b pb-4 mb-4">
                   <h3 className="text-sm font-medium text-gray-700 mb-2">Phí phát sinh</h3>
                   <div className="space-y-1">
+                    {order.lateFee > 0 && (
+                      <div className="flex justify-between text-yellow-600">
+                        <span>Trễ hạn ({order.lateDays || 0} ngày)</span>
+                        <span>{order.lateFee?.toLocaleString('vi-VN')}đ</span>
+                      </div>
+                    )}
                     {order.washingFee > 0 && (
                       <div className="flex justify-between text-orange-600">
                         <span>Giặt</span>
@@ -412,6 +420,12 @@ export default function RentalDetailPage() {
                         <span>{order.damageFee?.toLocaleString('vi-VN')}đ</span>
                       </div>
                     )}
+                    {order.compensationFee > 0 && (
+                      <div className="flex justify-between text-red-700">
+                        <span>Bồi thường</span>
+                        <span>{order.compensationFee?.toLocaleString('vi-VN')}đ</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -421,7 +435,7 @@ export default function RentalDetailPage() {
                 <div className="flex justify-between font-semibold text-lg">
                   <span>Tổng cần thanh toán</span>
                   <span className="text-pink-600">
-                    {((order.depositAmount || 0) + (order.washingFee || 0) + (order.damageFee || 0)).toLocaleString('vi-VN')}đ
+                    {((order.depositAmount || 0) + (order.lateFee || 0) + (order.washingFee || 0) + (order.damageFee || 0) + (order.compensationFee || 0)).toLocaleString('vi-VN')}đ
                   </span>
                 </div>
               </div>
