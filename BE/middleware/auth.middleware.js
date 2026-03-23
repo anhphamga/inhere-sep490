@@ -99,12 +99,17 @@ const authorizeRoleLevel = (minimumRole) => {
 const authorizeWithCondition = (permission, conditionFn) => {
   return async (req, res, next) => {
     if (!req.user || !hasPermission(req.access, permission)) {
-      return forbidden(res, 'Forbidden - missing permission');
+      return forbidden(res, 'Bạn không có quyền thực hiện thao tác này');
     }
 
-    const allowed = await conditionFn(req, req.user, req.access);
-    if (!allowed) {
-      return forbidden(res, 'Forbidden - condition rejected');
+    try {
+      const allowed = await conditionFn(req, req.user, req.access);
+      if (!allowed) {
+        return forbidden(res, 'Bạn không có quyền thao tác đơn này');
+      }
+    } catch (conditionError) {
+      // conditionFn có thể throw Error với message mô tả lý do cụ thể
+      return forbidden(res, conditionError.message || 'Bạn không có quyền thao tác đơn này');
     }
 
     return next();

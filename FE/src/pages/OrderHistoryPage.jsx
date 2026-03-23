@@ -308,6 +308,12 @@ function getRentActions(order) {
   return Array.from(new Set(actions))
 }
 
+function displayCode(order) {
+  if (order.orderCode) return order.orderCode
+  const raw = String(order.id || order._id || '')
+  return raw ? `#${raw.slice(-8).toUpperCase()}` : '--'
+}
+
 function normalizeBuyOrders(orders = []) {
   return orders.map((order) => {
     const shippingFee = Number(order.shippingFee || 0)
@@ -316,6 +322,7 @@ function normalizeBuyOrders(orders = []) {
 
     return {
       id: order._id,
+      orderCode: order.orderCode || null,
       type: 'buy',
       rawStatus: order.status,
       status: mapBuyStatus(order.status),
@@ -354,6 +361,7 @@ function normalizeRentOrders(orders = []) {
 
     return {
       id: order._id,
+      orderCode: order.orderCode || null,
       type: 'rent',
       rawStatus: order.status,
       status: mapRentStatus(order.status),
@@ -615,7 +623,7 @@ function OrderCard({ order }) {
             <div className="grid gap-3 md:grid-cols-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mã đơn</p>
-                <p className="mt-1 text-lg font-semibold text-slate-900">{order.id}</p>
+                <p className="mt-1 font-mono text-lg font-semibold text-slate-900">{displayCode(order)}</p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Ngày tạo đơn</p>
@@ -780,7 +788,13 @@ export default function OrderHistoryPage() {
     return orders.filter((order) => {
       const matchesTab = activeTab === 'all' || order.type === activeTab
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter
-      const matchesKeyword = !keyword || [order.id, ...order.items.map((item) => item.name)]
+      const matchesKeyword = !keyword || [
+        order.orderCode,
+        order.id,
+        displayCode(order),
+        ...order.items.map((item) => item.name),
+      ]
+        .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(keyword)

@@ -37,6 +37,7 @@ import BuyCheckoutPage from '../pages/BuyCheckoutPage'
 import CartPage from '../pages/CartPage'
 import OrderHistoryPage from '../pages/OrderHistoryPage'
 import OrderDetailPage from '../pages/OrderDetailPage'
+import PaymentResultPage from '../pages/PaymentResultPage'
 
 const AppRoutes = () => {
     return (
@@ -57,6 +58,7 @@ const AppRoutes = () => {
             <Route path="/rental/checkout" element={<RentalCheckoutPage />} />
             <Route path="/rental/history" element={<Navigate to="/orders/history" replace />} />
             <Route path="/rental/:id" element={<RentalDetailPage />} />
+            <Route path="/payment-result" element={<PaymentResultPage />} />
 
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />

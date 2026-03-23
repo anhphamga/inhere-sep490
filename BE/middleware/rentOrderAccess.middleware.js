@@ -1,5 +1,4 @@
 const RentOrder = require('../model/RentOrder.model');
-const Shift = require('../model/Shift.model');
 
 const loadRentOrderAccessContext = async (req, res, next) => {
   try {
@@ -17,17 +16,7 @@ const loadRentOrderAccessContext = async (req, res, next) => {
     }
 
     req.order = order;
-
-    const now = new Date();
-    const activeShift = await Shift.findOne({
-      staffIds: req.user?.id,
-      startAt: { $lte: now },
-      endAt: { $gte: now },
-    }).lean();
-
-    req.accessContext = {
-      activeShift,
-    };
+    req.accessContext = {};
 
     return next();
   } catch (error) {

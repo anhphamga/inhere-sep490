@@ -23,6 +23,7 @@ const orderRoutes = require('./order.routes');
 const voucherRoutes = require('./voucher.routes');
 const reviewRoutes = require('./review.routes');
 const chatbotRoutes = require('../modules/chatbot/routes/chatbot.routes');
+const paymentRoutes = require('./payment.routes');
 
 router.use('/users', userRoutes);
 router.use('/auth', authRoutes);
@@ -41,6 +42,7 @@ router.use('/orders', orderRoutes);
 router.use('/vouchers', voucherRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/chatbot', chatbotRoutes);
+router.use('/payments', paymentRoutes);
 router.use('/vouchers', voucherRoutes);
 
 module.exports = router;

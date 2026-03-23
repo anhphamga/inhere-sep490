@@ -160,7 +160,8 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
     };
 
     const urlToFile = async (url, filename) => {
-        const response = await fetch(url);
+        const proxyUrl = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:9000/api"}/virtual-try-on/proxy-image?url=${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl);
 
         if (!response.ok) {
             return null;

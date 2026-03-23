@@ -1,4 +1,4 @@
-﻿import { createElement, useEffect, useMemo, useState } from 'react'
+import { createElement, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Lock, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Trash2, User, CreditCard } from 'lucide-react'
 import Header from '../components/common/Header'
@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useRentalCart } from '../contexts/RentalCartContext'
 import { useBuyCart } from '../contexts/BuyCartContext'
 import { createRentOrderApi, payDepositApi } from '../services/rent-order.service'
+import { createDepositPaymentLinkApi, createSalePaymentLinkApi } from '../services/payment.service'
 import { checkoutApi, guestCheckoutApi } from '../services/order.service'
 import { getMyVouchersApi, validateVoucherApi } from '../services/voucher.service'
 import { ADDRESS_DATA } from '../constants/addressData'
@@ -16,8 +17,8 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const ADDRESS_HISTORY_KEY = 'inhere_checkout_address_history'
 
 const PAYMENT_OPTIONS = [
-  { value: 'COD', title: 'Thanh toán khi nhận hàng', description: 'Phù hợp khi bạn muốn kiểm tra đơn trước khi thanh toán.' },
-  { value: 'BankTransfer', title: 'Chuyển khoản', description: 'Thuận tiện cho đơn giao liên tỉnh và khách ở xa.' }
+  { value: 'COD', title: '🚚 Thanh toán khi nhận hàng', description: 'Phù hợp khi bạn muốn kiểm tra đơn trước khi thanh toán.' },
+  { value: 'PayOS', title: '📱 Thanh toán PayOS (QR / chuyển khoản)', description: 'Thanh toán ngay bằng mã QR hoặc chuyển khoản qua PayOS. Đơn được xác nhận tự động.' },
 ]
 
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
@@ -39,8 +40,10 @@ const getVoucherAppliesLabel = (voucher) => {
 }
 
 const calculateDays = (startDate, endDate) => {
-  if (!startDate || !endDate) return 0
-  return Math.ceil(Math.abs(new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1 || 1
+  if (!startDate || !endDate) return 1
+  const diffMs = Math.abs(new Date(endDate) - new Date(startDate))
+  if (diffMs === 0) return 1
+  return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)))
 }
 
 const buildShippingAddress = (form) =>
@@ -557,16 +560,19 @@ export default function CartPage() {
   const buildRentPayload = (idempotencyKey) => ({
     rentStartDate: rentalItems[0]?.rentStartDate,
     rentEndDate: rentalItems[rentalItems.length - 1]?.rentEndDate,
-    items: rentalItems.map((item) => ({
-      productInstanceId: item.productInstanceId,
-      productId: item.productId,
-      baseRentPrice: item.rentPrice,
-      finalPrice: item.rentPrice,
-      size: item.size,
-      color: item.color,
-      rentStartDate: item.rentStartDate,
-      rentEndDate: item.rentEndDate
-    })),
+    items: rentalItems.map((item) => {
+      const days = calculateDays(item.rentStartDate, item.rentEndDate)
+      return {
+        productInstanceId: item.productInstanceId,
+        productId: item.productId,
+        baseRentPrice: item.rentPrice,
+        finalPrice: item.rentPrice * days,
+        size: item.size,
+        color: item.color,
+        rentStartDate: item.rentStartDate,
+        rentEndDate: item.rentEndDate
+      }
+    }),
     voucherCode: rentalVoucherResult?.code || normalizeVoucherCode(rentalVoucherCode),
     depositAmount: rentalDepositAmount,
     remainingAmount: rentalRemainingAmount,
@@ -604,6 +610,13 @@ export default function CartPage() {
         const rentalResponse = await createRentOrderApi(buildRentPayload(createIdempotencyKey('rent-checkout')))
         createdRentalOrderId = rentalResponse.data?._id || null
         if (createdRentalOrderId) {
+          if (rentalPaymentMethod === 'PayOS') {
+            // Tạo link PayOS và redirect — không gọi payDepositApi
+            clearRentalCart()
+            const linkData = await createDepositPaymentLinkApi(createdRentalOrderId)
+            window.location.href = linkData.data.paymentUrl
+            return // dừng tại đây, trang sẽ redirect
+          }
           await payDepositApi(createdRentalOrderId, { method: rentalPaymentMethod })
           clearRentalCart()
         }
@@ -615,6 +628,13 @@ export default function CartPage() {
         const response = !isAuthenticated ? await guestCheckoutApi(buyPayload) : await checkoutApi(buyPayload)
         saleOrderId = response.data?.orderId || null
         clearBuyCart()
+
+        // Nếu chọn PayOS cho đơn mua → tạo link và redirect (cả guest lẫn member)
+        if (buyForm.paymentMethod === 'PayOS' && saleOrderId) {
+          const linkData = await createSalePaymentLinkApi(saleOrderId)
+          window.location.href = linkData.data.paymentUrl
+          return
+        }
         if (!isAuthenticated) setGuestVerificationSession(null)
         saveAddressHistory({
           province: buyForm.province,
@@ -823,15 +843,21 @@ export default function CartPage() {
                   </div>
 
                   <div className="mt-5 space-y-2">
-                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                      <input type="radio" name="rentalPaymentMethod" value="Cash" checked={rentalPaymentMethod === 'Cash'} onChange={(event) => setRentalPaymentMethod(event.target.value)} />
-                      Tiền mặt tại cửa hàng
+                    <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'Cash' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
+                      <input type="radio" name="rentalPaymentMethod" value="Cash" checked={rentalPaymentMethod === 'Cash'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
+                      <span className="text-slate-700">💵 Tiền mặt tại cửa hàng</span>
                     </label>
-                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                      <input type="radio" name="rentalPaymentMethod" value="Online" checked={rentalPaymentMethod === 'Online'} onChange={(event) => setRentalPaymentMethod(event.target.value)} />
-                      Chuyển khoản online
+                    <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'PayOS' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
+                      <input type="radio" name="rentalPaymentMethod" value="PayOS" checked={rentalPaymentMethod === 'PayOS'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
+                      <span className="text-slate-700">📱 Chuyển khoản QR (PayOS)</span>
+                      <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-600">Nhanh hơn</span>
                     </label>
                   </div>
+                  {rentalPaymentMethod === 'PayOS' && (
+                    <p className="mt-2 text-xs text-indigo-600 bg-indigo-50 rounded-xl px-3 py-2">
+                      Bạn sẽ được chuyển đến trang thanh toán PayOS để quét mã QR hoặc chuyển khoản. Đơn thuê sẽ được xác nhận ngay sau khi thanh toán.
+                    </p>
+                  )}
 
                   {rentalError ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{rentalError}</p> : null}
 

@@ -29,15 +29,11 @@ const orderFieldFilter = createFieldAccessMiddleware([
 
 const canOperateAssignedOrder = (req, user) => {
   const role = String(user?.role || '').toLowerCase();
-  if (['owner', 'manager'].includes(role)) {
+  if (['owner', 'staff'].includes(role)) {
     return true;
   }
 
-  if (!req.accessContext?.activeShift || !req.order) {
-    return false;
-  }
-
-  return !req.order.staffId || String(req.order.staffId) === String(user.id);
+  return false;
 };
 
 router.get(
@@ -46,6 +42,30 @@ router.get(
   authorizePermission('orders_rent.order.list'),
   orderFieldFilter,
   rentOrderController.getAllRentOrders
+);
+
+// Tìm khách hàng theo SĐT / tên / email (dành cho staff tạo đơn tại chỗ)
+router.get(
+  '/customers/search',
+  authenticate,
+  authorizeWithCondition('orders_rent.order.list', canOperateAssignedOrder),
+  rentOrderController.searchCustomers
+);
+
+// Tạo hồ sơ khách nhanh cho khách walk-in chưa có tài khoản
+router.post(
+  '/customers/guest',
+  authenticate,
+  authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
+  rentOrderController.createGuestCustomer
+);
+
+// Tạo đơn thuê tại chỗ (staff tạo thay cho khách walk-in, thu cọc trực tiếp)
+router.post(
+  '/walk-in',
+  authenticate,
+  authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
+  rentOrderController.createWalkInOrder
 );
 
 router.post('/', authenticate, rentOrderController.createRentOrder);
@@ -72,6 +92,14 @@ router.put(
 );
 
 router.put(
+  '/:id/waiting-pickup',
+  authenticate,
+  loadRentOrderAccessContext,
+  authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
+  rentOrderController.markWaitingPickup
+);
+
+router.put(
   '/:id/waiting-return',
   authenticate,
   loadRentOrderAccessContext,
@@ -85,7 +113,13 @@ router.put(
   loadRentOrderAccessContext,
   authorizeWithCondition(
     'orders_rent.return.process',
-    (req, user) => canOperateAssignedOrder(req, user) && req.order?.status === 'Renting'
+    (req, user) => {
+      if (!canOperateAssignedOrder(req, user)) return false;
+      if (!['Renting', 'WaitingReturn'].includes(req.order?.status)) {
+        throw new Error(`Không thể xử lý trả đồ khi đơn ở trạng thái "${req.order?.status}"`);
+      }
+      return true;
+    }
   ),
   rentOrderController.confirmReturn
 );
@@ -102,8 +136,7 @@ router.put(
   '/:id/finalize',
   authenticate,
   loadRentOrderAccessContext,
-  authorizeRoleLevel('manager'),
-  authorizePermission('orders_rent.order.finalize'),
+  authorizeWithCondition('orders_rent.order.finalize', canOperateAssignedOrder),
   rentOrderController.finalizeRentOrder
 );
 

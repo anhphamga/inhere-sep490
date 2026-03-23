@@ -15,7 +15,6 @@ export default function Sidebar({ user, collapsed, onToggle }) {
   const roleLabelMap = {
     owner: t('sidebar.ownerRole'),
     staff: t('sidebar.staffRole'),
-    manager: t('sidebar.managerRole'),
   };
 
   return (

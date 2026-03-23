@@ -120,7 +120,7 @@ const applyLatePenalty = (order, lateDays) => {
 };
 
 const validateReturn = async (order, returnDate = new Date()) => {
-  if (!['Renting', 'WaitingReturn'].includes(order?.status)) {
+  if (!['Renting', 'WaitingReturn', 'Late'].includes(order?.status)) {
     const error = new Error('Return can only be processed for renting orders.');
     error.statusCode = 400;
     error.code = 'INVALID_RETURN_STATUS';

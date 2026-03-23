@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const rentOrderSchema = new mongoose.Schema({
+  orderCode: {
+    type: String,
+    default: null
+  },
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -137,6 +141,14 @@ rentOrderSchema.index(
   {
     unique: true,
     partialFilterExpression: { idempotencyKey: { $type: 'string' } }
+  }
+);
+
+rentOrderSchema.index(
+  { orderCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { orderCode: { $type: 'string' } }
   }
 );
 
