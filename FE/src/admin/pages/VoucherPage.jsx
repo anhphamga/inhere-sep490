@@ -1,10 +1,10 @@
 ﻿import SectionCard from '../components/SectionCard';
 import { useTranslate } from '../../hooks/useTranslate';
 import StatusBadge from '../components/StatusBadge';
-import { mockVouchers } from '../mockData';
 
 export default function VoucherPage() {
   const { t } = useTranslate();
+  const vouchers = [];
 
   return (
     <SectionCard eyebrow={t('admin.vouchers.eyebrow')} title={t('admin.vouchers.title')}>
@@ -12,7 +12,7 @@ export default function VoucherPage() {
         <button type="button" className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{t('admin.vouchers.createVoucher')}</button>
       </div>
       <div className="grid gap-4">
-        {mockVouchers.map((voucher) => (
+        {vouchers.map((voucher) => (
           <div key={voucher.id} className="rounded-[28px] border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -32,3 +32,4 @@ export default function VoucherPage() {
     </SectionCard>
   );
 }
+

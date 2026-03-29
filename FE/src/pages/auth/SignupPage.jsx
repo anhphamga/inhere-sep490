@@ -86,11 +86,11 @@ const SignupPage = () => {
         >
           <div className="login-hero-top">
             <img src={logoImage} alt="INHERE" className="login-hero-logo" />
-            <p className="auth-showcase-badge">INHERE - HOI AN COSTUME</p>
+            <p className="auth-showcase-badge">INHERE - TRANG PHỤC HỘI AN</p>
           </div>
 
           <div className="login-hero-copy">
-            <h1>INHERE - Hội An Costume</h1>
+            <h1>INHERE - Trang phục Hội An</h1>
             <p className="login-hero-slogan">Thuê & mua trang phục truyền thống - nhận nhanh tại Hội An</p>
           </div>
 

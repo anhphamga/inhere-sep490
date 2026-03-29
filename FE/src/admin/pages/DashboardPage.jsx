@@ -1,17 +1,27 @@
-import { ArrowRight, TrendingUp } from 'lucide-react';
-import { dashboardStats } from '../mockData';
+﻿import { ArrowRight, TrendingUp } from 'lucide-react';
 import { can } from '../../utils/access-control';
 import { useTranslate } from '../../hooks/useTranslate';
 import SectionCard from '../components/SectionCard';
 import StatCard from '../components/StatCard';
 
-const formatMoney = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`;
+const formatMoney = (value) => `${Number(value || 0).toLocaleString('vi-VN')}Ä‘`;
 
 export default function DashboardPage({ user }) {
   const { t } = useTranslate();
+  const ownerStats = {
+    dailyRevenue: 0,
+    monthlyRevenue: 0,
+    totalOrders: 0,
+    activeRentals: 0,
+    topProducts: [],
+    inventoryChart: [],
+  };
+  const staffStats = {
+    todayTasks: [],
+    quickActions: [],
+  };
 
   if (user?.role === 'owner') {
-    const ownerStats = dashboardStats.owner;
     const totalInventory = ownerStats.inventoryChart.reduce((sum, item) => sum + item.value, 0);
 
     return (
@@ -69,8 +79,6 @@ export default function DashboardPage({ user }) {
     );
   }
 
-  const staffStats = dashboardStats.staff;
-
   return (
     <div className="space-y-6">
       <SectionCard
@@ -112,4 +120,5 @@ export default function DashboardPage({ user }) {
     </div>
   );
 }
+
 

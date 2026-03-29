@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+﻿import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import Header from "../../components/common/Header";
@@ -617,18 +617,48 @@ const Homepage = ({ initialSection = "" }) => {
     return hasAnyKeyword(normalized, ["vay", "dam", "dress", "gown"]);
   };
 
+  const getLikeCount = (item) => {
+    const directValue = Number(
+      item?.likeCount ??
+      item?.likes ??
+      item?.favoriteCount ??
+      item?.wishlistCount ??
+      item?.totalLikes
+    );
+    if (Number.isFinite(directValue) && directValue >= 0) {
+      return directValue;
+    }
+
+    if (Array.isArray(item?.likedBy)) {
+      return item.likedBy.length;
+    }
+
+    if (Array.isArray(item?.favorites)) {
+      return item.favorites.length;
+    }
+
+    return 0;
+  };
+
   const displayedRentProducts =
-    topRentProducts.length > 0
-      ? topRentProducts
+    (topRentProducts.length > 0 ? topRentProducts : buyProducts).length > 0
+      ? [...(topRentProducts.length > 0 ? topRentProducts : buyProducts)]
+        .map((item) => ({
+          ...item,
+          __likeCount: getLikeCount(item),
+        }))
         .filter((item) => hasRealImage(item.imageUrl))
+        .filter((item) => Number(item.baseRentPrice || 0) > 0)
+        .filter((item) => item.__likeCount > 0)
+        .sort((a, b) => b.__likeCount - a.__likeCount)
         .slice(0, HOMEPAGE_PRODUCT_LIMIT)
         .map((item) => ({
           id: item._id,
           name: item.name,
           meta:
             lang === "vi"
-              ? `${item.category} • ${item.likeCount || 0} lượt thích • ${formatCurrency(item.baseRentPrice)}/ngày`
-              : `${item.category} • ${item.likeCount || 0} likes • ${formatCurrency(item.baseRentPrice)}/day`,
+              ? `${item.category} • ${item.__likeCount} lượt yêu thích • ${formatCurrency(item.baseRentPrice)}/ngày`
+              : `${item.category} • ${item.__likeCount} likes • ${formatCurrency(item.baseRentPrice)}/day`,
           imageUrl: item.imageUrl,
         }))
       : [];

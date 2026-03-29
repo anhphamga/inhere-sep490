@@ -132,7 +132,7 @@ function EmptyState() {
           <p className="mt-3 text-slate-500">Thêm sản phẩm thuê hoặc mua để xem tổng quan đơn hàng ở một nơi.</p>
           <div className="mt-8 flex justify-center gap-3">
             <Link to="/buy" className="rounded-full bg-rose-600 px-6 py-3 font-semibold text-white">Khám phá sản phẩm</Link>
-            <Link to="/booking" className="rounded-full border border-slate-200 px-6 py-3 font-semibold text-slate-700">Đặt lịch thử đồ</Link>
+            <Link to="/buy?purpose=rent&openBooking=1" className="rounded-full border border-slate-200 px-6 py-3 font-semibold text-slate-700">Đặt lịch thử đồ</Link>
           </div>
         </div>
       </div>

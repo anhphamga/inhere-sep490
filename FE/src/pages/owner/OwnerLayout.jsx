@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BadgeCheck,
@@ -36,7 +36,7 @@ const navItems = [
   { to: '/owner/staff', labelKey: 'sidebar.staff', icon: BadgeCheck },
   { to: '/owner/shifts', labelKey: 'sidebar.shifts', icon: CalendarClock },
   { to: '/owner/orders', labelKey: 'sidebar.orders', icon: ReceiptText },
-  { to: '/owner/reviews', label: 'Quản lí đánh giá', icon: MessageSquareText },
+  { to: '/owner/reviews', label: 'Quáº£n lÃ­ Ä‘Ã¡nh giÃ¡', icon: MessageSquareText },
   { to: '/owner/promotions', labelKey: 'sidebar.vouchers', icon: Megaphone },
   { to: '/owner/membership', labelKey: 'sidebar.membership', icon: CreditCard },
   { to: '/owner/alerts', labelKey: 'sidebar.alerts', icon: Bell },
@@ -86,7 +86,7 @@ const OwnerLayout = () => {
   const handleLogout = async () => {
     if (confirm(t('owner.confirmLogout'))) {
       await logout()
-      navigate('/login')
+      navigate('/work/login?role=owner')
     }
   }
 
@@ -101,7 +101,7 @@ const OwnerLayout = () => {
   const showBackButton = isUserDetail || isProductDetail || isStaffSubView
 
   let title = currentSegment === 'reviews'
-    ? 'Quản lí đánh giá'
+    ? 'Quáº£n lÃ­ Ä‘Ã¡nh giÃ¡'
     : t(pageTitleMap[currentSegment], t('pageTitles.owner'))
   if (isUserDetail) title = t('pageTitles.userDetail')
   if (isProductDetail) title = t('pageTitles.productDetail')
@@ -202,7 +202,7 @@ const OwnerLayout = () => {
                 onClick={() => {
                   localStorage.removeItem('accessToken')
                   localStorage.removeItem('refreshToken')
-                  navigate('/login')
+                  navigate('/work/login?role=owner')
                 }}
               >
                 {t('common.logout')}
@@ -291,7 +291,7 @@ const OwnerLayout = () => {
           <div className="owner-settings-overlay" onClick={() => setSettingsOpen(false)} />
           <aside className={cn('owner-settings-drawer', appearance === 'dark' ? 'owner-settings-dark' : 'owner-settings-light')}>
             <div className="owner-settings-head">
-              <button type="button" className="owner-settings-close" onClick={() => setSettingsOpen(false)}>×</button>
+              <button type="button" className="owner-settings-close" onClick={() => setSettingsOpen(false)}>Ã—</button>
               <h3>{t('owner.settings.title')}</h3>
             </div>
 

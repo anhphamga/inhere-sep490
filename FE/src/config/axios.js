@@ -21,8 +21,14 @@ const getAccessToken = () => localStorage.getItem(ACCESS_TOKEN_KEY)
 const getRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY)
 
 const redirectToLogin = () => {
-    if (window.location.pathname !== '/login') {
-        window.location.href = '/login'
+    const path = window.location.pathname || ''
+    const target = path.startsWith('/owner')
+        ? '/work/login?role=owner'
+        : path.startsWith('/staff')
+            ? '/work/login?role=staff'
+            : '/login'
+    if (path !== target) {
+        window.location.href = target
     }
 }
 

@@ -1,14 +1,14 @@
 ﻿import SectionCard from '../components/SectionCard';
 import { useTranslate } from '../../hooks/useTranslate';
-import { mockMembershipPlans } from '../mockData';
 
 export default function MembershipPage() {
   const { t } = useTranslate();
+  const membershipPlans = [];
 
   return (
     <SectionCard eyebrow={t('admin.membership.eyebrow')} title={t('admin.membership.title')}>
       <div className="grid gap-5 lg:grid-cols-2">
-        {mockMembershipPlans.map((plan) => (
+        {membershipPlans.map((plan) => (
           <div key={plan.id} className="rounded-[28px] border border-slate-200 bg-white p-5">
             <p className="text-xl font-semibold text-slate-950">{plan.name}</p>
             <p className="mt-2 text-sm text-slate-500">{plan.perks}</p>
@@ -25,3 +25,4 @@ export default function MembershipPage() {
     </SectionCard>
   );
 }
+

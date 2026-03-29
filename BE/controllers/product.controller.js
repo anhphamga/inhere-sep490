@@ -12,6 +12,25 @@ const {
   hasLocalizedText,
 } = require('../utils/i18n');
 
+const CONDITION_LEVEL_ALIASES = {
+  Good: 'New',
+  Damaged: 'Used'
+};
+const ALLOWED_CONDITION_LEVELS = new Set(['New', 'Used']);
+const ALLOWED_CONDITION_SCORES = new Set([0, 25, 50, 100]);
+
+const normalizeConditionLevel = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const raw = String(value).trim();
+  return CONDITION_LEVEL_ALIASES[raw] || raw;
+};
+
+const normalizeConditionScore = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const score = Number(value);
+  return Number.isFinite(score) ? score : Number.NaN;
+};
+
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -555,13 +574,16 @@ const getProducts = async (req, res) => {
       ];
     }
     const allProducts = await Product.find(filter).sort({ createdAt: -1 }).lean();
-    const normalizedProducts = allProducts.map((product) => sanitizeProduct(product, {}, lang));
+    const quantityMap = await getQuantityMap(allProducts.map((product) => product._id));
+    const normalizedProducts = allProducts.map((product) =>
+      sanitizeProduct(product, quantityMap.get(String(product._id)), lang)
+    );
 
     const filteredProducts = normalizedProducts.filter((product) => {
       if (purpose === 'buy') {
         return Number(product.baseSalePrice || 0) > 0;
       }
-      if (purpose === 'fitting') {
+      if (purpose === 'fitting' || purpose === 'rent') {
         return Number(product.baseRentPrice || 0) > 0;
       }
       return true;
@@ -790,9 +812,14 @@ const getProductById = async (req, res) => {
         message: 'Product not found',
       });
     }
+    const instances = await ProductInstance.find({ productId: product._id }).lean();
+    const quantity = {
+      totalQuantity: instances.length,
+      availableQuantity: instances.filter((item) => item.lifecycleStatus === 'Available').length,
+    };
     return res.status(200).json({
       success: true,
-      data: sanitizeProduct(product, {}, lang),
+      data: sanitizeProduct(product, quantity, lang),
     });
   } catch (error) {
     return res.status(500).json({
@@ -1250,7 +1277,14 @@ const getProductInstances = async (req, res) => {
     }
 
     if (conditionLevel) {
-      filter.conditionLevel = conditionLevel;
+      const normalizedLevel = normalizeConditionLevel(conditionLevel);
+      if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        });
+      }
+      filter.conditionLevel = normalizedLevel;
     }
 
     if (lifecycleStatus) {
@@ -1364,8 +1398,26 @@ const updateProductInstance = async (req, res) => {
       });
     }
 
-    if (conditionLevel) instance.conditionLevel = conditionLevel;
-    if (conditionScore !== undefined) instance.conditionScore = conditionScore;
+    if (conditionLevel !== undefined) {
+      const normalizedLevel = normalizeConditionLevel(conditionLevel);
+      if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        });
+      }
+      instance.conditionLevel = normalizedLevel;
+    }
+    if (conditionScore !== undefined) {
+      const normalizedScore = normalizeConditionScore(conditionScore);
+      if (!ALLOWED_CONDITION_SCORES.has(normalizedScore)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Điểm tình trạng chỉ chấp nhận 0, 25, 50 hoặc 100'
+        });
+      }
+      instance.conditionScore = normalizedScore;
+    }
     if (lifecycleStatus) instance.lifecycleStatus = lifecycleStatus;
     if (currentRentPrice !== undefined) instance.currentRentPrice = currentRentPrice;
     if (currentSalePrice !== undefined) instance.currentSalePrice = currentSalePrice;
@@ -1442,9 +1494,17 @@ const createProductInstance = async (req, res) => {
       });
     }
 
+    const normalizedLevel = conditionLevel ? normalizeConditionLevel(conditionLevel) : 'New';
+    if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+      });
+    }
+
     const instance = new ProductInstance({
       productId,
-      conditionLevel: conditionLevel || 'New',
+      conditionLevel: normalizedLevel,
       conditionScore: 100,
       lifecycleStatus: 'Available',
       currentRentPrice,
@@ -1522,7 +1582,14 @@ const getAvailableInstances = async (req, res) => {
     };
 
     if (conditionLevel) {
-      filter.conditionLevel = conditionLevel;
+      const normalizedLevel = normalizeConditionLevel(conditionLevel);
+      if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        });
+      }
+      filter.conditionLevel = normalizedLevel;
     }
 
     const instances = await ProductInstance.find(filter)

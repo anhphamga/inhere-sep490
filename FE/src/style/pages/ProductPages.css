@@ -237,6 +237,11 @@
   background: #d88d2a;
 }
 
+.catalog-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .catalog-actions {
   display: flex;
   gap: 8px;

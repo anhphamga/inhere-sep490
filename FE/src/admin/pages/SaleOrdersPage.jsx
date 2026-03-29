@@ -1,15 +1,15 @@
 ﻿import SectionCard from '../components/SectionCard';
 import { useTranslate } from '../../hooks/useTranslate';
-import { mockSaleOrders } from '../mockData';
 import StatusBadge from '../components/StatusBadge';
 
 export default function SaleOrdersPage() {
   const { t } = useTranslate();
+  const saleOrders = [];
 
   return (
     <SectionCard eyebrow={t('admin.saleOrders.eyebrow')} title={t('admin.saleOrders.title')}>
       <div className="grid gap-4">
-        {mockSaleOrders.map((order) => (
+        {saleOrders.map((order) => (
           <div key={order.id} className="flex flex-col justify-between gap-4 rounded-[28px] border border-slate-200 bg-white p-5 md:flex-row md:items-center">
             <div>
               <p className="text-lg font-semibold text-slate-950">{order.id}</p>
@@ -25,3 +25,4 @@ export default function SaleOrdersPage() {
     </SectionCard>
   );
 }
+

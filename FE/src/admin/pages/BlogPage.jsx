@@ -1,15 +1,15 @@
 ﻿import SectionCard from '../components/SectionCard';
 import { useTranslate } from '../../hooks/useTranslate';
-import { mockBlogs } from '../mockData';
 import StatusBadge from '../components/StatusBadge';
 
 export default function BlogPage() {
   const { t } = useTranslate();
+  const blogPosts = [];
 
   return (
     <SectionCard eyebrow={t('admin.blog.eyebrow')} title={t('admin.blog.title')} action={<button type="button" className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{t('admin.blog.newArticle')}</button>}>
       <div className="grid gap-4">
-        {mockBlogs.map((post) => (
+        {blogPosts.map((post) => (
           <div key={post.id} className="rounded-[28px] border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -28,3 +28,4 @@ export default function BlogPage() {
     </SectionCard>
   );
 }
+

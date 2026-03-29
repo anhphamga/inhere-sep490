@@ -15,12 +15,12 @@ import {
 } from 'lucide-react'
 import axiosClient from '../../config/axios'
 
+const conditionScoreOptions = [0, 25, 50, 100]
+
 const conditionLevelOptions = [
   { value: '', label: 'Tất cả tình trạng' },
   { value: 'New', label: 'Mới' },
-  { value: 'Good', label: 'Tốt' },
   { value: 'Used', label: 'Đã sử dụng' },
-  { value: 'Damaged', label: 'Hư hỏng' }
 ]
 
 const lifecycleStatusOptions = [
@@ -35,9 +35,7 @@ const lifecycleStatusOptions = [
 
 const conditionLevelColors = {
   New: 'bg-green-100 text-green-800',
-  Good: 'bg-blue-100 text-blue-800',
   Used: 'bg-yellow-100 text-yellow-800',
-  Damaged: 'bg-red-100 text-red-800'
 }
 
 const lifecycleStatusColors = {
@@ -111,10 +109,19 @@ export default function OwnerInventoryScreen() {
 
   // Handle edit
   const handleEdit = (instance) => {
+    const normalizedConditionLevel = instance.conditionLevel === 'New' || instance.conditionLevel === 'Used'
+      ? instance.conditionLevel
+      : instance.conditionLevel === 'Good'
+        ? 'New'
+        : 'Used'
+    const normalizedConditionScore = conditionScoreOptions.includes(instance.conditionScore)
+      ? instance.conditionScore
+      : 100
+
     setEditingId(instance._id)
     setEditForm({
-      conditionLevel: instance.conditionLevel,
-      conditionScore: instance.conditionScore,
+      conditionLevel: normalizedConditionLevel,
+      conditionScore: normalizedConditionScore,
       lifecycleStatus: instance.lifecycleStatus,
       currentRentPrice: instance.currentRentPrice,
       currentSalePrice: instance.currentSalePrice,
@@ -291,31 +298,27 @@ export default function OwnerInventoryScreen() {
                           className="px-2 py-1 border border-gray-300 rounded text-sm"
                         >
                           <option value="New">Mới</option>
-                          <option value="Good">Tốt</option>
                           <option value="Used">Đã sử dụng</option>
-                          <option value="Damaged">Hư hỏng</option>
                         </select>
                       ) : (
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${conditionLevelColors[instance.conditionLevel] || 'bg-gray-100'}`}>
-                          {instance.conditionLevel === 'New' ? 'Mới' :
-                           instance.conditionLevel === 'Good' ? 'Tốt' :
-                           instance.conditionLevel === 'Used' ? 'Đã sử dụng' :
-                           instance.conditionLevel === 'Damaged' ? 'Hư hỏng' : instance.conditionLevel}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${conditionLevelColors[(instance.conditionLevel === 'New' || instance.conditionLevel === 'Used') ? instance.conditionLevel : (instance.conditionLevel === 'Good' ? 'New' : 'Used')] || 'bg-gray-100'}`}>
+                          {(instance.conditionLevel === 'New' || instance.conditionLevel === 'Good') ? 'Mới' : 'Đã sử dụng'}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {editingId === instance._id ? (
-                        <input
-                          type="number"
+                        <select
                           value={editForm.conditionScore}
                           onChange={(e) => setEditForm({ ...editForm, conditionScore: Number(e.target.value) })}
-                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
-                          min="0"
-                          max="100"
-                        />
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                        >
+                          {conditionScoreOptions.map((score) => (
+                            <option key={score} value={score}>{score}</option>
+                          ))}
+                        </select>
                       ) : (
-                        <span className="text-sm">{instance.conditionScore}/100</span>
+                        <span className="text-sm">{conditionScoreOptions.includes(instance.conditionScore) ? instance.conditionScore : 100}/100</span>
                       )}
                     </td>
                     <td className="px-4 py-3">

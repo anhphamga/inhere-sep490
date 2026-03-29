@@ -1,4 +1,4 @@
-import ColorSelector from "./ColorSelector";
+﻿import ColorSelector from "./ColorSelector";
 import SizeSelector from "./SizeSelector";
 
 export default function VariantSelector({
@@ -6,6 +6,9 @@ export default function VariantSelector({
   sizes,
   selectedColor,
   selectedSize,
+  conditionOptions = [],
+  selectedConditionKey = "",
+  onConditionChange,
   onColorChange,
   onSizeChange,
   getSwatchClass,
@@ -29,6 +32,33 @@ export default function VariantSelector({
         isDisabled={isSizeDisabled}
         isFreeSize={isFreeSize}
       />
+      {conditionOptions.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+            Tình trạng sản phẩm
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {conditionOptions.map((option) => {
+              const active = selectedConditionKey === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => onConditionChange?.(option.key)}
+                  className={`inline-flex h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                    active
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
+                  }`}
+                  aria-pressed={active}
+                >
+                  <span className="truncate">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

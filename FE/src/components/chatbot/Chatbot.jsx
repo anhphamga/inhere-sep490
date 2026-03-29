@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { sendChatMessage } from '../../api/chatbotApi'
 
@@ -37,6 +37,7 @@ const loadHistory = () => {
 
 function Chatbot() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { token } = useAuth()
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -92,6 +93,23 @@ function Chatbot() {
 
     hadTokenRef.current = hasTokenNow
   }, [token])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('openChatbot') !== '1') return
+
+    setOpen(true)
+
+    params.delete('openChatbot')
+    navigate(
+      {
+        pathname: location.pathname,
+        search: params.toString() ? `?${params.toString()}` : '',
+        hash: location.hash,
+      },
+      { replace: true }
+    )
+  }, [location.hash, location.pathname, location.search, navigate])
 
   const onSubmit = async (event) => {
     event.preventDefault()

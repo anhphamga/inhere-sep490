@@ -26,7 +26,6 @@ const LoginPage = () => {
   })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [googleSubmitting, setGoogleSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
@@ -52,7 +51,6 @@ const LoginPage = () => {
 
             try {
               setError('')
-              setGoogleSubmitting(true)
               const data = await loginWithGoogle({ idToken: response.credential })
               const fallbackPath = getRouteByRole(data.user.role)
               const enforceRoleDashboard = isDashboardRole(data.user.role)
@@ -60,8 +58,6 @@ const LoginPage = () => {
               navigate(targetPath, { replace: true })
             } catch (apiError) {
               setError(apiError?.response?.data?.message || 'Đăng nhập Google thất bại')
-            } finally {
-              setGoogleSubmitting(false)
             }
           }
         })
@@ -71,12 +67,13 @@ const LoginPage = () => {
           theme: 'outline',
           size: 'large',
           shape: 'pill',
-          text: 'continue_with',
+          text: 'signin_with',
+          locale: 'vi',
           width: 360
         })
       })
       .catch(() => {
-        setError('Không thể tải Google Sign-In')
+        setError('Không thể tải nút đăng nhập Google')
       })
 
     return () => {
@@ -158,11 +155,11 @@ const LoginPage = () => {
         >
           <div className="login-hero-top">
             <img src={logoImage} alt="INHERE" className="login-hero-logo" />
-            <p className="auth-showcase-badge">INHERE - HOI AN COSTUME</p>
+            <p className="auth-showcase-badge">INHERE - TRANG PHỤC HỘI AN</p>
           </div>
 
           <div className="login-hero-copy">
-            <h1>INHERE - Hội An Costume</h1>
+            <h1>INHERE - Trang phục Hội An</h1>
             <p className="login-hero-slogan">Thuê & mua trang phục truyền thống - nhận nhanh tại Hội An</p>
           </div>
 
@@ -230,19 +227,10 @@ const LoginPage = () => {
 
             {error && <div className="error-text">{error}</div>}
 
-            <button type="submit" disabled={submitting} className="login-submit-btn">
-              {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
-            </button>
 
-            <div className="auth-divider">
-              <span>hoặc</span>
-            </div>
 
             {googleClientId ? (
               <>
-                <button type="button" className="social-fallback-btn" disabled={googleSubmitting}>
-                  {googleSubmitting ? 'Đang xác thực Google...' : 'Tiếp tục với Google'}
-                </button>
                 <div className="google-login-wrap" ref={googleButtonRef} />
               </>
             ) : (

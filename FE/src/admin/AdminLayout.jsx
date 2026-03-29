@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import AdminHeader from './components/AdminHeader';
 import { PAGE_TITLES } from './config';
-import { mockCurrentUserByRole } from './mockData';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslate } from '../hooks/useTranslate';
 
@@ -14,10 +13,7 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [headerSearch, setHeaderSearch] = useState('');
 
-  const resolvedUser = useMemo(() => {
-    if (user?.permissions?.length || user?.access?.permissions?.length) return user;
-    return mockCurrentUserByRole[user?.role] || user;
-  }, [user]);
+  const resolvedUser = useMemo(() => user, [user]);
 
   if (!['owner', 'staff'].includes(resolvedUser?.role)) {
     return <Navigate to="/" replace />;
@@ -40,3 +36,4 @@ export default function AdminLayout() {
     </div>
   );
 }
+

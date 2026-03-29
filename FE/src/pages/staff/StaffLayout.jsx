@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -39,24 +39,25 @@ export default function StaffLayout({ children }) {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login', { replace: true });
+    navigate('/work/login?role=staff', { replace: true });
   };
 
   const sidebarMenu = [
-    { to: '/staff', label: 'Tổng quan', icon: 'DB' },
-    { to: '/staff/shifts', label: 'Đăng ký ca làm', icon: 'CL' },
-    { to: '/staff/rent-orders', label: 'Đơn thuê', icon: 'DT' },
-    { to: '/staff/reviews', label: 'Quản lí đánh giá', icon: 'DG' },
-    { to: '/staff/rent-order', label: 'Tạo đơn thuê', icon: 'TD' },
-    { to: '/staff/sale-order', label: 'Tạo đơn bán', icon: 'TB' },
-    { to: '/staff/fitting', label: 'Lịch thử đồ', icon: 'LT' },
-    { to: '/staff/return', label: 'Trả đồ', icon: 'TR' },
+    { to: '/staff', label: 'Tá»•ng quan', icon: 'DB' },
+    { to: '/staff/shifts', label: 'ÄÄƒng kÃ½ ca lÃ m', icon: 'CL' },
+    { to: '/staff/rent-orders', label: 'ÄÆ¡n thuÃª', icon: 'DT' },
+    { to: '/staff/bookings', label: 'Booking thá»­ Ä‘á»“', icon: 'BK' },
+    { to: '/staff/reviews', label: 'Quáº£n lÃ½ Ä‘Ã¡nh giÃ¡', icon: 'DG' },
+    { to: '/staff/rent-order', label: 'Táº¡o Ä‘Æ¡n thuÃª', icon: 'TD' },
+    { to: '/staff/sale-order', label: 'Táº¡o Ä‘Æ¡n bÃ¡n', icon: 'TB' },
+    { to: '/staff/fitting', label: 'Lá»‹ch thá»­ Ä‘á»“', icon: 'LT' },
+    { to: '/staff/return', label: 'Tráº£ Ä‘á»“', icon: 'TR' },
   ];
 
   const notifications = [
-    { id: 1, text: 'Khách đặt lịch thử đồ mới - 14:00 ngày 23/02', unread: true },
-    { id: 2, text: 'Đơn quá hạn - #HD005 - Khách D', unread: true },
-    { id: 3, text: 'Đơn #001 - Trả đồ trong 1 ngày', unread: false },
+    { id: 1, text: 'KhÃ¡ch Ä‘áº·t lá»‹ch thá»­ Ä‘á»“ má»›i - 14:00 ngÃ y 23/02', unread: true },
+    { id: 2, text: 'ÄÆ¡n quÃ¡ háº¡n - #HD005 - KhÃ¡ch D', unread: true },
+    { id: 3, text: 'ÄÆ¡n #001 - Tráº£ Ä‘á»“ trong 1 ngÃ y', unread: false },
   ];
 
   const unreadCount = notifications.filter((n) => n.unread).length;
@@ -65,7 +66,7 @@ export default function StaffLayout({ children }) {
     <div className="flex min-h-screen bg-white">
       <aside className="flex w-56 flex-col border-r border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-6 py-5">
-          <h1 className="text-xl font-bold text-indigo-600">INHERE Nhân sự</h1>
+          <h1 className="text-xl font-bold text-indigo-600">INHERE NhÃ¢n sá»±</h1>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-4">
@@ -74,9 +75,8 @@ export default function StaffLayout({ children }) {
               key={m.to}
               to={m.to}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition ${isActive
-                  ? 'bg-indigo-100 text-indigo-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                `flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  isActive ? 'bg-indigo-100 text-indigo-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`
               }
               end={m.to === '/staff'}
@@ -89,13 +89,15 @@ export default function StaffLayout({ children }) {
 
         <div className="space-y-2 border-t border-gray-200 p-4">
           <Link to="/profile" className="flex items-center gap-3 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50">
-            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-gray-100 text-xs font-bold">TK</span> Tài khoản
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-gray-100 text-xs font-bold">TK</span>
+            TÃ i khoáº£n
           </Link>
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-red-600 hover:bg-red-50"
           >
-            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-red-50 text-xs font-bold">OUT</span> Đăng xuất
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-red-50 text-xs font-bold">OUT</span>
+            ÄÄƒng xuáº¥t
           </button>
         </div>
       </aside>
@@ -112,11 +114,12 @@ export default function StaffLayout({ children }) {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
-                Xin chào, {user?.name || 'Nhân viên'} <span className="font-normal text-gray-600">| NHÂN VIÊN</span>
+                Xin chÃ o, {user?.name || 'NhÃ¢n viÃªn'} <span className="font-normal text-gray-600">| NHÃ‚N VIÃŠN</span>
               </h2>
               <p className="text-xs text-gray-500">{formatDate(currentTime)}</p>
             </div>
           </div>
+
           <button
             ref={notificationRef}
             onClick={() => setNotificationOpen(!notificationOpen)}
@@ -130,12 +133,9 @@ export default function StaffLayout({ children }) {
             )}
             {notificationOpen && (
               <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
-                <div className="border-b border-gray-200 p-4 font-semibold">Thông báo</div>
+                <div className="border-b border-gray-200 p-4 font-semibold">ThÃ´ng bÃ¡o</div>
                 {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`border-b border-gray-100 px-4 py-3 text-sm ${n.unread ? 'bg-indigo-50' : ''}`}
-                  >
+                  <div key={n.id} className={`border-b border-gray-100 px-4 py-3 text-sm ${n.unread ? 'bg-indigo-50' : ''}`}>
                     {n.text}
                   </div>
                 ))}
@@ -144,9 +144,7 @@ export default function StaffLayout({ children }) {
           </button>
         </header>
 
-        <main className="flex-1 overflow-auto bg-gray-50 p-8">
-          {children}
-        </main>
+        <main className="flex-1 overflow-auto bg-gray-50 p-8">{children}</main>
       </div>
     </div>
   );

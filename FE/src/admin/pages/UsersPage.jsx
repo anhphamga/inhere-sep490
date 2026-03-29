@@ -2,13 +2,13 @@
 import SectionCard from '../components/SectionCard';
 import { useTranslate } from '../../hooks/useTranslate';
 import StatusBadge from '../components/StatusBadge';
-import { mockUsers } from '../mockData';
 
 export default function UsersPage() {
   const { t } = useTranslate();
   const [roleFilter, setRoleFilter] = useState('all');
+  const [usersData] = useState([]);
 
-  const users = mockUsers.filter((user) => roleFilter === 'all' ? true : user.role === roleFilter);
+  const users = usersData.filter((user) => roleFilter === 'all' ? true : user.role === roleFilter);
 
   return (
     <SectionCard eyebrow={t('admin.users.eyebrow')} title={t('admin.users.title')}>
@@ -39,3 +39,4 @@ export default function UsersPage() {
     </SectionCard>
   );
 }
+

@@ -1,15 +1,15 @@
 ﻿import SectionCard from '../components/SectionCard';
 import { useTranslate } from '../../hooks/useTranslate';
-import { mockStaff } from '../mockData';
 
 export default function StaffManagementPage() {
   const { t } = useTranslate();
+  const staffList = [];
 
   return (
     <div className="space-y-6">
       <SectionCard eyebrow={t('admin.staffManagement.eyebrow')} title={t('admin.staffManagement.title')}>
         <div className="grid gap-4 xl:grid-cols-3">
-          {mockStaff.map((staff) => (
+          {staffList.map((staff) => (
             <div key={staff.id} className="rounded-[28px] border border-slate-200 bg-white p-5">
               <p className="text-lg font-semibold text-slate-950">{staff.name}</p>
               <p className="mt-2 text-sm text-slate-500">{staff.shift} • {staff.schedule}</p>
@@ -25,3 +25,4 @@ export default function StaffManagementPage() {
     </div>
   );
 }
+
