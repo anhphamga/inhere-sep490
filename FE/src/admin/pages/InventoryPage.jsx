@@ -1,21 +1,19 @@
 ﻿import { can } from '../../utils/access-control';
 import { useTranslate } from '../../hooks/useTranslate';
-import { mockInventory } from '../mockData';
 import SectionCard from '../components/SectionCard';
 import StatusBadge from '../components/StatusBadge';
 
-const conditionOptions = ['New', 'Good', 'Used', 'Damaged'];
+const conditionOptions = ['New', 'Used'];
 const lifecycleOptions = ['Available', 'Renting', 'Washing', 'Repair'];
 
 const conditionLabelKey = {
   New: 'admin.inventory.new',
-  Good: 'admin.inventory.good',
   Used: 'admin.inventory.used',
-  Damaged: 'admin.inventory.damaged',
 };
 
 export default function InventoryPage({ user }) {
   const { t } = useTranslate();
+  const inventoryItems = [];
   const canCondition = can(user, 'inventory.item.update_condition');
   const canLifecycle = can(user, 'inventory.item.update_lifecycle') || can(user, 'inventory.item.update');
   const canCrud = can(user, 'inventory.item.create') || can(user, 'inventory.item.delete');
@@ -35,7 +33,7 @@ export default function InventoryPage({ user }) {
               </tr>
             </thead>
             <tbody>
-              {mockInventory.map((item) => (
+              {inventoryItems.map((item) => (
                 <tr key={item.id} className="border-t border-slate-100 align-top">
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-4">
@@ -73,3 +71,4 @@ export default function InventoryPage({ user }) {
     </SectionCard>
   );
 }
+

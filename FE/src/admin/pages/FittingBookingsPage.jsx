@@ -1,15 +1,15 @@
 ﻿import SectionCard from '../components/SectionCard';
 import { useTranslate } from '../../hooks/useTranslate';
-import { mockBookings } from '../mockData';
 import StatusBadge from '../components/StatusBadge';
 
 export default function FittingBookingsPage() {
   const { t } = useTranslate();
+  const bookings = [];
 
   return (
     <SectionCard eyebrow={t('admin.fitting.eyebrow')} title={t('admin.fitting.title')}>
       <div className="grid gap-4">
-        {mockBookings.map((booking) => (
+        {bookings.map((booking) => (
           <div key={booking.id} className="rounded-[28px] border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -24,3 +24,4 @@ export default function FittingBookingsPage() {
     </SectionCard>
   );
 }
+

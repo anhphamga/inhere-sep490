@@ -1,11 +1,10 @@
-import { useDeferredValue, useMemo, useState } from 'react';
+﻿import { useDeferredValue, useMemo, useState } from 'react';
 import { CalendarDays, LayoutGrid, ListFilter, Rows3, Search } from 'lucide-react';
 import { useTranslate } from '../../hooks/useTranslate';
 import SectionCard from '../components/SectionCard';
 import OrderTable from '../components/OrderTable';
 import OrderCard from '../components/OrderCard';
 import StatusBadge from '../components/StatusBadge';
-import { mockRentOrders } from '../mockData';
 import { ORDER_STATUS_OPTIONS } from '../config';
 
 const statusKeyMap = {
@@ -26,11 +25,12 @@ export default function RentOrdersPage({ user }) {
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState(mockRentOrders[0]);
+  const [orders] = useState([]);
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const deferredSearch = useDeferredValue(search);
 
   const filteredOrders = useMemo(() => {
-    return mockRentOrders.filter((order) => {
+    return orders.filter((order) => {
       const matchesStatus = status === 'All' ? true : order.status === status;
       const matchesSearch = deferredSearch
         ? order.id.toLowerCase().includes(deferredSearch.toLowerCase())
@@ -39,7 +39,7 @@ export default function RentOrdersPage({ user }) {
       const matchesTo = toDate ? order.rentEndDate <= toDate : true;
       return matchesStatus && matchesSearch && matchesFrom && matchesTo;
     });
-  }, [deferredSearch, fromDate, status, toDate]);
+  }, [deferredSearch, fromDate, orders, status, toDate]);
 
   return (
     <div className="space-y-6">
@@ -99,7 +99,7 @@ export default function RentOrdersPage({ user }) {
             <div className="rounded-3xl bg-slate-50 p-5">
               <p className="text-xs uppercase tracking-[0.22em] text-slate-400">{t('admin.rentOrders.assignedStaff')}</p>
               <p className="mt-3 text-lg font-semibold text-slate-950">{selectedOrder.assignedStaff}</p>
-              <p className="mt-1 text-sm text-slate-500">{t('admin.rentOrders.remaining')}: {selectedOrder.remaining.toLocaleString('vi-VN')}đ</p>
+              <p className="mt-1 text-sm text-slate-500">{t('admin.rentOrders.remaining')}: {selectedOrder.remaining.toLocaleString('vi-VN')}Ä‘</p>
               <div className="mt-3"><StatusBadge value={selectedOrder.status} /></div>
             </div>
           </div>
@@ -108,3 +108,4 @@ export default function RentOrdersPage({ user }) {
     </div>
   );
 }
+

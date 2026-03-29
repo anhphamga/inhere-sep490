@@ -1,6 +1,7 @@
 const Alert = require('./Alert.model');
 const AuditLog = require('./AuditLog.model');
 const Blog = require('./Blog.model');
+const Booking = require('./Booking.model');
 const Category = require('./Category.model');
 const Collateral = require('./Collateral.model');
 const Deposit = require('./Deposit.model');
@@ -28,6 +29,7 @@ const syncModelIndexes = async () => {
         Alert.syncIndexes(),
         AuditLog.syncIndexes(),
         Blog.syncIndexes(),
+        Booking.syncIndexes(),
         Category.syncIndexes(),
         Collateral.syncIndexes(),
         Deposit.syncIndexes(),
@@ -56,6 +58,7 @@ module.exports = {
     Alert,
     AuditLog,
     Blog,
+    Booking,
     Category,
     Collateral,
     Deposit,

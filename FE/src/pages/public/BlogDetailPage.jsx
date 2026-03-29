@@ -179,7 +179,7 @@ export default function BlogDetailPage() {
                   Dat lich truoc de doi ngu chuan bi san size, mau sac va concept phu hop voi lich trinh cua ban.
                 </p>
                 <Link
-                  to="/booking"
+                  to="/buy?purpose=rent&openBooking=1"
                   className="mt-6 inline-flex rounded-full border border-[#b08d57] bg-[#b08d57] px-5 py-3 text-sm font-semibold text-white transition hover:brightness-95"
                 >
                   Dat lich ngay

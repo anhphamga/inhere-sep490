@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Product = require('../model/Product.model');
+const ProductInstance = require('../model/ProductInstance.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
 const GuestVerification = require('../model/GuestVerification.model');
@@ -114,6 +115,48 @@ const buildNormalizedSaleItems = (items = [], productMap = new Map()) => {
       unitPrice,
     };
   });
+};
+
+const ensureSaleStockAvailable = async (normalizedItems = []) => {
+  const requestedByProduct = normalizedItems.reduce((acc, item) => {
+    const key = String(item.productId);
+    acc[key] = (acc[key] || 0) + Number(item.quantity || 0);
+    return acc;
+  }, {});
+
+  const productIds = Object.keys(requestedByProduct);
+  if (productIds.length === 0) return;
+
+  const availableRows = await ProductInstance.aggregate([
+    {
+      $match: {
+        productId: { $in: productIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        lifecycleStatus: 'Available',
+        conditionScore: 100,
+      },
+    },
+    {
+      $group: {
+        _id: '$productId',
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const availableByProduct = availableRows.reduce((acc, row) => {
+    acc[String(row._id)] = Number(row.count || 0);
+    return acc;
+  }, {});
+
+  const outOfStockProductId = productIds.find((productId) => {
+    const requested = Number(requestedByProduct[productId] || 0);
+    const available = Number(availableByProduct[productId] || 0);
+    return requested > available;
+  });
+
+  if (outOfStockProductId) {
+    throw new Error('OUT_OF_STOCK');
+  }
 };
 
 const createSaleOrderWithItems = async ({
@@ -538,6 +581,7 @@ exports.guestCheckout = async (req, res) => {
     }
 
     const normalizedItems = buildNormalizedSaleItems(items, productMap);
+    await ensureSaleStockAvailable(normalizedItems);
 
     const subtotal = normalizedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const voucherApplication = await applyVoucherForSaleOrder({
@@ -607,9 +651,13 @@ exports.guestCheckout = async (req, res) => {
     console.error('Guest checkout error:', error);
     const message = error.message === 'INVALID_PRODUCT_DATA'
       ? 'Khong the xac thuc du lieu san pham trong gio hang.'
-      : 'Khong the tao don mua guest luc nay.';
+      : error.message === 'OUT_OF_STOCK'
+        ? 'Co san pham da het hang hoac khong du so luong de mua.'
+        : 'Khong the tao don mua guest luc nay.';
 
-    return res.status(500).json({
+    const statusCode = (error.message === 'INVALID_PRODUCT_DATA' || error.message === 'OUT_OF_STOCK') ? 400 : 500;
+
+    return res.status(statusCode).json({
       success: false,
       message,
     });
@@ -679,6 +727,7 @@ exports.checkout = async (req, res) => {
     }
 
     const normalizedItems = buildNormalizedSaleItems(items, productMap);
+    await ensureSaleStockAvailable(normalizedItems);
     const subtotal = normalizedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const voucherApplication = await applyVoucherForSaleOrder({
       voucherCode,
@@ -744,9 +793,13 @@ exports.checkout = async (req, res) => {
     console.error('Checkout error:', error);
     const message = error.message === 'INVALID_PRODUCT_DATA'
       ? 'Khong the xac thuc du lieu san pham trong gio hang.'
-      : 'Khong the tao don mua luc nay.';
+      : error.message === 'OUT_OF_STOCK'
+        ? 'Co san pham da het hang hoac khong du so luong de mua.'
+        : 'Khong the tao don mua luc nay.';
 
-    return res.status(500).json({
+    const statusCode = (error.message === 'INVALID_PRODUCT_DATA' || error.message === 'OUT_OF_STOCK') ? 400 : 500;
+
+    return res.status(statusCode).json({
       success: false,
       message,
     });
