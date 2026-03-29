@@ -3,6 +3,7 @@ import { useTranslate } from '../../hooks/useTranslate';
 import StaffLayout from './StaffLayout';
 import StaffDashboard from './StaffDashboard';
 import StaffRentOrders from './StaffRentOrders';
+import StaffWalkInPage from './StaffWalkInPage';
 import StaffShiftRegistration from './StaffShiftRegistration';
 import StaffReviewsPage from './StaffReviewsPage';
 import OrdersList from '../../components/owner/OrdersList';
@@ -30,6 +31,10 @@ const StaffPage = () => {
 
     if (subPath === 'rent-orders') {
       return <StaffRentOrders />;
+    }
+
+    if (subPath === 'walk-in') {
+      return <StaffWalkInPage />;
     }
 
     if (subPath === 'sale-order') {

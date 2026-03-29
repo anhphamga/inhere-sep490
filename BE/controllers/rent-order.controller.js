@@ -109,41 +109,74 @@ const applyVoucherForRentOrder = async ({
 // Các trạng thái đã kết thúc vòng đời — đồ đã trả hoặc huỷ
 const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow'];
 
+// Đơn PendingDeposit hết hạn sau N giờ — sau thời gian này không còn giữ chỗ
+// Mặc định 2 giờ: khách có 2 tiếng để hoàn tất thanh toán cọc online
+const PENDING_DEPOSIT_HOLD_HOURS = parseInt(process.env.PENDING_DEPOSIT_HOLD_HOURS || '2', 10);
+
 const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDate, session) => {
+    const pendingDepositExpiry = new Date(Date.now() - PENDING_DEPOSIT_HOLD_HOURS * 60 * 60 * 1000);
+
     // Kiểm tra 1: chồng lấp ngày hợp đồng với đơn chưa kết thúc
+    // Dùng strict inequality ($lt/$gt): nếu đơn cũ kết thúc đúng lúc đơn mới bắt đầu → KHÔNG coi là conflict
     const overlapQuery = RentOrderItem.find({
         productInstanceId: instanceId,
-        rentStartDate: { $lte: rentEndDate },
-        rentEndDate: { $gte: rentStartDate }
-    }).populate({ path: 'orderId', select: 'status' });
+        rentStartDate: { $lt: rentEndDate },
+        rentEndDate: { $gt: rentStartDate }
+    }).populate({ path: 'orderId', select: 'status createdAt' });
 
     if (session) overlapQuery.session(session);
     const overlaps = await overlapQuery.lean();
 
-    const hasDateConflict = overlaps.some(
-        (item) => !TERMINAL_ORDER_STATUSES.includes(String(item.orderId?.status || '').toLowerCase())
-    );
-    if (hasDateConflict) return false;
+    const conflictingOverlaps = overlaps.filter((item) => {
+        // Orphaned item (order bị xoá hoặc populate thất bại) → không chặn
+        if (!item.orderId) return false;
+        const status = String(item.orderId.status || '').toLowerCase();
+        if (TERMINAL_ORDER_STATUSES.includes(status)) return false;
+        // Đơn PendingDeposit quá hạn giữ chỗ không còn chặn inventory
+        if (status === 'pendingdeposit' && item.orderId.createdAt && new Date(item.orderId.createdAt) < pendingDepositExpiry) {
+            return false;
+        }
+        return true;
+    });
+    if (conflictingOverlaps.length > 0) {
+        console.log(`[Availability] Instance ${instanceId} BLOCKED by Check1:`,
+            conflictingOverlaps.map((i) => ({ orderId: i.orderId?._id, status: i.orderId?.status, start: i.rentStartDate, end: i.rentEndDate }))
+        );
+        return false;
+    }
 
     // Kiểm tra 2: đơn trễ hạn vẫn còn active (đồ chưa được trả dù đã quá ngày hợp đồng)
     // Kịch bản: Khách A trễ hạn, Khách B đặt kỳ bắt đầu SAU ngày hết hạn của A
     // → hệ thống phải chặn vì đồ vẫn đang ở tay Khách A
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setUTCHours(0, 0, 0, 0); // dùng UTC để nhất quán timezone
 
     const lateQuery = RentOrderItem.find({
         productInstanceId: instanceId,
         rentEndDate: { $lt: today }
-    }).populate({ path: 'orderId', select: 'status' });
+    }).populate({ path: 'orderId', select: 'status createdAt' });
 
     if (session) lateQuery.session(session);
     const pastDueItems = await lateQuery.lean();
 
-    const hasActiveLateOrder = pastDueItems.some(
-        (item) => !TERMINAL_ORDER_STATUSES.includes(String(item.orderId?.status || '').toLowerCase())
-    );
+    const activeLateOrders = pastDueItems.filter((item) => {
+        // Orphaned item → không chặn
+        if (!item.orderId) return false;
+        const status = String(item.orderId.status || '').toLowerCase();
+        if (TERMINAL_ORDER_STATUSES.includes(status)) return false;
+        if (status === 'pendingdeposit' && item.orderId.createdAt && new Date(item.orderId.createdAt) < pendingDepositExpiry) {
+            return false;
+        }
+        return true;
+    });
+    if (activeLateOrders.length > 0) {
+        console.log(`[Availability] Instance ${instanceId} BLOCKED by Check2 (late):`,
+            activeLateOrders.map((i) => ({ orderId: i.orderId?._id, status: i.orderId?.status, end: i.rentEndDate }))
+        );
+        return false;
+    }
 
-    return !hasActiveLateOrder;
+    return true;
 };
 
 const fetchOrderItems = async (orderId) => {
@@ -268,7 +301,7 @@ const startTransactionIfAvailable = async () => {
 const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const heldDeposit = await Deposit.findOne({ orderId, status: 'Held' });
 
-    // Kiểm tra remaining đã được thu chưa (có thể đã thu tại bước confirmPickup)
+    // Kiểm tra remaining đã được thu chưa (có thể đã thu tại bước confirmPickup hoặc qua QR ExtraDue)
     const paidRemainingPayments = await Payment.find({
         orderId,
         orderType: 'Rent',
@@ -279,11 +312,27 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const outstandingRemaining = Math.max(0, Number(order.remainingAmount || 0) - paidRemainingTotal);
 
     const lateFee       = Number(order.lateFee       || 0);
-    const washingFee    = Number(order.washingFee    || 0);
     const damageFee     = Number(order.damageFee     || 0);
     const compensationFee = Number(order.compensationFee || 0);
-    const totalFees     = lateFee + washingFee + damageFee + compensationFee;
-    const totalOutstanding = outstandingRemaining + totalFees;
+    // washingFee luôn = 0 (phí giặt đã tính vào giá thuê), không cộng vào tổng phí
+    const totalFees     = lateFee + damageFee + compensationFee;
+
+    // Khi khách thanh toán QR ExtraDue, toàn bộ khoản (remaining + fees) được ghi là purpose='Remaining'.
+    // Phần dư vượt quá remainingAmount đã thực sự phủ phí → tránh thu/tạo bản ghi trùng.
+    const feesCoveredByRemaining = Math.max(0, paidRemainingTotal - Number(order.remainingAmount || 0));
+    const unpaidFees = Math.max(0, totalFees - feesCoveredByRemaining);
+
+    // Cũng kiểm tra các bản ghi phí đã thu riêng lẻ
+    const paidFeePayments = await Payment.find({
+        orderId,
+        orderType: 'Rent',
+        purpose: { $in: ['LateFee', 'DamageFee', 'WashingFee', 'Compensation', 'ExtraFee'] },
+        status: 'Paid',
+    }).lean();
+    const paidFeesTotal = paidFeePayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+    const netUnpaidFees = Math.max(0, unpaidFees - paidFeesTotal);
+
+    const totalOutstanding = outstandingRemaining + netUnpaidFees;
 
     // Thế chấp tiền mặt
     const heldCashCollaterals = await Collateral.find({ orderId, type: 'CASH', status: 'Held' });
@@ -328,7 +377,6 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
         const purpose = lateFee > 0 ? 'LateFee'
             : compensationFee > 0 ? 'Compensation'
             : damageFee > 0 ? 'DamageFee'
-            : washingFee > 0 ? 'WashingFee'
             : 'Remaining';
         await Payment.create({
             orderType: 'Rent',
@@ -354,6 +402,8 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
 
     return { outstandingRemaining, cashCollateralTotal, netCashRefund, extraDue, totalFees };
 };
+
+exports.settleDepositAndCollateral = settleDepositAndCollateral;
 
 const auditOrderChange = async (req, action, orderId, before, after) => (
     writeAuditLog({
@@ -841,7 +891,9 @@ exports.cancelRentOrder = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
         }
 
-        if (safeObjectId(order.customerId) !== userId) {
+        const userRole = String(req.user?.role || '').toLowerCase();
+        const isStaff = ['owner', 'staff'].includes(userRole);
+        if (!isStaff && safeObjectId(order.customerId) !== userId) {
             return res.status(403).json({ success: false, message: 'Ban khong co quyen huy don nay' });
         }
 
@@ -922,6 +974,81 @@ exports.getAllRentOrders = async (req, res) => {
             message: 'Loi server',
             error: error.message
         });
+    }
+};
+
+/**
+ * PUT /:id/collect-deposit
+ * Staff xác nhận đã thu tiền cọc trực tiếp (Cash) cho đơn đang ở PendingDeposit.
+ * Dùng khi: walk-in PayOS bị hủy, staff chuyển sang thu tiền mặt thay thế.
+ */
+exports.staffCollectDeposit = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { method = 'Cash' } = req.body;
+
+        const order = req.order || await RentOrder.findById(id);
+        if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
+
+        if (order.status !== 'PendingDeposit') {
+            return res.status(400).json({ success: false, message: `Đơn không ở trạng thái chờ đặt cọc. Trạng thái hiện tại: "${order.status}"` });
+        }
+
+        const existingDeposit = await Deposit.findOne({ orderId: id, status: 'Held' });
+        if (existingDeposit) {
+            return res.status(400).json({ success: false, message: 'Đơn này đã có đặt cọc' });
+        }
+
+        await Deposit.create({
+            orderId: id,
+            amount: order.depositAmount,
+            method,
+            status: 'Held',
+            paidAt: new Date()
+        });
+
+        await Payment.create({
+            orderType: 'Rent',
+            orderId: id,
+            amount: order.depositAmount,
+            method,
+            status: 'Paid',
+            purpose: 'Deposit',
+            transactionCode: `DEP_STAFF_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            paidAt: new Date()
+        });
+
+        const before = snapshotOrderForAudit(order);
+        order.status = 'Deposited';
+        await order.save();
+
+        // Đánh dấu Reserved nếu thuê bắt đầu trong ngưỡng giờ tới
+        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+        if (instanceIds.length > 0) {
+            const now = new Date();
+            const orderStart = new Date(order.rentStartDate);
+            const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
+            const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
+            if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
+                await ProductInstance.updateMany(
+                    { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
+                    { lifecycleStatus: 'Reserved' }
+                );
+            }
+        }
+
+        await auditOrderChange(req, 'orders_rent.deposit.staff_collect', order._id, before, snapshotOrderForAudit(order));
+
+        const detail = await fetchOrderDetail(id);
+        return res.json({
+            success: true,
+            message: `Đã ghi nhận thu cọc ${order.depositAmount.toLocaleString('vi-VN')}đ (${method === 'Cash' ? 'Tiền mặt' : method})`,
+            data: detail
+        });
+    } catch (error) {
+        console.error('Staff collect deposit error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
     }
 };
 
@@ -1193,15 +1320,21 @@ exports.confirmReturn = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { returnedItems = [], note = '', washingFee = 0 } = req.body;
+        const { returnedItems = [], note = '', washingFee = 0, returnDate: returnDateRaw } = req.body;
+
+        // Ngày thực tế trả — staff có thể chỉ định; mặc định là hôm nay
+        const actualReturnDate = returnDateRaw ? new Date(returnDateRaw) : new Date();
+        if (Number.isNaN(actualReturnDate.getTime())) {
+            return res.status(400).json({ success: false, message: 'Ngày trả thực tế không hợp lệ' });
+        }
 
         if (!Array.isArray(returnedItems) || returnedItems.length === 0) {
-            return res.status(400).json({ success: false, message: 'Vui long cung cap danh sach san pham tra' });
+            return res.status(400).json({ success: false, message: 'Vui lòng cung cấp danh sách sản phẩm trả' });
         }
 
         const order = req.order || await RentOrder.findById(id);
         if (!order) {
-            return res.status(404).json({ success: false, message: 'Khong tim thay don thue' });
+            return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
         }
 
         if (!isOwnerOrStaff(req, order)) {
@@ -1216,7 +1349,7 @@ exports.confirmReturn = async (req, res) => {
         }
 
         try {
-            await validateReturn(order, new Date());
+            await validateReturn(order, actualReturnDate);
         } catch (guardError) {
             return res.status(guardError.statusCode || 400).json({
                 success: false,
@@ -1274,7 +1407,7 @@ exports.confirmReturn = async (req, res) => {
             [
                 {
                     orderId: id,
-                    returnDate: new Date(),
+                    returnDate: actualReturnDate,
                     condition: returnCondition,
                     washingFee: totalWashingFee,
                     damageFee: totalDamageFee,
@@ -1342,6 +1475,7 @@ exports.confirmReturn = async (req, res) => {
         order.lateFee = lateFee;
         order.washingFee = totalWashingFee;
         order.damageFee = totalDamageFee;
+        order.actualReturnDate = actualReturnDate;
         order.returnedAt = new Date();
         // Status chỉ phụ thuộc vào số lượng đồ đã trả — không để Late override sau khi đồ đã về
         // validateReturn đã tính lateFee/lateDays rồi; không gọi applyLatePenalty lần 2
@@ -1656,6 +1790,9 @@ exports.createWalkInOrder = async (req, res) => {
                     lifecycleStatus: { $nin: ['Washing', 'Repair', 'Lost'] }
                 }).sort({ conditionScore: -1 });
                 const candidates = useTransaction ? await candidatesQuery.session(session) : await candidatesQuery;
+                console.log(`[WalkIn] productId=${item.productId} — found ${candidates.length} candidates:`,
+                    candidates.map((c) => ({ id: c._id, status: c.lifecycleStatus }))
+                );
                 for (const cand of candidates) {
                     if (await isInstanceAvailableForPeriod(cand._id, itemRentStart, itemRentEnd, useTransaction ? session : null)) {
                         instance = cand;
@@ -1677,11 +1814,14 @@ exports.createWalkInOrder = async (req, res) => {
         const depositAmount = computeExpectedDeposit({ totalAmount: computedTotalAmount });
         const remainingAmount = Math.max(computedTotalAmount - depositAmount, 0);
 
-        // Tạo đơn — status Deposited ngay (staff thu cọc tại chỗ)
+        // PayOS walk-in: tạo đơn ở PendingDeposit, chờ khách quét QR
+        // Cash walk-in: tạo đơn Deposited ngay, ghi nhận đã thu tiền mặt
+        const isPayOS = depositMethod === 'Online';
+
         const [rentOrder] = await RentOrder.create([{
             customerId,
             staffId,
-            status: 'Deposited',
+            status: isPayOS ? 'PendingDeposit' : 'Deposited',
             rentStartDate,
             rentEndDate,
             depositAmount,
@@ -1715,27 +1855,30 @@ exports.createWalkInOrder = async (req, res) => {
             txOptions
         );
 
-        // Ghi nhận cọc đã thu
-        await Deposit.create([{
-            orderId: rentOrder._id,
-            amount: depositAmount,
-            method: depositMethod,
-            status: 'Held',
-            paidAt: new Date()
-        }], txOptions);
+        // Với Cash: ghi nhận thu cọc ngay
+        // Với PayOS: không tạo bản ghi thanh toán — sẽ do webhook PayOS tạo sau khi khách thanh toán
+        if (!isPayOS) {
+            await Deposit.create([{
+                orderId: rentOrder._id,
+                amount: depositAmount,
+                method: depositMethod,
+                status: 'Held',
+                paidAt: new Date()
+            }], txOptions);
 
-        await Payment.create([{
-            orderType: 'Rent',
-            orderId: rentOrder._id,
-            amount: depositAmount,
-            method: depositMethod,
-            status: 'Paid',
-            purpose: 'Deposit',
-            transactionCode: `DEP_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            paidAt: new Date()
-        }], txOptions);
+            await Payment.create([{
+                orderType: 'Rent',
+                orderId: rentOrder._id,
+                amount: depositAmount,
+                method: depositMethod,
+                status: 'Paid',
+                purpose: 'Deposit',
+                transactionCode: `DEP_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                paidAt: new Date()
+            }], txOptions);
+        }
 
-        // Nếu thuê bắt đầu hôm nay, đánh dấu Reserved
+        // Đánh dấu Reserved nếu thuê bắt đầu hôm nay (áp dụng cả Cash lẫn PayOS)
         const now = new Date();
         if (parsedStart <= now) {
             const instanceIds = resolvedItems.map((i) => i.instance._id);
@@ -1754,9 +1897,13 @@ exports.createWalkInOrder = async (req, res) => {
         const detail = await fetchOrderDetail(rentOrder._id);
         await auditOrderChange(req, 'orders_rent.walk_in.create', rentOrder._id, null, snapshotOrderForAudit(rentOrder));
 
+        const successMsg = isPayOS
+            ? `Tạo đơn tại chỗ thành công. Vui lòng tạo link PayOS để thu cọc ${depositAmount.toLocaleString('vi-VN')}đ`
+            : `Tạo đơn tại chỗ thành công. Đã thu cọc ${depositAmount.toLocaleString('vi-VN')}đ`;
+
         return res.status(201).json({
             success: true,
-            message: `Tạo đơn tại chỗ thành công. Đã thu cọc ${depositAmount.toLocaleString('vi-VN')}đ`,
+            message: successMsg,
             data: detail
         });
     } catch (error) {

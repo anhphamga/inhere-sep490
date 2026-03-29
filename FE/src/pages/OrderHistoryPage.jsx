@@ -354,7 +354,7 @@ function normalizeBuyOrders(orders = []) {
 
 function normalizeRentOrders(orders = []) {
   return orders.map((order) => {
-    const totalExtraFee = Number(order.washingFee || 0) + Number(order.damageFee || 0) + Number(order.lateFee || 0) + Number(order.compensationFee || 0)
+    const totalExtraFee = Number(order.damageFee || 0) + Number(order.lateFee || 0) + Number(order.compensationFee || 0)
     const collateralAmount = Array.isArray(order.collaterals)
       ? order.collaterals.reduce((sum, item) => sum + Number(item.cashAmount || 0), 0)
       : 0
@@ -596,7 +596,7 @@ function OrderCard({ order }) {
         { label: 'Đã cọc 50%', value: formatCurrency(order.depositAmount), icon: Wallet },
         { label: 'Còn lại cần thanh toán', value: formatCurrency(order.remainingAmount), icon: CreditCard },
         order.collateralAmount > 0
-          ? { label: 'Tiền thế chân', value: formatCurrency(order.collateralAmount), icon: Box }
+          ? { label: 'Tiền thế chấp', value: formatCurrency(order.collateralAmount), icon: Box }
           : null,
       ].filter(Boolean)
     : [

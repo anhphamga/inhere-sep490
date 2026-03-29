@@ -14,8 +14,10 @@ import {
   getRentOrderByIdRequest,
   markNoShowRequest,
   markWaitingPickupRequest,
+  markWaitingReturnRequest,
   payDepositRequest,
-  searchCustomersRequest
+  searchCustomersRequest,
+  staffCollectDepositRequest
 } from '../api/rent-order.api'
 
 export const createRentOrderApi = async (payload) => {
@@ -55,6 +57,11 @@ export const confirmRentOrderApi = async (id) => {
 
 export const markWaitingPickupApi = async (id) => {
   const response = await markWaitingPickupRequest(id)
+  return response.data
+}
+
+export const markWaitingReturnApi = async (id) => {
+  const response = await markWaitingReturnRequest(id)
   return response.data
 }
 
@@ -100,5 +107,10 @@ export const createWalkInOrderApi = async (payload) => {
 
 export const createGuestCustomerApi = async (payload) => {
   const response = await createGuestCustomerRequest(payload)
+  return response.data
+}
+
+export const staffCollectDepositApi = async (id, method = 'Cash') => {
+  const response = await staffCollectDepositRequest(id, method)
   return response.data
 }

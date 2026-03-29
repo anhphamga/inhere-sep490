@@ -1,9 +1,13 @@
 const payos = require('../services/payosService');
 const PayOSTransaction = require('../model/PayOSTransaction.model');
 const RentOrder = require('../model/RentOrder.model');
+const RentOrderItem = require('../model/RentOrderItem.model');
+const ProductInstance = require('../model/ProductInstance.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
+// Dùng lazy require để tránh circular dependency
+const getRentOrderController = () => require('./rent-order.controller');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
@@ -43,6 +47,13 @@ exports.createDepositPaymentLink = async (req, res) => {
             return res.status(400).json({ success: false, message: `Đơn đang ở trạng thái "${order.status}", không thể tạo link thanh toán cọc` });
         }
 
+        // Đơn walk-in (có staffId) dùng URL staff sau khi thanh toán/hủy
+        const isWalkIn = Boolean(order.staffId);
+        const sourceSuffix = isWalkIn ? '&source=staff' : '';
+        const cancelUrl = isWalkIn
+            ? `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}&source=staff`
+            : `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}`;
+
         // Trả link cũ nếu còn pending
         const existing = await PayOSTransaction.findOne({ orderId, purpose: 'Deposit', status: 'PENDING' });
         if (existing) {
@@ -53,8 +64,8 @@ exports.createDepositPaymentLink = async (req, res) => {
                         orderCode: existing.payosOrderCode,
                         amount: Math.round(order.depositAmount),
                         description: sanitizeDescription(`COC ${order.orderCode || orderId}`),
-                        cancelUrl: `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}`,
-                        returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${existing.payosOrderCode}&purpose=deposit`,
+                        cancelUrl,
+                        returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${existing.payosOrderCode}&purpose=deposit${sourceSuffix}`,
                     });
                     return res.json({ success: true, data: { paymentUrl: link.checkoutUrl, orderCode: existing.payosOrderCode } });
                 }
@@ -70,8 +81,8 @@ exports.createDepositPaymentLink = async (req, res) => {
             amount: Math.round(order.depositAmount),
             description,
             items: [{ name: 'Dat coc thue do', quantity: 1, price: Math.round(order.depositAmount) }],
-            cancelUrl: `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}`,
-            returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${payosOrderCode}&purpose=deposit`,
+            cancelUrl,
+            returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${payosOrderCode}&purpose=deposit${sourceSuffix}`,
         });
 
         await PayOSTransaction.create({
@@ -125,13 +136,14 @@ exports.createExtraDuePaymentLink = async (req, res) => {
         const payosOrderCode = await generateUniquePayosCode();
         const description = sanitizeDescription(`THANH TOAN ${order.orderCode || orderId}`);
 
+        // ExtraDue luôn do staff tạo → redirect về trang staff
         const paymentLink = await payos.paymentRequests.create({
             orderCode: payosOrderCode,
             amount: Math.round(amount),
             description,
             items: [{ name: 'Thanh toan don thue', quantity: 1, price: Math.round(amount) }],
-            cancelUrl: `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}`,
-            returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${payosOrderCode}&purpose=extra-due`,
+            cancelUrl: `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}&source=staff`,
+            returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${payosOrderCode}&purpose=extra-due&source=staff`,
         });
 
         await PayOSTransaction.create({
@@ -224,7 +236,28 @@ const processConfirmedPayment = async (txn) => {
             }
             order.status = 'Deposited';
             await order.save();
-            console.log(`[PayOS Polling] Deposit confirmed for order ${order.orderCode || txn.orderId}`);
+
+            // Reserve instances nếu ngày thuê trong vòng HOURS_BEFORE_RESERVED giờ tới
+            try {
+                const items = await RentOrderItem.find({ orderId: txn.orderId }).lean();
+                const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+                if (instanceIds.length > 0) {
+                    const now = new Date();
+                    const orderStart = new Date(order.rentStartDate);
+                    const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
+                    const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
+                    if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
+                        await ProductInstance.updateMany(
+                            { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
+                            { lifecycleStatus: 'Reserved' }
+                        );
+                    }
+                }
+            } catch (reserveErr) {
+                console.error(`[PayOS] Reserve instances failed for order ${txn.orderId}:`, reserveErr.message);
+            }
+
+            console.log(`[PayOS] Deposit confirmed for order ${order.orderCode || txn.orderId}`);
         }
     }
 
@@ -244,11 +277,35 @@ const processConfirmedPayment = async (txn) => {
     if (txn.purpose === 'ExtraDue') {
         const rentOrder = await RentOrder.findById(txn.orderId);
         if (rentOrder && rentOrder.status === 'Returned') {
+            // Ghi nhận payment nếu chưa có
             const existingPayment = await Payment.findOne({ orderId: txn.orderId, purpose: 'Remaining', transactionCode: `PAYOS_${txn.payosOrderCode}` });
             if (!existingPayment) {
                 await Payment.create({ orderType: 'Rent', orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'Remaining', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
             }
-            console.log(`[PayOS Polling] ExtraDue confirmed for order ${txn.orderId}`);
+
+            // Tự động hoàn tất đơn: quyết toán cọc/thế chấp → Completed, trả instances về Available
+            try {
+                const { settleDepositAndCollateral } = getRentOrderController();
+                await settleDepositAndCollateral(String(txn.orderId), rentOrder, 'Online');
+
+                // Trả instances về Available (từ Washing hoặc Reserved)
+                const items = await RentOrderItem.find({ orderId: txn.orderId }).lean();
+                const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+                if (instanceIds.length > 0) {
+                    await ProductInstance.updateMany(
+                        { _id: { $in: instanceIds }, lifecycleStatus: { $in: ['Washing', 'Reserved'] } },
+                        { lifecycleStatus: 'Available' }
+                    );
+                }
+
+                rentOrder.status = 'Completed';
+                rentOrder.completedAt = new Date();
+                await rentOrder.save();
+                console.log(`[PayOS] ExtraDue confirmed → order ${rentOrder.orderCode || txn.orderId} auto-completed`);
+            } catch (err) {
+                console.error(`[PayOS] ExtraDue auto-complete failed for order ${txn.orderId}:`, err.message);
+                // Không throw — payment đã ghi nhận thành công, chỉ auto-complete thất bại
+            }
         }
     }
 };

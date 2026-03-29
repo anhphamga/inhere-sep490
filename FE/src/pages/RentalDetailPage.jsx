@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { getRentOrderByIdApi, payDepositApi, cancelRentOrderApi, confirmPickupApi, confirmReturnApi, finalizeRentOrderApi } from '../services/rent-order.service'
+import { createDepositPaymentLinkApi } from '../services/payment.service'
 import Header from '../components/common/Header'
 
 const statusLabels = {
@@ -12,6 +13,10 @@ const statusLabels = {
   WaitingPickup: 'Chờ lấy đồ',
   Renting: 'Đang thuê',
   WaitingReturn: 'Chờ trả',
+  Late: 'Trễ hạn',
+  Returned: 'Đã trả',
+  Compensation: 'Bồi thường',
+  NoShow: 'Không nhận đồ',
   Completed: 'Hoàn tất',
   Cancelled: 'Đã hủy'
 }
@@ -24,6 +29,10 @@ const statusColors = {
   WaitingPickup: 'bg-purple-100 text-purple-800',
   Renting: 'bg-green-100 text-green-800',
   WaitingReturn: 'bg-orange-100 text-orange-800',
+  Late: 'bg-amber-100 text-amber-800',
+  Returned: 'bg-cyan-100 text-cyan-800',
+  Compensation: 'bg-rose-100 text-rose-800',
+  NoShow: 'bg-red-100 text-red-800',
   Completed: 'bg-green-200 text-green-800',
   Cancelled: 'bg-red-100 text-red-800'
 }
@@ -33,7 +42,7 @@ export default function RentalDetailPage() {
   const navigate = useNavigate()
   const { isAuthenticated, loading: authLoading, user } = useAuth()
 
-  const isStaffOrOwner = user?.role === 'Staff' || user?.role === 'Owner'
+  const isStaffOrOwner = ['owner', 'staff'].includes(String(user?.role || '').toLowerCase())
 
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -48,7 +57,6 @@ export default function RentalDetailPage() {
 
   // Return form
   const [returnCondition, setReturnCondition] = useState('Normal')
-  const [returnWashingFee, setReturnWashingFee] = useState(0)
   const [returnDamageFee, setReturnDamageFee] = useState(0)
   const [returnCompensationFee, setReturnCompensationFee] = useState(0)
   const [returnNote, setReturnNote] = useState('')
@@ -66,7 +74,7 @@ export default function RentalDetailPage() {
     if (!order) return
 
     setPickupCashAmount(order.remainingAmount || 0)
-    setReturnWashingFee(order.washingFee || 0)
+
     setReturnDamageFee(order.damageFee || 0)
     setReturnCompensationFee(order.compensationFee || 0)
   }, [order])
@@ -91,18 +99,34 @@ export default function RentalDetailPage() {
     }
   }
 
-  const handlePayDeposit = async () => {
-    if (!confirm('Bạn có chắc chắn muốn thanh toán đặt cọc?')) return
-
+  const handlePayDepositCash = async () => {
+    if (!confirm('Xác nhận đặt cọc bằng tiền mặt?')) return
     setActionLoading(true)
     try {
       const response = await payDepositApi(id, { method: 'Cash' })
       if (response.success) {
-        alert('Thanh toán đặt cọc thành công!')
+        alert('Đặt cọc thành công!')
         fetchOrderDetail()
       }
     } catch (err) {
       alert(err.response?.data?.message || 'Có lỗi xảy ra')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handlePayDepositOnline = async () => {
+    setActionLoading(true)
+    try {
+      const res = await createDepositPaymentLinkApi(id)
+      const paymentUrl = res.data?.paymentUrl || res.paymentUrl
+      if (paymentUrl) {
+        window.location.href = paymentUrl
+      } else {
+        alert('Không lấy được link thanh toán')
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Có lỗi tạo link thanh toán')
     } finally {
       setActionLoading(false)
     }
@@ -208,7 +232,7 @@ export default function RentalDetailPage() {
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Vui lòng đăng nhập để xem chi tiết đơn thuê</p>
-          <Link to="/login?redirect=/rental/{id}" className="text-pink-600 hover:underline">
+          <Link to={`/login?redirect=/rental/${id}`} className="text-pink-600 hover:underline">
             Đăng nhập
           </Link>
         </div>
@@ -261,7 +285,7 @@ export default function RentalDetailPage() {
   }
 
   const canPayDeposit = order.status === 'PendingDeposit'
-  const canCancel = ['Draft', 'PendingDeposit', 'Deposited'].includes(order.status)
+  const canCancel = ['Draft', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup'].includes(order.status)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -398,7 +422,7 @@ export default function RentalDetailPage() {
               </div>
 
               {/* Phí phát sinh */}
-              {(order.washingFee > 0 || order.damageFee > 0 || order.lateFee > 0 || order.compensationFee > 0) && (
+              {(order.damageFee > 0 || order.lateFee > 0 || order.compensationFee > 0) && (
                 <div className="border-b pb-4 mb-4">
                   <h3 className="text-sm font-medium text-gray-700 mb-2">Phí phát sinh</h3>
                   <div className="space-y-1">
@@ -406,12 +430,6 @@ export default function RentalDetailPage() {
                       <div className="flex justify-between text-yellow-600">
                         <span>Trễ hạn ({order.lateDays || 0} ngày)</span>
                         <span>{order.lateFee?.toLocaleString('vi-VN')}đ</span>
-                      </div>
-                    )}
-                    {order.washingFee > 0 && (
-                      <div className="flex justify-between text-orange-600">
-                        <span>Giặt</span>
-                        <span>{order.washingFee?.toLocaleString('vi-VN')}đ</span>
                       </div>
                     )}
                     {order.damageFee > 0 && (
@@ -433,9 +451,21 @@ export default function RentalDetailPage() {
               {/* Tổng cần thanh toán */}
               <div className="bg-pink-50 rounded-lg p-3">
                 <div className="flex justify-between font-semibold text-lg">
-                  <span>Tổng cần thanh toán</span>
+                  <span>
+                    {order.status === 'Completed' ? 'Tổng chi phí thực tế' : 'Còn cần thanh toán'}
+                  </span>
                   <span className="text-pink-600">
-                    {((order.depositAmount || 0) + (order.lateFee || 0) + (order.washingFee || 0) + (order.damageFee || 0) + (order.compensationFee || 0)).toLocaleString('vi-VN')}đ
+                    {(() => {
+                      const fees = (order.lateFee || 0) + (order.damageFee || 0) + (order.compensationFee || 0)
+                      if (order.status === 'Completed') {
+                        return ((order.totalAmount || 0) + fees).toLocaleString('vi-VN')
+                      }
+                      const paidRemaining = (order.payments || [])
+                        .filter(p => p.purpose === 'Remaining' && p.status === 'Paid')
+                        .reduce((s, p) => s + (p.amount || 0), 0)
+                      const outstanding = Math.max(0, (order.remainingAmount || 0) - paidRemaining) + fees
+                      return outstanding.toLocaleString('vi-VN')
+                    })()}đ
                   </span>
                 </div>
               </div>
@@ -446,13 +476,22 @@ export default function RentalDetailPage() {
               <h2 className="text-xl font-semibold mb-4">Thao tác</h2>
               <div className="space-y-4">
                 {canPayDeposit && (
-                  <button
-                    onClick={handlePayDeposit}
-                    disabled={actionLoading}
-                    className="w-full bg-pink-600 text-white py-3 rounded-lg font-semibold hover:bg-pink-700 disabled:bg-gray-400"
-                  >
-                    {actionLoading ? 'Đang xử lý...' : 'Thanh toán đặt cọc'}
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      onClick={handlePayDepositOnline}
+                      disabled={actionLoading}
+                      className="w-full bg-pink-600 text-white py-3 rounded-lg font-semibold hover:bg-pink-700 disabled:bg-gray-400"
+                    >
+                      {actionLoading ? 'Đang xử lý...' : '📱 Đặt cọc qua QR (PayOS)'}
+                    </button>
+                    <button
+                      onClick={handlePayDepositCash}
+                      disabled={actionLoading}
+                      className="w-full border border-pink-600 text-pink-600 py-3 rounded-lg font-semibold hover:bg-pink-50 disabled:bg-gray-100"
+                    >
+                      {actionLoading ? 'Đang xử lý...' : '💵 Đặt cọc tiền mặt'}
+                    </button>
+                  </div>
                 )}
 
                 {canCancel && (
@@ -544,21 +583,10 @@ export default function RentalDetailPage() {
                           <option value="Normal">Bình thường</option>
                           <option value="Dirty">Bẩn</option>
                           <option value="Damaged">Hỏng</option>
-                          <option value="Lost">Mất</option>
                         </select>
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="text-sm font-medium text-gray-600">Phí giặt</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={returnWashingFee}
-                            onChange={(e) => setReturnWashingFee(e.target.value)}
-                            className="w-full rounded-lg border px-3 py-2"
-                          />
-                        </div>
                         <div>
                           <label className="text-sm font-medium text-gray-600">Phí hư hỏng</label>
                           <input

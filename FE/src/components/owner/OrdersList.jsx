@@ -103,8 +103,8 @@ const getProductImage = (item, orderType) => {
 const getTimelineItems = (order, orderType) => {
     if (orderType === ORDER_TYPES.sale) {
         return toArray(order?.history).map((item) => ({
-            label: item?.statusLabel || item?.status || 'Cap nhat',
-            description: item?.description || item?.action || 'Cap nhat don hang',
+            label: item?.statusLabel || item?.status || 'Cập nhật',
+            description: item?.description || item?.action || 'Cập nhật đơn hàng',
             value: item?.updatedAt,
             actor: item?.updatedBy?.name || '',
             active: true
@@ -112,8 +112,8 @@ const getTimelineItems = (order, orderType) => {
     }
 
     return [{
-        label: order?.status || 'Don thue',
-        description: 'Du lieu lich su hien tai duoc lay tu API don thue.',
+        label: order?.status || 'Đơn thuê',
+        description: 'Dữ liệu lịch sử hiện tại được lấy từ API đơn thuê.',
         value: order?.updatedAt || order?.createdAt,
         actor: order?.staffId?.name || '',
         active: true

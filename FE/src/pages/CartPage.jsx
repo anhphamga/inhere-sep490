@@ -18,7 +18,7 @@ const ADDRESS_HISTORY_KEY = 'inhere_checkout_address_history'
 
 const PAYMENT_OPTIONS = [
   { value: 'COD', title: '🚚 Thanh toán khi nhận hàng', description: 'Phù hợp khi bạn muốn kiểm tra đơn trước khi thanh toán.' },
-  { value: 'PayOS', title: '📱 Thanh toán PayOS (QR / chuyển khoản)', description: 'Thanh toán ngay bằng mã QR hoặc chuyển khoản qua PayOS. Đơn được xác nhận tự động.' },
+  { value: 'PayOS', title: '📱 Thanh toán bằng QR', description: 'Thanh toán ngay bằng mã QR hoặc chuyển khoản. Đơn được xác nhận tự động.' },
 ]
 
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
@@ -849,13 +849,13 @@ export default function CartPage() {
                     </label>
                     <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'PayOS' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
                       <input type="radio" name="rentalPaymentMethod" value="PayOS" checked={rentalPaymentMethod === 'PayOS'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
-                      <span className="text-slate-700">📱 Chuyển khoản QR (PayOS)</span>
+                      <span className="text-slate-700">📱 Thanh toán bằng QR</span>
                       <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-600">Nhanh hơn</span>
                     </label>
                   </div>
                   {rentalPaymentMethod === 'PayOS' && (
                     <p className="mt-2 text-xs text-indigo-600 bg-indigo-50 rounded-xl px-3 py-2">
-                      Bạn sẽ được chuyển đến trang thanh toán PayOS để quét mã QR hoặc chuyển khoản. Đơn thuê sẽ được xác nhận ngay sau khi thanh toán.
+                      Bạn sẽ được chuyển đến trang thanh toán QR để quét mã hoặc chuyển khoản. Đơn thuê sẽ được xác nhận ngay sau khi thanh toán.
                     </p>
                   )}
 
