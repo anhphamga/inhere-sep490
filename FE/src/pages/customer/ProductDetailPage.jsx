@@ -88,7 +88,7 @@ const isFreeSizeValue = (value = "") => {
 const formatCurrency = (value, lang = "vi") => {
   const amount = Number(value || 0);
   if (lang === "en") return `${amount.toLocaleString("en-US")} VND`;
-  return `${amount.toLocaleString("vi-VN")} d`;
+  return `${amount.toLocaleString("vi-VN")}đ`;
 };
 
 export default function ProductDetailPage() {
@@ -419,7 +419,7 @@ export default function ProductDetailPage() {
     }
 
     if (!rentStartDateTime || !rentEndDateTime || rentEndDateTime <= rentStartDateTime) {
-      showToast("Thoi gian tra phai sau thoi gian nhan");
+      showToast("Thời gian trả phải sau thời gian nhận");
       return;
     }
 
@@ -631,21 +631,21 @@ export default function ProductDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-[2px]">
           <div className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-auto rounded-[28px] border border-amber-100/80 bg-gradient-to-br from-amber-50 via-white to-white p-5 shadow-2xl sm:p-6">
             <div className="mb-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">Dat lich thue</p>
-              <h3 className="mt-2 text-2xl font-bold text-slate-900">Chon ngay thue</h3>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">Đặt lịch thuê</p>
+              <h3 className="mt-2 text-2xl font-bold text-slate-900">Chọn ngày thuê</h3>
               <p className="mt-1 text-sm text-slate-500">
-                Chon ngay gio nhan va tra do. He thong se tinh tong tien tam tinh ngay ben duoi.
+                Chọn ngày giờ nhận và trả đồ. Hệ thống sẽ tính tổng tiền tạm tính ngay bên dưới.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                <p className="text-sm font-semibold text-slate-900">Nhan trang phuc</p>
-                <p className="mt-1 text-xs text-slate-500">Bat dau thoi gian ban muon nhan do</p>
+                <p className="text-sm font-semibold text-slate-900">Nhận trang phục</p>
+                <p className="mt-1 text-xs text-slate-500">Bắt đầu thời gian bạn muốn nhận đồ</p>
                 <div className="mt-4 space-y-3">
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Ngay bat dau
+                      Ngày bắt đầu
                     </label>
                     <input
                       type="date"
@@ -663,7 +663,7 @@ export default function ProductDetailPage() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Gio nhan
+                      Giờ nhận
                     </label>
                     <input
                       type="time"
@@ -676,12 +676,12 @@ export default function ProductDetailPage() {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-                <p className="text-sm font-semibold text-slate-900">Tra trang phuc</p>
-                <p className="mt-1 text-xs text-slate-500">Ngay tra phai sau ngay gio nhan</p>
+                <p className="text-sm font-semibold text-slate-900">Trả trang phục</p>
+                <p className="mt-1 text-xs text-slate-500">Ngày trả phải sau ngày giờ nhận</p>
                 <div className="mt-4 space-y-3">
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Ngay ket thuc
+                      Ngày kết thúc
                     </label>
                     <input
                       type="date"
@@ -693,7 +693,7 @@ export default function ProductDetailPage() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Gio tra
+                      Giờ trả
                     </label>
                     <input
                       type="time"
@@ -708,29 +708,29 @@ export default function ProductDetailPage() {
               <div className="sm:col-span-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold text-amber-900">Tam tinh don thue</p>
-                    <p className="mt-1 text-xs text-amber-800/80">Gia thue tinh theo so ngay va duoc lam tron len theo ngay.</p>
+                    <p className="text-sm font-semibold text-amber-900">Tạm tính đơn thuê</p>
+                    <p className="mt-1 text-xs text-amber-800/80">Giá thuê tính theo số ngày và được làm tròn lên theo ngày.</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs uppercase tracking-wide text-amber-700">Gia / ngay</p>
-                    <p className="text-sm font-semibold text-amber-950">{currentRentPrice.toLocaleString("vi-VN")}d</p>
+                    <p className="text-xs uppercase tracking-wide text-amber-700">Giá / ngày</p>
+                    <p className="text-sm font-semibold text-amber-950">{currentRentPrice.toLocaleString("vi-VN")}đ</p>
                   </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-xl bg-white/80 px-3 py-2">
-                    <p className="text-slate-500">So ngay thue</p>
-                    <p className="mt-1 font-semibold text-slate-900">{rentalDays || 0} ngay</p>
+                    <p className="text-slate-500">Số ngày thuê</p>
+                    <p className="mt-1 font-semibold text-slate-900">{rentalDays || 0} ngày</p>
                   </div>
                   <div className="rounded-xl bg-white/80 px-3 py-2">
-                    <p className="text-slate-500">Tong tien</p>
-                    <p className="mt-1 font-semibold text-slate-900">{totalRentPrice.toLocaleString("vi-VN")}d</p>
+                    <p className="text-slate-500">Tổng tiền</p>
+                    <p className="mt-1 font-semibold text-slate-900">{totalRentPrice.toLocaleString("vi-VN")}đ</p>
                   </div>
                 </div>
 
                 {rentStartDate && rentEndDate && rentalDays === 0 && (
                   <p className="mt-3 text-sm font-medium text-rose-600">
-                    Vui long chon gio tra sau gio nhan de tao khoang thue hop le.
+                    Vui lòng chọn giờ trả sau giờ nhận để tạo khoảng thuê hợp lệ.
                   </p>
                 )}
               </div>
@@ -742,7 +742,7 @@ export default function ProductDetailPage() {
                 onClick={resetRentModal}
                 className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                Huy
+                Hủy
               </button>
               <button
                 type="button"
@@ -750,7 +750,7 @@ export default function ProductDetailPage() {
                 disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate || rentalDays === 0}
                 className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-300"
               >
-                {loadingAction === "rent" ? "Dang xu ly..." : "Xac nhan"}
+                {loadingAction === "rent" ? "Đang xử lý..." : "Xác nhận"}
               </button>
             </div>
           </div>

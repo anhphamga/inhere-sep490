@@ -17,6 +17,8 @@ export default function PaymentResultPage() {
     const orderCode    = searchParams.get('orderCode')
     const purpose      = searchParams.get('purpose')      // 'deposit' | 'extra-due' | 'sale'
     const urlStatus    = searchParams.get('status')       // 'cancelled'
+    const source       = searchParams.get('source')       // 'staff' = walk-in order
+    const isStaffOrder = source === 'staff'
 
     const [state, setState] = useState('loading') // 'loading' | 'success' | 'cancelled' | 'error'
     const [order, setOrder] = useState(null)
@@ -62,6 +64,10 @@ export default function PaymentResultPage() {
     }
 
     const handleGoOrder = () => {
+        if (isStaffOrder) {
+            navigate('/staff/rent-orders')
+            return
+        }
         if (purpose === 'sale' && saleOrderId) {
             // Guest không thể xem /orders/:id (yêu cầu auth)
             if (isAuthenticated) navigate(`/orders/${saleOrderId}`)
@@ -71,6 +77,10 @@ export default function PaymentResultPage() {
     }
 
     const handleRetry = () => {
+        if (isStaffOrder) {
+            navigate('/staff/rent-orders')
+            return
+        }
         if (purpose === 'sale') navigate('/cart')
         else if (orderId) navigate(`/rental/${orderId}`)
         else navigate('/')
@@ -100,21 +110,31 @@ export default function PaymentResultPage() {
                             </svg>
                         </div>
                         <h1 className="text-xl font-bold text-gray-800">Thanh toán thành công!</h1>
-                        {purpose === 'deposit' && (
+                        {isStaffOrder ? (
                             <p className="mt-2 text-sm text-gray-500">
-                                Đặt cọc của bạn đã được xác nhận. Đơn thuê đang chờ duyệt.
+                                {purpose === 'extra-due'
+                                    ? 'Khách đã thanh toán khoản còn lại thành công. Đơn thuê có thể hoàn tất.'
+                                    : 'Khách đã thanh toán cọc thành công. Đơn thuê đã chuyển sang trạng thái Đã đặt cọc.'}
                             </p>
-                        )}
-                        {purpose === 'extra-due' && (
-                            <p className="mt-2 text-sm text-gray-500">
-                                Khoản thanh toán đã được ghi nhận. Staff sẽ hoàn tất đơn sớm.
-                            </p>
-                        )}
-                        {purpose === 'sale' && (
-                            <p className="mt-2 text-sm text-gray-500">
-                                Thanh toán thành công! Đơn đang chờ xác nhận từ cửa hàng.
-                                {!isAuthenticated && ' Cảm ơn bạn đã mua hàng tại INHERE.'}
-                            </p>
+                        ) : (
+                            <>
+                                {purpose === 'deposit' && (
+                                    <p className="mt-2 text-sm text-gray-500">
+                                        Đặt cọc của bạn đã được xác nhận. Đơn thuê đang chờ duyệt.
+                                    </p>
+                                )}
+                                {purpose === 'extra-due' && (
+                                    <p className="mt-2 text-sm text-gray-500">
+                                        Khoản thanh toán đã được ghi nhận. Staff sẽ hoàn tất đơn sớm.
+                                    </p>
+                                )}
+                                {purpose === 'sale' && (
+                                    <p className="mt-2 text-sm text-gray-500">
+                                        Thanh toán thành công! Đơn đang chờ xác nhận từ cửa hàng.
+                                        {!isAuthenticated && ' Cảm ơn bạn đã mua hàng tại INHERE.'}
+                                    </p>
+                                )}
+                            </>
                         )}
                         {order?.orderCode && (
                             <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3">
@@ -128,7 +148,7 @@ export default function PaymentResultPage() {
                                 onClick={handleGoOrder}
                                 className="mt-6 w-full rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition"
                             >
-                                Xem chi tiết đơn
+                                {isStaffOrder ? 'Xem danh sách đơn thuê' : 'Xem chi tiết đơn'}
                             </button>
                         )}
                     </>
@@ -142,12 +162,18 @@ export default function PaymentResultPage() {
                             </svg>
                         </div>
                         <h1 className="text-xl font-bold text-gray-800">Thanh toán đã hủy</h1>
-                        <p className="mt-2 text-sm text-gray-500">Bạn đã hủy giao dịch. Đơn thuê vẫn đang chờ đặt cọc.</p>
+                        <p className="mt-2 text-sm text-gray-500">
+                            {isStaffOrder
+                                ? (purpose === 'extra-due'
+                                    ? 'Khách chưa hoàn tất thanh toán. Đơn vẫn chờ thu khoản còn lại.'
+                                    : 'Khách chưa hoàn tất thanh toán. Đơn vẫn đang ở trạng thái Chờ đặt cọc.')
+                                : 'Bạn đã hủy giao dịch. Đơn thuê vẫn đang chờ đặt cọc.'}
+                        </p>
                         <button
                             onClick={handleRetry}
                             className="mt-6 w-full rounded-2xl bg-indigo-500 py-3 text-sm font-semibold text-white hover:bg-indigo-600 transition"
                         >
-                            Thử lại
+                            {isStaffOrder ? 'Quay lại quản lý đơn' : 'Thử lại'}
                         </button>
                     </>
                 )}
@@ -161,22 +187,24 @@ export default function PaymentResultPage() {
                         </div>
                         <h1 className="text-xl font-bold text-gray-800">Không xác nhận được giao dịch</h1>
                         <p className="mt-2 text-sm text-gray-500">
-                            Có thể thanh toán thành công nhưng chưa cập nhật. Vui lòng kiểm tra lịch sử đơn hàng hoặc liên hệ cửa hàng.
+                            {isStaffOrder
+                                ? 'Có thể khách đã thanh toán nhưng chưa cập nhật. Kiểm tra đơn trong danh sách hoặc đợi webhook xác nhận.'
+                                : 'Có thể thanh toán thành công nhưng chưa cập nhật. Vui lòng kiểm tra lịch sử đơn hàng hoặc liên hệ cửa hàng.'}
                         </p>
                         <button
                             onClick={handleGoOrder}
                             className="mt-6 w-full rounded-2xl bg-gray-700 py-3 text-sm font-semibold text-white hover:bg-gray-800 transition"
                         >
-                            Xem đơn hàng
+                            {isStaffOrder ? 'Xem danh sách đơn thuê' : 'Xem đơn hàng'}
                         </button>
                     </>
                 )}
 
                 <button
-                    onClick={() => navigate('/')}
+                    onClick={() => isStaffOrder ? navigate('/staff/rent-orders') : navigate('/')}
                     className="mt-3 w-full rounded-2xl border border-gray-200 py-3 text-sm text-gray-500 hover:bg-gray-50 transition"
                 >
-                    Về trang chủ
+                    {isStaffOrder ? 'Về quản lý đơn thuê' : 'Về trang chủ'}
                 </button>
             </div>
         </div>

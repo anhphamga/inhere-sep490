@@ -241,7 +241,7 @@ const OwnerDashboardScreen = () => {
                 <article className="owner-card">
                     <div className="owner-card-head">
                         <h2>Rental vs Sale Ratio</h2>
-                        <span>Doanh thu tích luỹ</span>
+                        <span>Doanh thu tích lũy</span>
                     </div>
                     <div className="owner-ratio-wrap">
                         <div

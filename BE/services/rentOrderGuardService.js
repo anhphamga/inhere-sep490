@@ -9,6 +9,13 @@ const roundCurrency = (value) => Math.round(Number(value || 0) * 100) / 100;
 
 const computeExpectedDeposit = (order) => roundCurrency(Number(order?.totalAmount || 0) * 0.5);
 
+// Vietnam timezone offset: UTC+7
+const VN_TZ_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/**
+ * Tính số ngày trễ theo lịch Việt Nam (UTC+7).
+ * Trả về ngày dương nếu trả trễ, 0 nếu đúng hạn hoặc sớm.
+ */
 const computeLateDays = (rentEndDate, returnDate = new Date()) => {
   const expectedDate = new Date(rentEndDate);
   const actualDate = new Date(returnDate);
@@ -17,12 +24,12 @@ const computeLateDays = (rentEndDate, returnDate = new Date()) => {
     return 0;
   }
 
-  const normalizedExpected = expectedDate.setHours(0, 0, 0, 0);
-  const normalizedActual = actualDate.setHours(0, 0, 0, 0);
-  const diff = normalizedActual - normalizedExpected;
+  // Shift về UTC+7 rồi lấy ngày UTC → thực chất là ngày theo lịch VN
+  const toVnCalendarDay = (d) => Math.floor((d.getTime() + VN_TZ_OFFSET_MS) / DAY_IN_MS);
 
+  const diff = toVnCalendarDay(actualDate) - toVnCalendarDay(expectedDate);
   if (diff <= 0) return 0;
-  return Math.ceil(diff / DAY_IN_MS);
+  return diff;
 };
 
 const validateDeposit = (order, amount = order?.depositAmount) => {

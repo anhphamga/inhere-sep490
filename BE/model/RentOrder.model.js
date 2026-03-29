@@ -89,6 +89,10 @@ const rentOrderSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  actualReturnDate: {
+    type: Date,
+    default: null
+  },
   completedAt: {
     type: Date,
     default: null

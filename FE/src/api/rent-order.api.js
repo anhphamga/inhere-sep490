@@ -21,11 +21,17 @@ export const getAllRentOrdersRequest = (params) => axiosClient.get('/rent-orders
 // Hoàn tất giặt - chuyển từ Washing về Available
 export const completeWashingRequest = (orderId, payload) => axiosClient.put(`/rent-orders/${orderId}/complete-washing`, payload)
 
+// Staff thu tiền cọc trực tiếp cho đơn PendingDeposit (walk-in PayOS bị hủy → chuyển Cash)
+export const staffCollectDepositRequest = (id, method = 'Cash') => axiosClient.put(`/rent-orders/${id}/collect-deposit`, { method })
+
 // Xác nhận đơn thuê (Staff)
 export const confirmRentOrderRequest = (id) => axiosClient.put(`/rent-orders/${id}/confirm`)
 
 // Chuyển sang chờ lấy đồ (Staff) - Confirmed → WaitingPickup
 export const markWaitingPickupRequest = (id) => axiosClient.put(`/rent-orders/${id}/waiting-pickup`)
+
+// Chuyển sang chờ trả đồ (Staff) - Renting → WaitingReturn
+export const markWaitingReturnRequest = (id) => axiosClient.put(`/rent-orders/${id}/waiting-return`)
 
 // Xác nhận khách lấy đồ (Staff)
 export const confirmPickupRequest = (id, payload) => axiosClient.put(`/rent-orders/${id}/pickup`, payload)

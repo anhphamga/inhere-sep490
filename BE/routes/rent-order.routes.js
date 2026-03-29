@@ -76,6 +76,14 @@ router.post('/:id/deposit', authenticate, rentOrderController.payDeposit);
 router.put('/:id/cancel', authenticate, rentOrderController.cancelRentOrder);
 
 router.put(
+  '/:id/collect-deposit',
+  authenticate,
+  loadRentOrderAccessContext,
+  authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
+  rentOrderController.staffCollectDeposit
+);
+
+router.put(
   '/:id/confirm',
   authenticate,
   loadRentOrderAccessContext,
@@ -115,7 +123,7 @@ router.put(
     'orders_rent.return.process',
     (req, user) => {
       if (!canOperateAssignedOrder(req, user)) return false;
-      if (!['Renting', 'WaitingReturn'].includes(req.order?.status)) {
+      if (!['Renting', 'WaitingReturn', 'Late'].includes(req.order?.status)) {
         throw new Error(`Không thể xử lý trả đồ khi đơn ở trạng thái "${req.order?.status}"`);
       }
       return true;
