@@ -19,7 +19,7 @@ const mapSaleOrder = (order) => ({
   status: order.status || '',
   totalAmount: Number(order.totalAmount || 0),
   createdAt: order.createdAt || null,
-  detailUrl: null,
+  detailUrl: `/orders/${String(order._id)}`,
 });
 
 const mapRentOrder = (order) => ({

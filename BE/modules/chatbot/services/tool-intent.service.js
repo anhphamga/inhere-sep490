@@ -5,15 +5,31 @@ const normalizeForMatch = (value) => {
   return sanitizeText(value)
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
 };
 
 const includesAnyKeyword = (message, keywords) => {
   return keywords.some((keyword) => message.includes(normalizeForMatch(keyword)));
 };
 
+const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const includesAny = (message, words) => {
-  return words.some((word) => message.includes(word));
+  return words.some((word) => {
+    const normalizedWord = String(word || '').trim().toLowerCase();
+    if (!normalizedWord) {
+      return false;
+    }
+
+    // Single short tokens (e.g. "ao") should match whole words only.
+    if (!normalizedWord.includes(' ') && normalizedWord.length <= 3) {
+      const pattern = new RegExp(`\\b${escapeRegex(normalizedWord)}\\b`, 'i');
+      return pattern.test(message);
+    }
+
+    return message.includes(normalizedWord);
+  });
 };
 
 const hasOrderDomain = (message) => {
@@ -23,8 +39,26 @@ const hasOrderDomain = (message) => {
     'don hang',
     'don thue',
     'don mua',
-    'thue',
-    'mua',
+    'ma don',
+    'trang thai don',
+  ]);
+};
+
+const isRentalKnowledgeIntent = (message) => {
+  return includesAny(message, [
+    'quy tac thue',
+    'quy dinh thue',
+    'dieu kien thue',
+    'muon thue can',
+    'can gi de thue',
+    'thu tuc thue',
+    'quy trinh thue',
+    'luong thue',
+    'chinh sach thue',
+    'huy don',
+    'huy don thue',
+    'tra tre',
+    'chinh sach tra tre',
   ]);
 };
 
@@ -77,6 +111,57 @@ const isSelfUserIntent = (message) => {
   return hasSelf && hasUserDomain;
 };
 
+const isVoucherIntent = (message) => {
+  const hasVoucherWord = includesAny(message, ['voucher', 'ma giam', 'giam gia', 'khuyen mai', 'uu dai']);
+  const hasSelfOrList = includesAny(message, [
+    'cua toi',
+    'toi',
+    'my',
+    'co gi',
+    'danh sach',
+    'nhung',
+    'hien co',
+    'dang co',
+    'xem',
+    'liet ke',
+  ]);
+  const hasHowToWord = includesAny(message, [
+    'cach',
+    'huong dan',
+    'su dung',
+    'ap dung',
+    'nhap ma',
+    'nhu the nao',
+    'the nao',
+  ]);
+
+  return hasVoucherWord && hasSelfOrList && !hasHowToWord;
+};
+
+const isVoucherKnowledgeIntent = (message) => {
+  const hasVoucherWord = includesAny(message, ['voucher', 'ma giam', 'giam gia', 'khuyen mai', 'uu dai']);
+  const hasHowToWord = includesAny(message, [
+    'cach',
+    'huong dan',
+    'su dung',
+    'ap dung',
+    'nhap ma',
+    'nhu the nao',
+    'the nao',
+  ]);
+
+  return hasVoucherWord && hasHowToWord;
+};
+
+const isFittingBookingKnowledgeIntent = (message) => {
+  const hasHowToWord = includesAny(message, ['cach', 'huong dan', 'lam sao', 'nhu the nao']);
+  const hasBookingWord = includesAny(message, ['dat lich', 'booking', 'book lich', 'hen lich']);
+  const hasFittingWord = includesAny(message, ['thu do', 'fitting']);
+  const hasFittingTypoWord = /thu+\s*do/.test(message);
+
+  return (hasHowToWord && hasFittingWord) || (hasHowToWord && hasBookingWord && (hasFittingWord || hasFittingTypoWord));
+};
+
 const isProductIntent = (message) => {
   const hasProductWord = includesAny(message, [
     'san pham',
@@ -86,6 +171,13 @@ const isProductIntent = (message) => {
     'vay',
     'dam',
     'quan',
+    'do',
+    'phu kien',
+    'voan',
+    'cai toc',
+    'non',
+    'quat',
+    'vong',
     'outfit',
     'do mac',
   ]);
@@ -125,6 +217,66 @@ const isProductIntent = (message) => {
 
   return hasProductWord;
 };
+
+const isLikelyProductNameQuery = (message) => {
+  const normalized = String(message || '').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const hasQuestionSignal = includesAny(normalized, [
+    '?',
+    'la gi',
+    'khi nao',
+    'the nao',
+    'tai sao',
+    'vi sao',
+    'co the',
+    'hay khong',
+    'khong',
+  ]);
+
+  if (hasQuestionSignal) {
+    return false;
+  }
+
+  const hasProductLikeTokens = includesAny(normalized, [
+    'voan',
+    'cai toc',
+    'co dau',
+    'phu kien',
+    'non',
+    'quat',
+    'vay',
+    'ao',
+    'dam',
+    'quan',
+    'viet phuc',
+    'co phuc',
+  ]);
+
+  const tokenCount = normalized.split(/\s+/).filter(Boolean).length;
+  return hasProductLikeTokens && tokenCount <= 8;
+};
+
+const isInventorySearchIntent = (message) => {
+  const hasInventoryWord = includesAny(message, ['con hang', 'het hang', 'khong con hang', 'available', 'in stock']);
+  const hasSearchWord = includesAny(message, ['tim', 'loc', 'search', 'xem', 'hien thi', 'goi y']);
+  const hasProductDomain = includesAny(message, ['san pham', 'trang phuc', 'ao', 'vay', 'dam', 'quan', 'do']);
+  return hasInventoryWord && hasSearchWord && hasProductDomain;
+};
+
+const hasProductContext = (message) => includesAny(message, [
+  'san pham',
+  'trang phuc',
+  'ao dai',
+  'ao',
+  'vay',
+  'dam',
+  'quan',
+  'outfit',
+  'do mac',
+]);
 
 const detectChatIntent = (rawMessage) => {
   const message = normalizeForMatch(rawMessage);
@@ -189,6 +341,34 @@ const detectChatIntent = (rawMessage) => {
     };
   }
 
+  if (isVoucherKnowledgeIntent(message) || isFittingBookingKnowledgeIntent(message)) {
+    return {
+      intent: 'KNOWLEDGE',
+      entity: null,
+    };
+  }
+
+  if (isVoucherIntent(message)) {
+    return {
+      intent: 'VOUCHER',
+      entity: null,
+    };
+  }
+
+  if (isRentalKnowledgeIntent(message)) {
+    return {
+      intent: 'KNOWLEDGE',
+      entity: null,
+    };
+  }
+
+  if (hasOrderDomain(message)) {
+    return {
+      intent: 'ORDER',
+      entity: 'order',
+    };
+  }
+
   if (includesAnyKeyword(message, config.intentOrderKeywords)) {
     return {
       intent: 'ORDER',
@@ -196,7 +376,13 @@ const detectChatIntent = (rawMessage) => {
     };
   }
 
-  if (isProductIntent(message) || includesAnyKeyword(message, config.intentProductKeywords || [])) {
+  const productKeywordHit = includesAnyKeyword(message, config.intentProductKeywords || []);
+  if (
+    isInventorySearchIntent(message)
+    || isProductIntent(message)
+    || isLikelyProductNameQuery(message)
+    || (productKeywordHit && hasProductContext(message))
+  ) {
     return {
       intent: 'PRODUCT',
       entity: 'product',
