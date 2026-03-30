@@ -7,18 +7,14 @@ import { RentalCartProvider } from './contexts/RentalCartContext'
 import Chatbot from './components/chatbot/Chatbot'
 import { useAuth } from './contexts/AuthContext'
 import { normalizeRole } from './utils/auth'
-import { useLocation } from 'react-router-dom'
 
 function App() {
   const { pathname } = useLocation()
-  const isOwnerManagement = pathname.startsWith('/owner')
-  const isStaffManagement = pathname.startsWith('/staff')
-  const shouldShowSakura = !isOwnerManagement && !isStaffManagement
   const { user } = useAuth()
-  const location = useLocation()
   const role = normalizeRole(user?.role)
-  const isDashboardPath = location.pathname.startsWith('/owner') || location.pathname.startsWith('/staff')
-  const shouldShowChatbot = !isDashboardPath && role !== 'owner' && role !== 'staff'
+  const isManagementPath = pathname.startsWith('/owner') || pathname.startsWith('/staff')
+  const shouldShowSakura = !isManagementPath
+  const shouldShowChatbot = !isManagementPath && role !== 'owner' && role !== 'staff'
 
   return (
     <>

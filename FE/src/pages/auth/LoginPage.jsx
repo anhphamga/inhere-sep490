@@ -227,6 +227,10 @@ const LoginPage = () => {
 
             {error && <div className="error-text">{error}</div>}
 
+            <button type="submit" disabled={submitting} className="login-submit-btn">
+              {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            </button>
+
 
 
             {googleClientId ? (
