@@ -67,6 +67,7 @@ function Chatbot() {
         text,
         type: options.type || 'TEXT',
         data: options.data || null,
+        meta: options.meta || null,
       },
     ]))
 
@@ -123,6 +124,7 @@ function Chatbot() {
           {
             type: 'PRODUCT_LIST',
             data: Array.isArray(botPayload?.data) ? botPayload.data : [],
+            meta: botPayload?.meta || null,
           }
         )
       } else if (botPayload?.type === 'ORDER') {
@@ -150,6 +152,45 @@ function Chatbot() {
     }
   }
 
+  const handleLoadMoreProducts = async (meta = {}) => {
+    if (loading) {
+      return
+    }
+
+    const prompt = meta?.loadMorePrompt || 'xem them san pham'
+    setError('')
+    setLoading(true)
+    addMessage('user', 'Xem them san pham')
+
+    try {
+      const result = await sendChatMessage({ message: prompt })
+      const botPayload = result?.data || {}
+
+      if (botPayload?.type === 'PRODUCT_LIST') {
+        addMessage(
+          'bot',
+          botPayload?.message || 'Da tai them san pham.',
+          {
+            type: 'PRODUCT_LIST',
+            data: Array.isArray(botPayload?.data) ? botPayload.data : [],
+            meta: botPayload?.meta || null,
+          }
+        )
+      } else {
+        addMessage('bot', botPayload?.answer || 'Khong nhan duoc ket qua hop le.')
+      }
+    } catch (apiError) {
+      const message = apiError?.response?.data?.error?.message
+        || apiError?.message
+        || 'Chatbot tam thoi khong kha dung.'
+      setError(message)
+      addMessage('bot', `Loi: ${message}`)
+    } finally {
+      setLoading(false)
+      requestAnimationFrame(scrollToBottom)
+    }
+  }
+
   if (!open) {
     return (
       <div className='fixed bottom-5 right-5 z-[60]'>
@@ -158,7 +199,7 @@ function Chatbot() {
           className='cursor-pointer rounded-full bg-gradient-to-br from-teal-700 to-emerald-800 px-4 py-3 font-semibold text-white shadow-[0_12px_30px_rgba(6,95,70,0.3)]'
           onClick={() => setOpen(true)}
         >
-          Mo Chatbot
+          Chatbot
         </button>
       </div>
     )
@@ -232,6 +273,32 @@ function Chatbot() {
                       </div>
                     </div>
                   ))}
+
+                  {msg?.meta?.appliedFilters && (
+                    <div className='rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-emerald-800'>
+                      <div className='font-semibold'>Bo loc dang ap dung</div>
+                      <div className='mt-1 flex flex-wrap gap-1.5'>
+                        {Object.entries(msg.meta.appliedFilters)
+                          .filter(([, value]) => value !== null && value !== undefined && value !== '')
+                          .map(([key, value]) => (
+                            <span key={key} className='rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200'>
+                              {key}: {typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value)}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {msg?.meta?.canLoadMore && (
+                    <button
+                      type='button'
+                      className='cursor-pointer rounded-full bg-teal-700 px-3 py-1.5 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60'
+                      onClick={() => handleLoadMoreProducts(msg?.meta || {})}
+                      disabled={loading}
+                    >
+                      Xem them
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -244,7 +311,7 @@ function Chatbot() {
                     }
 
                     const orderTypeLabel = item.orderType === 'rent' ? 'Don thue' : 'Don mua'
-                    const defaultUrl = item.orderType === 'rent' ? `/rental/${item.id}` : null
+                    const defaultUrl = item.orderType === 'rent' ? `/rental/${item.id}` : `/orders/${item.id}`
                     const detailUrl = item.detailUrl || defaultUrl
 
                     return (

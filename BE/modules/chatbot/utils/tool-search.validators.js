@@ -58,6 +58,10 @@ const validateToolSearchPayload = (payload = {}) => {
   const orderType = sanitizeText(filters.orderType).toLowerCase();
   const sortBy = sanitizeText(filters.sortBy).toLowerCase();
   const sortOrder = sanitizeText(filters.sortOrder).toLowerCase();
+  const category = sanitizeText(filters.category);
+  const size = sanitizeText(filters.size);
+  const color = sanitizeText(filters.color);
+  const inStockRaw = filters.inStock;
   const priceMin = filters.priceMin === undefined || filters.priceMin === null || filters.priceMin === ''
     ? null
     : toNumber(filters.priceMin, Number.NaN);
@@ -136,6 +140,29 @@ const validateToolSearchPayload = (payload = {}) => {
     });
   }
 
+  let inStock = null;
+  if (inStockRaw !== undefined && inStockRaw !== null && inStockRaw !== '') {
+    if (typeof inStockRaw === 'boolean') {
+      inStock = inStockRaw;
+    } else {
+      const normalizedStock = sanitizeText(inStockRaw).toLowerCase();
+      if (['true', '1', 'yes', 'con', 'available', 'instock'].includes(normalizedStock)) {
+        inStock = true;
+      } else if (['false', '0', 'no', 'het', 'out', 'outofstock'].includes(normalizedStock)) {
+        inStock = false;
+      } else {
+        throw new ChatbotError('filters.inStock must be a boolean-like value', {
+          statusCode: 400,
+          code: 'INVALID_TOOL_SEARCH_FILTER',
+          details: {
+            fieldName: 'filters.inStock',
+            value: inStockRaw,
+          },
+        });
+      }
+    }
+  }
+
   const requestId = sanitizeText(payload.requestId || '');
   if (requestId.length > config.maxRequestIdLength) {
     throw new ChatbotError(`requestId exceeds max length (${config.maxRequestIdLength})`, {
@@ -152,6 +179,10 @@ const validateToolSearchPayload = (payload = {}) => {
       orderType: orderType || null,
       sortBy: sortBy ? (sortBy === 'createdat' ? 'createdAt' : sortBy) : null,
       sortOrder: sortOrder || null,
+      category: category || null,
+      size: size || null,
+      color: color || null,
+      inStock,
       priceMin,
       priceMax,
       dateFrom,

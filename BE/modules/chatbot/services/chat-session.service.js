@@ -49,6 +49,10 @@ const getChatSession = ({ actor = {}, requestId = '' }) => {
     lastOrderIds: [],
     lastOrderDetails: [],
     lastOrderType: null,
+    lastProductQuery: null,
+    lastProductFilters: null,
+    lastProductPage: 0,
+    lastProductLimit: null,
   };
 
   sessions.set(key, {
@@ -67,6 +71,16 @@ const saveChatSession = ({ actor = {}, requestId = '', state = {} }) => {
     lastOrderIds: Array.isArray(state.lastOrderIds) ? state.lastOrderIds.slice(0, 20) : [],
     lastOrderDetails: Array.isArray(state.lastOrderDetails) ? state.lastOrderDetails.slice(0, 20) : [],
     lastOrderType: state.lastOrderType || null,
+    lastProductQuery: state.lastProductQuery || null,
+    lastProductFilters: state.lastProductFilters && typeof state.lastProductFilters === 'object'
+      ? { ...state.lastProductFilters }
+      : null,
+    lastProductPage: Number.isInteger(state.lastProductPage) && state.lastProductPage > 0
+      ? state.lastProductPage
+      : 0,
+    lastProductLimit: Number.isInteger(state.lastProductLimit) && state.lastProductLimit > 0
+      ? state.lastProductLimit
+      : null,
   };
 
   sessions.set(key, {
