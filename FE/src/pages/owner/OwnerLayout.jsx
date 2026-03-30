@@ -36,7 +36,7 @@ const navItems = [
   { to: '/owner/staff', labelKey: 'sidebar.staff', icon: BadgeCheck },
   { to: '/owner/shifts', labelKey: 'sidebar.shifts', icon: CalendarClock },
   { to: '/owner/orders', labelKey: 'sidebar.orders', icon: ReceiptText },
-  { to: '/owner/reviews', label: 'Quáº£n lÃ­ Ä‘Ã¡nh giÃ¡', icon: MessageSquareText },
+  { to: '/owner/reviews', label: 'Quản lý đánh giá', icon: MessageSquareText },
   { to: '/owner/promotions', labelKey: 'sidebar.vouchers', icon: Megaphone },
   { to: '/owner/membership', labelKey: 'sidebar.membership', icon: CreditCard },
   { to: '/owner/alerts', labelKey: 'sidebar.alerts', icon: Bell },
@@ -101,7 +101,7 @@ const OwnerLayout = () => {
   const showBackButton = isUserDetail || isProductDetail || isStaffSubView
 
   let title = currentSegment === 'reviews'
-    ? 'Quáº£n lÃ­ Ä‘Ã¡nh giÃ¡'
+    ? 'Quản lý đánh giá'
     : t(pageTitleMap[currentSegment], t('pageTitles.owner'))
   if (isUserDetail) title = t('pageTitles.userDetail')
   if (isProductDetail) title = t('pageTitles.productDetail')

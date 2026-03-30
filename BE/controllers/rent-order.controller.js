@@ -109,12 +109,15 @@ const applyVoucherForRentOrder = async ({
 // Các trạng thái đã kết thúc vòng đời — đồ đã trả hoặc huỷ
 const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow'];
 
-// Đơn PendingDeposit hết hạn sau N giờ — sau thời gian này không còn giữ chỗ
-// Mặc định 2 giờ: khách có 2 tiếng để hoàn tất thanh toán cọc online
-const PENDING_DEPOSIT_HOLD_HOURS = parseInt(process.env.PENDING_DEPOSIT_HOLD_HOURS || '2', 10);
+// Đơn PendingDeposit hết hạn sau N phút — sau thời gian này không còn giữ chỗ
+// Đồng nhất với thời gian auto-cancel (env PENDING_DEPOSIT_HOLD_MINUTES, mặc định 5 phút để test)
+const PENDING_DEPOSIT_HOLD_MINUTES = parseInt(process.env.PENDING_DEPOSIT_HOLD_MINUTES || '5', 10);
+
+// Số ngày thuê tối đa cho 1 đơn
+const MAX_RENTAL_DAYS = parseInt(process.env.MAX_RENTAL_DAYS || '30', 10);
 
 const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDate, session) => {
-    const pendingDepositExpiry = new Date(Date.now() - PENDING_DEPOSIT_HOLD_HOURS * 60 * 60 * 1000);
+    const pendingDepositExpiry = new Date(Date.now() - PENDING_DEPOSIT_HOLD_MINUTES * 60 * 1000);
 
     // Kiểm tra 1: chồng lấp ngày hợp đồng với đơn chưa kết thúc
     // Dùng strict inequality ($lt/$gt): nếu đơn cũ kết thúc đúng lúc đơn mới bắt đầu → KHÔNG coi là conflict
@@ -471,6 +474,10 @@ exports.createRentOrder = async (req, res) => {
         startDay.setHours(0, 0, 0, 0);
         if (startDay < todayStart) {
             return res.status(400).json({ success: false, message: 'Ngày bắt đầu thuê không thể là ngày trong quá khứ' });
+        }
+        const rentalDays = Math.ceil((parsedEnd - parsedStart) / (24 * 60 * 60 * 1000));
+        if (rentalDays > MAX_RENTAL_DAYS) {
+            return res.status(400).json({ success: false, message: `Thời gian thuê tối đa là ${MAX_RENTAL_DAYS} ngày` });
         }
 
         const existingOrder = await findRentOrderByIdempotencyKey(idempotencyKey);
@@ -1763,6 +1770,10 @@ exports.createWalkInOrder = async (req, res) => {
         }
         if (parsedEnd < parsedStart) {
             return res.status(400).json({ success: false, message: 'Ngày kết thúc không thể trước ngày bắt đầu' });
+        }
+        const walkInRentalDays = Math.ceil((parsedEnd - parsedStart) / (24 * 60 * 60 * 1000));
+        if (walkInRentalDays > MAX_RENTAL_DAYS) {
+            return res.status(400).json({ success: false, message: `Thời gian thuê tối đa là ${MAX_RENTAL_DAYS} ngày` });
         }
 
         // Resolve product instances (tương tự createRentOrder)

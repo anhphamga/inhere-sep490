@@ -589,6 +589,15 @@ export default function CartPage() {
     if (rentalItems.length > 0 && rentalItems.some((item) => !item.rentStartDate || !item.rentEndDate)) {
       return setRentalError('Vui lòng chọn ngày thuê cho tất cả sản phẩm.')
     }
+    const maxRentalDays = parseInt(import.meta.env.VITE_MAX_RENTAL_DAYS || '30', 10)
+    const overLimitItem = rentalItems.find((item) => {
+      if (!item.rentStartDate || !item.rentEndDate) return false
+      const days = Math.ceil((new Date(item.rentEndDate) - new Date(item.rentStartDate)) / (24 * 60 * 60 * 1000))
+      return days > maxRentalDays
+    })
+    if (overLimitItem) {
+      return setRentalError(`Thời gian thuê tối đa là ${maxRentalDays} ngày cho mỗi sản phẩm.`)
+    }
 
     const validationErrors = validateBuyForm(buyForm)
     if (buyItems.length > 0 && Object.keys(validationErrors).length > 0) {
