@@ -4,8 +4,9 @@ const ProductInstance = require('../model/ProductInstance.model');
 const Deposit = require('../model/Deposit.model');
 const Alert = require('../model/Alert.model');
 
-// Thời gian tối đa cho đơn PendingDeposit (30 phút)
-const AUTO_CANCEL_MINUTES = 30;
+// Thời gian tối đa cho đơn PendingDeposit — đồng nhất với PENDING_DEPOSIT_HOLD_MINUTES
+// Mặc định 5 phút để dễ test; production nên đặt 30 hoặc cao hơn
+const AUTO_CANCEL_MINUTES = parseInt(process.env.PENDING_DEPOSIT_HOLD_MINUTES || '5', 10);
 // Thời gian chạy cron (5 phút)
 const INTERVAL_MS = 5 * 60 * 1000;
 

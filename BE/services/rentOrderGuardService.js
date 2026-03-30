@@ -2,7 +2,7 @@ const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_LATE_FEE_MULTIPLIER = Number(process.env.LATE_FEE_MULTIPLIER || 1);
+const DEFAULT_LATE_FEE_MULTIPLIER = Number(process.env.LATE_FEE_MULTIPLIER || 50000);
 const AUTO_PENALTY_LATE_DAYS = Number(process.env.AUTO_PENALTY_LATE_DAYS || 3);
 
 const roundCurrency = (value) => Math.round(Number(value || 0) * 100) / 100;

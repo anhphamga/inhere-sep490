@@ -374,7 +374,7 @@ exports.handleWebhook = async (req, res) => {
         }
 
         // webhookData là WebhookData: { orderCode, amount, code, desc, ... }
-        const { orderCode, code } = webhookData;
+        const { orderCode, amount: webhookAmount, code } = webhookData;
         const isPaid = code === '00';
 
         const txn = await PayOSTransaction.findOne({ payosOrderCode: Number(orderCode) });
@@ -390,6 +390,12 @@ exports.handleWebhook = async (req, res) => {
         if (!isPaid) {
             await PayOSTransaction.updateOne({ _id: txn._id }, { status: 'CANCELLED' });
             return res.json({ success: true });
+        }
+
+        // Kiểm tra số tiền trong webhook phải khớp với số tiền đã tạo link
+        if (Math.round(webhookAmount) !== Math.round(txn.amount)) {
+            console.error(`[PayOS] Amount mismatch for orderCode ${orderCode}: expected ${txn.amount}, received ${webhookAmount}`);
+            return res.status(400).json({ success: false, message: 'Số tiền thanh toán không khớp' });
         }
 
         await processConfirmedPayment(txn);
