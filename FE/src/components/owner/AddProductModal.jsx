@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { createOwnerProductApi } from '../../services/owner.service'
+import { getCategoryLevelOptions } from '../../utils/categoryTree'
 
 const SIZE_PRESETS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREE SIZE']
 
@@ -42,7 +43,7 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [pricingMode, setPricingMode] = useState('common')
-    const [form, setForm] = useState({ name: '', quantity: '1', baseSalePrice: '', baseRentPrice: '', commonRentPrice: '', description: '', parentCategory: '', childCategory: '' })
+    const [form, setForm] = useState({ name: '', quantity: '1', baseSalePrice: '', baseRentPrice: '', commonRentPrice: '', description: '', categoryPath: [] })
     const [mainImages, setMainImages] = useState([])
     const [sizes, setSizes] = useState([])
     const [sizeDraft, setSizeDraft] = useState('')
@@ -51,13 +52,37 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
     const [variantMatrix, setVariantMatrix] = useState([])
     const [activePreviewColor, setActivePreviewColor] = useState('')
 
-    const childOptions = useMemo(() => categoryTree.find((item) => item.name === form.parentCategory)?.children || [], [categoryTree, form.parentCategory])
-    const selectedCategory = form.childCategory || form.parentCategory
+    const selectedCategoryPath = useMemo(
+        () => (Array.isArray(form.categoryPath) ? form.categoryPath : []),
+        [form.categoryPath]
+    )
+    const selectedCategory = selectedCategoryPath[selectedCategoryPath.length - 1] || ''
+    const categoryLevelOptions = useMemo(() => {
+        const levels = []
+        let level = 0
+        while (level === 0 || level < selectedCategoryPath.length + 1) {
+            const options = getCategoryLevelOptions(categoryTree, selectedCategoryPath, level)
+            if (options.length === 0) break
+            levels.push(options)
+            level += 1
+        }
+        return levels
+    }, [categoryTree, selectedCategoryPath])
     const previewColor = colors.find((item) => item.name === activePreviewColor) || colors[0]
     const previewImage = previewColor?.images?.[0] || mainImages[0]?.preview || ''
 
     const updateField = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }))
+        setDirty(true)
+    }
+
+    const updateCategoryLevel = (level, value) => {
+        setForm((prev) => {
+            const currentPath = Array.isArray(prev.categoryPath) ? prev.categoryPath : []
+            const nextPath = currentPath.slice(0, level)
+            if (value) nextPath.push(value)
+            return { ...prev, categoryPath: nextPath }
+        })
         setDirty(true)
     }
 
@@ -140,8 +165,9 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
             const payload = {
                 name: form.name.trim() || 'Draft product',
                 category: selectedCategory || 'Draft',
-                categoryParent: form.parentCategory,
-                categoryChild: form.childCategory,
+                categoryParent: selectedCategoryPath[0] || '',
+                categoryChild: selectedCategoryPath.length > 1 ? selectedCategoryPath[selectedCategoryPath.length - 1] : '',
+                categoryAncestors: selectedCategoryPath,
                 size: sizes[0] || 'M',
                 sizes,
                 color: colors[0]?.name || 'Default',
@@ -198,8 +224,16 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
                                     <Field type="number" label="Giá thuê chung" value={form.commonRentPrice} onChange={(value) => updateField('commonRentPrice', value)} hint={form.commonRentPrice ? `${toCurrency(form.commonRentPrice)}đ` : ''} />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <Select label="Danh mục cha" value={form.parentCategory} options={categoryTree.map((item) => item.name)} onChange={(value) => { setForm((prev) => ({ ...prev, parentCategory: value, childCategory: '' })); setDirty(true) }} placeholder="Chọn danh mục cha" />
-                                    <Select label="Danh mục con (nếu có)" value={form.childCategory} options={childOptions} onChange={(value) => updateField('childCategory', value)} placeholder={childOptions.length > 0 ? 'Chọn danh mục con' : 'Danh mục cha không có thẻ con'} disabled={childOptions.length === 0} />
+                                    {categoryLevelOptions.map((options, index) => (
+                                        <Select
+                                            key={`category-level-${index}`}
+                                            label={`Danh mục cấp ${index + 1}`}
+                                            value={selectedCategoryPath[index] || ''}
+                                            options={options}
+                                            onChange={(value) => updateCategoryLevel(index, value)}
+                                            placeholder={`Chọn danh mục cấp ${index + 1}`}
+                                        />
+                                    ))}
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-sm font-medium text-slate-700">Mô tả</label>
@@ -305,7 +339,11 @@ function Select({ label, value, onChange, options = [], placeholder = 'Chọn', 
             <label className="text-sm font-medium text-slate-700">{label}</label>
             <select className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm bg-white disabled:bg-slate-100" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
                 <option value="">{placeholder}</option>
-                {options.map((item) => <option key={item} value={item}>{item}</option>)}
+                {options.map((item) => {
+                    const optionValue = typeof item === 'object' && item !== null ? item.value : item
+                    const optionLabel = typeof item === 'object' && item !== null ? item.label : item
+                    return <option key={optionValue} value={optionValue}>{optionLabel}</option>
+                })}
             </select>
         </div>
     )

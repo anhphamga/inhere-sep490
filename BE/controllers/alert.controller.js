@@ -15,6 +15,8 @@ const listAlerts = async (req, res) => {
         const [items, total] = await Promise.all([
             Alert.find(query)
                 .populate('handledBy', 'name email role')
+                .populate('createdBy', 'name email role')
+                .populate('activityLogs.actor', 'name email role')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(Number(limit))
@@ -35,7 +37,7 @@ const listAlerts = async (req, res) => {
     } catch (error) {
         return res.status(500).json({
             success: false,
-            message: 'Error getting alerts',
+            message: 'Không thể tải danh sách thông báo',
             error: error.message
         });
     }
@@ -48,17 +50,31 @@ const createAlert = async (req, res) => {
         if (!type || !targetType || !targetId) {
             return res.status(400).json({
                 success: false,
-                message: 'type, targetType, targetId are required'
+                message: 'Thiếu dữ liệu bắt buộc: type, targetType, targetId'
             });
         }
 
+        const actorId = req.user?.id || null;
+        const actorRole = String(req.user?.role || '');
         const created = await Alert.create({
             type,
             targetType,
             targetId,
             message,
             actionRequired: Boolean(actionRequired),
-            status: 'New'
+            status: 'New',
+            createdBy: actorId,
+            activityLogs: [
+                {
+                    action: 'CREATED',
+                    actor: actorId,
+                    actorRole,
+                    note: 'Tạo thông báo',
+                    fromStatus: '',
+                    toStatus: 'New',
+                    at: new Date()
+                }
+            ]
         });
 
         return res.status(201).json({
@@ -68,7 +84,7 @@ const createAlert = async (req, res) => {
     } catch (error) {
         return res.status(500).json({
             success: false,
-            message: 'Error creating alert',
+            message: 'Không thể tạo thông báo',
             error: error.message
         });
     }
@@ -82,27 +98,57 @@ const updateAlertStatus = async (req, res) => {
         if (!ALLOWED_STATUSES.has(status)) {
             return res.status(400).json({
                 success: false,
-                message: 'status must be New, Seen, or Done'
+                message: 'Trạng thái phải là New, Seen hoặc Done'
             });
         }
 
+        const existing = await Alert.findById(id).lean();
+        if (!existing) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy thông báo'
+            });
+        }
+
+        if (existing.status === status) {
+            const current = await Alert.findById(id)
+                .populate('handledBy', 'name email role')
+                .populate('createdBy', 'name email role')
+                .populate('activityLogs.actor', 'name email role')
+                .lean();
+            return res.status(200).json({
+                success: true,
+                data: current
+            });
+        }
+
+        const actorId = req.user?.id || null;
+        const actorRole = String(req.user?.role || '');
         const payload = {
             status,
             handledBy: req.user?.id || null,
-            handledAt: new Date()
+            handledAt: new Date(),
+            $push: {
+                activityLogs: {
+                    action: 'STATUS_CHANGED',
+                    actor: actorId,
+                    actorRole,
+                    note: `Cập nhật trạng thái từ ${existing.status} sang ${status}`,
+                    fromStatus: existing.status || '',
+                    toStatus: status,
+                    at: new Date()
+                }
+            }
         };
 
         const updated = await Alert.findByIdAndUpdate(id, payload, {
             new: true,
             runValidators: true
-        }).lean();
-
-        if (!updated) {
-            return res.status(404).json({
-                success: false,
-                message: 'Alert not found'
-            });
-        }
+        })
+            .populate('handledBy', 'name email role')
+            .populate('createdBy', 'name email role')
+            .populate('activityLogs.actor', 'name email role')
+            .lean();
 
         return res.status(200).json({
             success: true,
@@ -111,7 +157,7 @@ const updateAlertStatus = async (req, res) => {
     } catch (error) {
         return res.status(500).json({
             success: false,
-            message: 'Error updating alert',
+            message: 'Không thể cập nhật thông báo',
             error: error.message
         });
     }

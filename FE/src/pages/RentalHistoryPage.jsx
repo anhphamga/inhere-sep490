@@ -11,7 +11,7 @@ const statusLabels = {
   Confirmed: 'Đã xác nhận',
   WaitingPickup: 'Chờ lấy đồ',
   Renting: 'Đang thuê',
-  Waiting: 'Chờ trả',
+  WaitingReturn: 'Chờ trả',
   Completed: 'Hoàn tất',
   Cancelled: 'Đã hủy'
 }
@@ -23,7 +23,7 @@ const statusColors = {
   Confirmed: 'bg-indigo-100 text-indigo-800',
   WaitingPickup: 'bg-purple-100 text-purple-800',
   Renting: 'bg-green-100 text-green-800',
-  Waiting: 'bg-orange-100 text-orange-800',
+  WaitingReturn: 'bg-orange-100 text-orange-800',
   Completed: 'bg-green-200 text-green-800',
   Cancelled: 'bg-red-100 text-red-800'
 }
@@ -134,7 +134,9 @@ export default function RentalHistoryPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <p className="text-sm text-gray-500">
-                      Mã đơn: <span className="font-mono">{order._id.slice(-8)}</span>
+                      Mã đơn: <span className="font-mono font-semibold text-slate-800">
+                        {order.orderCode || `#${String(order._id || '').slice(-8).toUpperCase()}`}
+                      </span>
                     </p>
                     <p className="text-sm text-gray-500">
                       Ngày tạo: {new Date(order.createdAt).toLocaleDateString('vi-VN')}
@@ -148,7 +150,9 @@ export default function RentalHistoryPage() {
                 <div className="flex justify-between items-end">
                   <div>
                     <p className="text-sm text-gray-600">
-                      {new Date(order.rentStartDate).toLocaleDateString('vi-VN')} - {new Date(order.rentEndDate).toLocaleDateString('vi-VN')}
+                      {new Date(order.rentStartDate).toLocaleDateString('vi-VN')}{order.rentStartDate.includes('T') && ` ${new Date(order.rentStartDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
+                      {' - '}
+                      {new Date(order.rentEndDate).toLocaleDateString('vi-VN')}{order.rentEndDate.includes('T') && ` ${new Date(order.rentEndDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
                     </p>
                     <p className="text-sm text-gray-500 mt-1">
                       {order.items?.length || 0} sản phẩm

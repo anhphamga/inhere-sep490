@@ -4,6 +4,7 @@
 
 const bcrypt = require('bcryptjs');
 const User = require('../model/User.model');
+const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 
 const sanitizeStaff = (user) => ({
     id: user._id,
@@ -100,16 +101,39 @@ const createStaff = async (req, res) => {
             });
         }
 
-        const normalizedEmail = email.trim().toLowerCase();
-        const existingEmail = await User.findOne({
-            email: normalizedEmail,
-            authProvider: 'local'
-        });
+        const normalizedEmail = normalizeEmail(email);
+        const normalizedPhone = phone ? normalizePhone(phone) : null;
+
+        if (!isValidEmail(normalizedEmail)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email không hợp lệ'
+            });
+        }
+
+        if (normalizedPhone && !isValidPhone(normalizedPhone)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Số điện thoại không hợp lệ'
+            });
+        }
+
+        const [existingEmail, existingPhone] = await Promise.all([
+            User.findOne({ email: normalizedEmail }),
+            normalizedPhone ? User.findOne({ phone: normalizedPhone }) : Promise.resolve(null)
+        ]);
 
         if (existingEmail) {
             return res.status(409).json({
                 success: false,
-                message: 'Email already exists'
+                message: 'Email đã được sử dụng'
+            });
+        }
+
+        if (existingPhone) {
+            return res.status(409).json({
+                success: false,
+                message: 'Số điện thoại đã được sử dụng'
             });
         }
 
@@ -117,8 +141,8 @@ const createStaff = async (req, res) => {
 
         const staff = await User.create({
             role: 'staff',
-            name,
-            phone: phone ? phone.trim() : null,
+            name: String(name).trim(),
+            phone: normalizedPhone,
             email: normalizedEmail,
             passwordHash,
             authProvider: 'local',

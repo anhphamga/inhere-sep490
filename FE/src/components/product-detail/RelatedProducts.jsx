@@ -40,7 +40,7 @@ export default function RelatedProducts({ items = [], loading = false }) {
               <div className="space-y-0.5 p-3">
                 <p className="truncate text-sm font-semibold text-slate-900">{item.name || "Sản phẩm"}</p>
                 <p className="text-xs text-slate-400">{item.brand || item.category || "Inhere"}</p>
-                <p className="text-sm font-bold text-slate-800">{Number(item.baseRentPrice || 0).toLocaleString("vi-VN")}đ <span className="font-normal text-slate-400">/ 4 ngày</span></p>
+                <p className="text-sm font-bold text-slate-800">{Number(item.baseRentPrice || 0).toLocaleString("vi-VN")}đ <span className="font-normal text-slate-400">/ ngày</span></p>
               </div>
             </Link>
           ))}

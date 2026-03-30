@@ -99,6 +99,10 @@
     flex-wrap: wrap;
 }
 
+.site-nav-item {
+    position: relative;
+}
+
 .site-nav-link {
     text-decoration: none;
     color: #383838;
@@ -110,6 +114,77 @@
 .site-nav-link.active {
     background: #f5f0e7;
     color: #b08d57;
+}
+
+.site-nav-link-button {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+}
+
+.site-mega-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    width: min(820px, calc(100vw - 40px));
+    border: 1px solid #ece7dd;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 24px 44px rgba(31, 31, 31, 0.14);
+    padding: 16px;
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.site-nav-mega:hover .site-mega-menu,
+.site-nav-mega:focus-within .site-mega-menu {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.site-mega-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.site-mega-col {
+    border: 1px solid #f3ede4;
+    border-radius: 12px;
+    background: #fffdfa;
+    padding: 12px;
+}
+
+.site-mega-title {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 800;
+    color: #8f6a34;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.site-mega-links {
+    display: grid;
+    gap: 6px;
+}
+
+.site-mega-link {
+    text-decoration: none;
+    color: #2f2f2f;
+    font-size: 14px;
+    padding: 7px 8px;
+    border-radius: 8px;
+}
+
+.site-mega-link:hover {
+    background: #f7f1e7;
+    color: #8f6a34;
 }
 
 .site-nav-right {
@@ -217,6 +292,14 @@
     .site-nav-right {
         display: none;
     }
+
+    .site-mega-menu {
+        width: min(680px, calc(100vw - 40px));
+    }
+
+    .site-mega-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 640px) {
@@ -235,5 +318,19 @@
     .site-account-menu {
         right: auto;
         left: 0;
+    }
+
+    .site-mega-menu {
+        position: static;
+        width: 100%;
+        margin-top: 8px;
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .site-mega-grid {
+        grid-template-columns: 1fr;
     }
 }

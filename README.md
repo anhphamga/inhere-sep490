@@ -31,8 +31,8 @@ Tạo file `.env` trong thư mục BE:
 MONGO_URI=mongodb://localhost:27017/inhere
 PORT=9000
 NODE_ENV=development
-JWT_SECRET=replace_with_strong_secret
-JWT_EXPIRES_IN=7d
+JWT_ACCESS_SECRET=replace_with_access_secret
+JWT_REFRESH_SECRET=replace_with_refresh_secret
 OWNER_NAME=System Owner
 OWNER_EMAIL=owner@inhere.local
 OWNER_PHONE=0900000000
@@ -241,3 +241,17 @@ npm run dev
 - `POST /api/translate/batch`
 
 Both endpoints are rate-limited (`60 req/min/IP`) and cached in MongoDB collection `translations`.
+
+## Vercel Deploy (Frontend)
+
+Project da co san `vercel.json` o root de:
+- Build tu thu muc `FE`
+- Output `FE/dist`
+- Rewrite tat ca route ve `index.html` (React Router SPA)
+
+Can thiet lap environment variable tren Vercel:
+- `VITE_API_BASE_URL=https://<your-backend-domain>/api`
+
+Luu y:
+- Backend Express (`BE`) hien tai nen deploy rieng (Render/Railway/VPS).
+- Frontend tren Vercel se goi API qua `VITE_API_BASE_URL`.

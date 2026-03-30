@@ -4,7 +4,8 @@ const saleOrderSchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false,
+    default: null
   },
   staffId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -13,13 +14,59 @@ const saleOrderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft', 'PendingPayment', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],
+    enum: ['Draft', 'PendingPayment', 'PendingConfirmation', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],
     default: 'Draft'
   },
   paymentMethod: {
     type: String,
-    enum: ['COD', 'Online'],
+    enum: ['COD', 'Online', 'BankTransfer'],
     required: true
+  },
+  orderType: {
+    type: String,
+    enum: ['Buy', 'Rent'],
+    default: 'Buy'
+  },
+  guestName: {
+    type: String,
+    default: ''
+  },
+  guestEmail: {
+    type: String,
+    default: ''
+  },
+  guestVerificationMethod: {
+    type: String,
+    enum: ['phone', 'email', null],
+    default: null
+  },
+  guestVerificationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'GuestVerification',
+    default: null
+  },
+  idempotencyKey: {
+    type: String,
+    default: null
+  },
+  voucherCode: {
+    type: String,
+    default: null
+  },
+  voucherId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Voucher',
+    default: null
+  },
+  voucherSnapshot: {
+    name: { type: String, default: '' },
+    voucherType: { type: String, default: '' },
+    value: { type: Number, default: 0 },
+    maxDiscount: { type: Number, default: null },
+    appliesTo: { type: String, default: '' },
+    appliesOn: { type: String, default: '' },
+    originalSubtotal: { type: Number, default: 0 },
+    finalSubtotal: { type: Number, default: 0 },
   },
   discountAmount: {
     type: Number,
@@ -41,6 +88,29 @@ const saleOrderSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  history: [{
+    status: {
+      type: String,
+      default: ''
+    },
+    action: {
+      type: String,
+      default: ''
+    },
+    description: {
+      type: String,
+      default: ''
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -48,5 +118,13 @@ const saleOrderSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+saleOrderSchema.index(
+  { idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: 'string' } }
+  }
+);
 
 module.exports = mongoose.model('SaleOrder', saleOrderSchema);

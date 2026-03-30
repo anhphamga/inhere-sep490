@@ -44,7 +44,7 @@ export default function SizeSelector({
               aria-pressed={active}
               aria-label={`Chọn size ${size}`}
             >
-              {size}
+              <span className="break-words">{size}</span>
             </button>
           );
         })}

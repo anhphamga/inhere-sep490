@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+﻿import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import Header from "../../components/common/Header";
@@ -186,198 +186,13 @@ const CONTACT_INFO = {
   instagramLabel: "@inhere_trangphuchoian",
   instagramHref: "https://www.instagram.com/inhere_trangphuchoian/",
 };
-const PRODUCT_CATEGORIES = [
-  {
-    displayName: "Áo Dài Cho Thuê",
-    slug: "ao-dai-cho-thue",
-    type: "rent",
-    count: 100,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Bà Sui",
-    slug: "ao-dai-ba-sui",
-    type: "rent",
-    count: 2,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Bé",
-    slug: "ao-dai-be",
-    type: "rent",
-    count: 1,
-    children: [
-      {
-        displayName: "Áo Dài Bé Trai",
-        slug: "ao-dai-be-trai",
-        type: "rent",
-        count: 1,
-        children: [],
-      },
-    ],
-  },
-  {
-    displayName: "Áo Dài Cách Tân Cho Thuê",
-    slug: "ao-dai-cach-tan-cho-thue",
-    type: "rent",
-    count: 76,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Cưới",
-    slug: "ao-dai-cuoi",
-    type: "sale_or_rent",
-    count: 6,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Gấm",
-    slug: "ao-dai-gam",
-    type: "rent",
-    count: 17,
-    children: [
-      { displayName: "Gấm Hoa", slug: "gam-hoa", type: "rent", count: 10, children: [] },
-      { displayName: "Gấm Thọ", slug: "gam-tho", type: "rent", count: 6, children: [] },
-    ],
-  },
-  {
-    displayName: "Áo Dài Suôn Lụa Trơn",
-    slug: "ao-dai-suon-lua-tron",
-    type: "rent",
-    count: 17,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Thiết Kế Cho Thuê",
-    slug: "ao-dai-thiet-ke-cho-thue",
-    type: "rent",
-    count: 16,
-    children: [{ displayName: "In Hoa Văn", slug: "in-hoa-van", type: "rent", count: 4, children: [] }],
-  },
-  {
-    displayName: "Áo Dài Tơ Thêu",
-    slug: "ao-dai-to-theu",
-    type: "rent",
-    count: 19,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Cao Cấp",
-    slug: "ao-dai-cao-cap",
-    type: "sale_or_rent",
-    count: 3,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Nam",
-    slug: "ao-dai-nam",
-    type: "sale_or_rent",
-    count: 5,
-    children: [],
-  },
-  {
-    displayName: "Áo Dài Truyền Thống Cho Thuê",
-    slug: "ao-dai-truyen-thong-cho-thue",
-    type: "rent",
-    count: 13,
-    children: [],
-  },
-  {
-    displayName: "Cho Thuê Váy Đầm Hội An",
-    slug: "cho-thue-vay-dam-hoi-an",
-    type: "rent",
-    count: 37,
-    children: [
-      { displayName: "Váy Đi Tiệc", slug: "vay-di-tiec", type: "rent", count: 3, children: [] },
-      { displayName: "Váy Vintage", slug: "vay-vintage", type: "rent", count: 11, children: [] },
-      { displayName: "Yếm Chụp Ảnh", slug: "yem-chup-anh", type: "rent", count: 21, children: [] },
-    ],
-  },
-  {
-    displayName: "Cho Thuê Vest Hội An",
-    slug: "cho-thue-vest-hoi-an",
-    type: "rent",
-    count: 14,
-    children: [
-      { displayName: "Vest Nam", slug: "vest-nam", type: "rent", count: 12, children: [] },
-      { displayName: "Phụ Kiện Vest", slug: "phu-kien-vest", type: "rent", count: 2, children: [] },
-    ],
-  },
-  {
-    displayName: "Cổ Phục Cho Thuê Tại Hội An",
-    slug: "co-phuc-cho-thue-tai-hoi-an",
-    type: "rent",
-    count: 16,
-    children: [
-      { displayName: "Áo Tấc", slug: "ao-tac", type: "rent", count: 11, children: [] },
-      { displayName: "Nhật Bình", slug: "nhat-binh", type: "rent", count: 4, children: [] },
-    ],
-  },
-  {
-    displayName: "Đồ Cho Bé Cho Thuê Hội An",
-    slug: "do-cho-be-cho-thue-hoi-an",
-    type: "rent",
-    count: 10,
-    children: [
-      { displayName: "Bé Gái", slug: "be-gai", type: "rent", count: 7, children: [] },
-      { displayName: "Bé Trai", slug: "be-trai", type: "rent", count: 3, children: [] },
-    ],
-  },
-  {
-    displayName: "Gói Chụp Ảnh",
-    slug: "goi-chup-anh",
-    type: "service",
-    count: 28,
-    children: [],
-  },
-  {
-    displayName: "Make Up",
-    slug: "make-up",
-    type: "service",
-    count: 3,
-    children: [],
-  },
-  {
-    displayName: "Phụ Kiện Chụp Ảnh Cho Thuê",
-    slug: "phu-kien-chup-anh-cho-thue",
-    type: "rent",
-    count: 83,
-    children: [
-      { displayName: "Băng Đô", slug: "bang-do", type: "rent", count: 0, children: [] },
-      { displayName: "Nón", slug: "non", type: "rent", count: 0, children: [] },
-      { displayName: "Quạt", slug: "quat", type: "rent", count: 0, children: [] },
-      { displayName: "Túi Giỏ", slug: "tui-gio", type: "rent", count: 0, children: [] },
-    ],
-  },
-  {
-    displayName: "Quần Áo Dài",
-    slug: "quan-ao-dai",
-    type: "sale_or_rent",
-    count: 1,
-    children: [],
-  },
-  {
-    displayName: "Sửa Đồ",
-    slug: "sua-do",
-    type: "service",
-    count: 3,
-    children: [],
-  },
-  {
-    displayName: "Váy Cưới",
-    slug: "vay-cuoi",
-    type: "sale_or_rent",
-    count: 1,
-    children: [],
-  },
-];
 
 const Homepage = ({ initialSection = "" }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, user, logout } = useAuth();
   const lang = "vi";
-  const setLang = () => {};
+  const setLang = () => { };
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isSliderPaused, setIsSliderPaused] = useState(false);
   const [activeSection, setActiveSection] = useState(initialSection || "rent");
@@ -701,15 +516,7 @@ const Homepage = ({ initialSection = "" }) => {
       return;
     }
 
-    const sectionIds = [
-      "rent",
-      "buy",
-      "booking",
-      "packages",
-      "blog",
-      "promo",
-      "contact",
-    ];
+    const sectionIds = ["rent", "buy", "fitting", "packages", "blog", "promo", "contact"];
 
     const handleScroll = () => {
       const offset = 130; // gần bằng chiều cao header + nav
@@ -749,15 +556,6 @@ const Homepage = ({ initialSection = "" }) => {
     return () => clearTimeout(timer);
   }, [initialSection]);
 
-  const handleBookingSubmit = (e) => {
-    e.preventDefault();
-    if (lang === "vi") {
-      alert("Đã ghi nhận! Chúng tôi sẽ liên hệ sớm.");
-    } else {
-      alert("Received! We will contact you soon.");
-    }
-  };
-
   const getCategoryTypeLabel = (type) => {
     if (lang === "vi") {
       if (type === "rent") return "Cho thuê";
@@ -769,6 +567,15 @@ const Homepage = ({ initialSection = "" }) => {
     if (type === "sale_or_rent") return "Sale / Rent";
     if (type === "service") return "Service";
     return "Other";
+  };
+
+  const navigateToBuyCategory = (categoryValue) => {
+    const value = String(categoryValue || "").trim();
+    if (!value) {
+      navigate("/buy");
+      return;
+    }
+    navigate(`/buy?category=${encodeURIComponent(value)}`);
   };
 
   const formatCurrency = (amount) =>
@@ -787,76 +594,105 @@ const Homepage = ({ initialSection = "" }) => {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
+  const hasAnyKeyword = (value, keywords) =>
+    keywords.some((keyword) => value.includes(keyword));
+
   const isTraditionalCostume = (item) => {
     const haystack = `${item?.name || ""} ${item?.category || ""}`;
     const normalized = normalizeText(haystack);
-    return (
-      normalized.includes("co phuc") ||
-      normalized.includes("viet phuc") ||
-      normalized.includes("nhat binh") ||
-      normalized.includes("ao tac")
-    );
+    return hasAnyKeyword(normalized, [
+      "co phuc",
+      "viet phuc",
+      "nhat binh",
+      "ao tac",
+      "ao dai",
+      "truyen thong",
+      "gam",
+    ]);
   };
 
   const isDressRental = (item) => {
     const haystack = `${item?.name || ""} ${item?.category || ""}`;
     const normalized = normalizeText(haystack);
-    return normalized.includes("vay") || normalized.includes("dam");
+    return hasAnyKeyword(normalized, ["vay", "dam", "dress", "gown"]);
+  };
+
+  const getLikeCount = (item) => {
+    const directValue = Number(
+      item?.likeCount ??
+      item?.likes ??
+      item?.favoriteCount ??
+      item?.wishlistCount ??
+      item?.totalLikes
+    );
+    if (Number.isFinite(directValue) && directValue >= 0) {
+      return directValue;
+    }
+
+    if (Array.isArray(item?.likedBy)) {
+      return item.likedBy.length;
+    }
+
+    if (Array.isArray(item?.favorites)) {
+      return item.favorites.length;
+    }
+
+    return 0;
   };
 
   const displayedRentProducts =
-    topRentProducts.length > 0
-      ? topRentProducts
+    (topRentProducts.length > 0 ? topRentProducts : buyProducts).length > 0
+      ? [...(topRentProducts.length > 0 ? topRentProducts : buyProducts)]
+        .map((item) => ({
+          ...item,
+          __likeCount: getLikeCount(item),
+        }))
         .filter((item) => hasRealImage(item.imageUrl))
+        .filter((item) => Number(item.baseRentPrice || 0) > 0)
+        .filter((item) => item.__likeCount > 0)
+        .sort((a, b) => b.__likeCount - a.__likeCount)
         .slice(0, HOMEPAGE_PRODUCT_LIMIT)
         .map((item) => ({
           id: item._id,
           name: item.name,
           meta:
             lang === "vi"
-              ? `${item.category} • ${item.likeCount || 0} lượt thích • ${formatCurrency(item.baseRentPrice)}/ngày`
-              : `${item.category} • ${item.likeCount || 0} likes • ${formatCurrency(item.baseRentPrice)}/day`,
+              ? `${item.category} • ${item.__likeCount} lượt yêu thích • ${formatCurrency(item.baseRentPrice)}/ngày`
+              : `${item.category} • ${item.__likeCount} likes • ${formatCurrency(item.baseRentPrice)}/day`,
           imageUrl: item.imageUrl,
         }))
       : [];
 
   const canViewProductDetail = (productId) => Boolean(productId);
 
-  const displayedBuyProducts =
-    buyProducts.length > 0
-      ? buyProducts
-        .filter((item) => hasRealImage(item.imageUrl))
-        .filter((item) => isTraditionalCostume(item))
-        .filter((item) => Number(item.baseRentPrice || 0) > 0)
-        .slice(0, HOMEPAGE_PRODUCT_LIMIT)
-        .map((item) => ({
-          id: item._id,
-          name: item.name,
-          meta:
-            lang === "vi"
-              ? `${item.category} • Thuê từ ${formatCurrency(item.baseRentPrice)}/ngày`
-              : `${item.category} • From ${formatCurrency(item.baseRentPrice)}/day`,
-          imageUrl: item.imageUrl,
-        }))
-      : [];
+  const mapProductCard = (item) => ({
+    id: item._id,
+    name: item.name,
+    meta:
+      lang === "vi"
+        ? `${item.category} • Thuê từ ${formatCurrency(item.baseRentPrice)}/ngày`
+        : `${item.category} • From ${formatCurrency(item.baseRentPrice)}/day`,
+    imageUrl: item.imageUrl,
+  });
 
-  const displayedFittingProducts =
-    fittingProducts.length > 0
-      ? fittingProducts
-        .filter((item) => hasRealImage(item.imageUrl))
-        .filter((item) => isDressRental(item))
-        .filter((item) => Number(item.baseRentPrice || 0) > 0)
-        .slice(0, HOMEPAGE_PRODUCT_LIMIT)
-        .map((item) => ({
-          id: item._id,
-          name: item.name,
-          meta:
-            lang === "vi"
-              ? `${item.category} • Thuê từ ${formatCurrency(item.baseRentPrice)}/ngày`
-              : `${item.category} • From ${formatCurrency(item.baseRentPrice)}/day`,
-          imageUrl: item.imageUrl,
-        }))
-      : [];
+  const rentableWithImage = buyProducts
+    .filter((item) => hasRealImage(item.imageUrl))
+    .filter((item) => Number(item.baseRentPrice || 0) > 0);
+  const traditionalCandidates = rentableWithImage.filter((item) => isTraditionalCostume(item));
+  const displayedBuyProducts = (traditionalCandidates.length > 0 ? traditionalCandidates : rentableWithImage)
+    .slice(0, HOMEPAGE_PRODUCT_LIMIT)
+    .map(mapProductCard);
+
+  const fittingWithImage = fittingProducts
+    .filter((item) => hasRealImage(item.imageUrl))
+    .filter((item) => Number(item.baseRentPrice || 0) > 0);
+  const dressCandidates = fittingWithImage.filter((item) => isDressRental(item));
+  const dressFallback = fittingWithImage.filter(
+    (item) => !displayedBuyProducts.some((chosen) => chosen.id === item._id)
+  );
+  const displayedFittingProducts = (dressCandidates.length > 0 ? dressCandidates : dressFallback)
+    .slice(0, HOMEPAGE_PRODUCT_LIMIT)
+    .map(mapProductCard);
 
   const fallbackBlogPosts = [
     { id: "blog-fallback-1", title: t(lang, "blog.p1.t"), excerpt: t(lang, "blog.p1.d"), thumbnail: "" },
@@ -920,215 +756,215 @@ const Homepage = ({ initialSection = "" }) => {
       />
       {false && (
         <>
-      {/* HEADER */}
-      <header className="header">
-        <div className="container header-row">
-          <a
-            className="brand"
-            href="#top"
-            aria-label={t(lang, "meta.title")}
-          >
-            {/* Đổi src thành đường dẫn logo thực tế của bạn */}
-            <img
-              src={logo}
-              alt={t(lang, "meta.title")}
-              className="brand-logo"
-            />
-          </a>
-
-          <div className="header-right">
-            <div className="lang" aria-label="Language switcher">
-              <button
-                className={
-                  "lang-btn" +
-                  (lang === "vi" ? " active" : "")
-                }
-                type="button"
-                onClick={() => setLang("vi")}
+          {/* HEADER */}
+          <header className="header">
+            <div className="container header-row">
+              <a
+                className="brand"
+                href="#top"
+                aria-label={t(lang, "meta.title")}
               >
-                VI
-              </button>
-              <button
-                className={
-                  "lang-btn" +
-                  (lang === "en" ? " active" : "")
-                }
-                type="button"
-                onClick={() => setLang("en")}
-              >
-                EN
-              </button>
-            </div>
+                {/* Đổi src thành đường dẫn logo thực tế của bạn */}
+                <img
+                  src={logo}
+                  alt={t(lang, "meta.title")}
+                  className="brand-logo"
+                />
+              </a>
 
-            <a className="iconbtn" href="#contact">
-              <span className="dot" />
-              <span>{t(lang, "header.hotline")}</span>
-            </a>
-            <a className="iconbtn" href="#cart">
-              <span>Cart</span>
-              <span>{t(lang, "header.cart")}</span>
-            </a>
-            {isAuthenticated ? (
-              <div className="account-menu-wrap" ref={accountMenuRef}>
-                <button
-                  className="iconbtn account-avatar-btn"
-                  type="button"
-                  onClick={() => setAccountMenuOpen((prev) => !prev)}
-                  aria-label={lang === "vi" ? "Mở menu tài khoản" : "Open account menu"}
-                >
-                  {user?.avatarUrl ? (
-                    <img src={user.avatarUrl} alt="Avatar" className="account-avatar-img" />
-                  ) : (
-                    <span className="account-avatar-fallback">👤</span>
-                  )}
-                </button>
+              <div className="header-right">
+                <div className="lang" aria-label="Language switcher">
+                  <button
+                    className={
+                      "lang-btn" +
+                      (lang === "vi" ? " active" : "")
+                    }
+                    type="button"
+                    onClick={() => setLang("vi")}
+                  >
+                    VI
+                  </button>
+                  <button
+                    className={
+                      "lang-btn" +
+                      (lang === "en" ? " active" : "")
+                    }
+                    type="button"
+                    onClick={() => setLang("en")}
+                  >
+                    EN
+                  </button>
+                </div>
 
-                {accountMenuOpen && (
-                  <div className="account-dropdown">
+                <a className="iconbtn" href="#contact">
+                  <span className="dot" />
+                  <span>{t(lang, "header.hotline")}</span>
+                </a>
+                <a className="iconbtn" href="#cart">
+                  <span>Cart</span>
+                  <span>{t(lang, "header.cart")}</span>
+                </a>
+                {isAuthenticated ? (
+                  <div className="account-menu-wrap" ref={accountMenuRef}>
                     <button
+                      className="iconbtn account-avatar-btn"
                       type="button"
-                      className="account-dropdown-item"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        navigate("/profile");
-                      }}
+                      onClick={() => setAccountMenuOpen((prev) => !prev)}
+                      aria-label={lang === "vi" ? "Mở menu tài khoản" : "Open account menu"}
                     >
-                      {lang === "vi" ? "Xem thông tin" : "View profile"}
+                      {user?.avatarUrl ? (
+                        <img src={user.avatarUrl} alt="Avatar" className="account-avatar-img" />
+                      ) : (
+                        <span className="account-avatar-fallback">👤</span>
+                      )}
                     </button>
-                    <button
-                      type="button"
-                      className="account-dropdown-item danger"
-                      onClick={async () => {
-                        setAccountMenuOpen(false);
-                        await logout();
-                        navigate("/", { replace: true });
-                      }}
-                    >
-                      {lang === "vi" ? "Đăng xuất" : "Logout"}
-                    </button>
+
+                    {accountMenuOpen && (
+                      <div className="account-dropdown">
+                        <button
+                          type="button"
+                          className="account-dropdown-item"
+                          onClick={() => {
+                            setAccountMenuOpen(false);
+                            navigate("/profile");
+                          }}
+                        >
+                          {lang === "vi" ? "Xem thông tin" : "View profile"}
+                        </button>
+                        <button
+                          type="button"
+                          className="account-dropdown-item danger"
+                          onClick={async () => {
+                            setAccountMenuOpen(false);
+                            await logout();
+                            navigate("/", { replace: true });
+                          }}
+                        >
+                          {lang === "vi" ? "Đăng xuất" : "Logout"}
+                        </button>
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <button
+                    className="iconbtn login-btn"
+                    type="button"
+                    onClick={() => navigate("/login")}
+                  >
+                    <span>{t(lang, "header.login")}</span>
+                  </button>
                 )}
               </div>
-            ) : (
-              <button
-                className="iconbtn login-btn"
-                type="button"
-                onClick={() => navigate("/login")}
-              >
-                <span>{t(lang, "header.login")}</span>
-              </button>
-            )}
-          </div>
-        </div>
-        {/* NAVBAR */}
-        <nav className="nav" aria-label="Primary navigation">
-          <div className="container nav-row">
-            <div className="nav-left">
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "rent" ? " active" : "")
-                }
-                href="#rent"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#rent");
-                  setActiveSection("rent");
-                }}
-              >
-                {t(lang, "nav.rent")}
-              </a>
-              <Link
-                className={
-                  "nav-item" +
-                  (activeSection === "buy" ? " active" : "")
-                }
-                to="/buy"
-                onClick={() => {
-                  setActiveSection("buy");
-                }}
-              >
-                {t(lang, "nav.buy")}
-              </Link>
-              <Link
-                className={
-                  "nav-item" +
-                  (activeSection === "booking" ? " active" : "")
-                }
-                to="/booking"
-                onClick={() => {
-                  setActiveSection("booking");
-                }}
-              >
-                {t(lang, "nav.booking")}
-              </Link>
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "blog" ? " active" : "")
-                }
-                href="#blog"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#blog");
-                  setActiveSection("blog");
-                }}
-              >
-                {t(lang, "nav.blog")}
-              </a>
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "promo" ? " active" : "")
-                }
-                href="#promo"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#promo");
-                  setActiveSection("promo");
-                }}
-              >
-                {t(lang, "nav.promo")}
-              </a>
-              <a
-                className={
-                  "nav-item" +
-                  (activeSection === "contact" ? " active" : "")
-                }
-                href="#contact"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToId("#contact");
-                  setActiveSection("contact");
-                }}
-              >
-                {t(lang, "nav.contact")}
-              </a>
             </div>
+            {/* NAVBAR */}
+            <nav className="nav" aria-label="Primary navigation">
+              <div className="container nav-row">
+                <div className="nav-left">
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "rent" ? " active" : "")
+                    }
+                    href="#rent"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#rent");
+                      setActiveSection("rent");
+                    }}
+                  >
+                    {t(lang, "nav.rent")}
+                  </a>
+                  <Link
+                    className={
+                      "nav-item" +
+                      (activeSection === "buy" ? " active" : "")
+                    }
+                    to="/buy"
+                    onClick={() => {
+                      setActiveSection("buy");
+                    }}
+                  >
+                    {t(lang, "nav.buy")}
+                  </Link>
+                  <Link
+                    className={
+                      "nav-item" +
+                      (activeSection === "booking" ? " active" : "")
+                    }
+                    to="/booking"
+                    onClick={() => {
+                      setActiveSection("booking");
+                    }}
+                  >
+                    {t(lang, "nav.booking")}
+                  </Link>
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "blog" ? " active" : "")
+                    }
+                    href="#blog"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#blog");
+                      setActiveSection("blog");
+                    }}
+                  >
+                    {t(lang, "nav.blog")}
+                  </a>
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "promo" ? " active" : "")
+                    }
+                    href="#promo"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#promo");
+                      setActiveSection("promo");
+                    }}
+                  >
+                    {t(lang, "nav.promo")}
+                  </a>
+                  <a
+                    className={
+                      "nav-item" +
+                      (activeSection === "contact" ? " active" : "")
+                    }
+                    href="#contact"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      scrollToId("#contact");
+                      setActiveSection("contact");
+                    }}
+                  >
+                    {t(lang, "nav.contact")}
+                  </a>
+                </div>
 
-            <div className="nav-right">
-              <input
-                className="search"
-                type="search"
-                placeholder={t(
-                  lang,
-                  "search.placeholder"
-                )}
-              />
-              <button
-                className="cta"
-                type="button"
-                onClick={() => {
-                  navigate("/booking");
-                  setActiveSection("booking");
-                }}
-              >
-                {t(lang, "cta.bookNow")}
-              </button>
-            </div>
-          </div>
-        </nav>
-      </header>
+                <div className="nav-right">
+                  <input
+                    className="search"
+                    type="search"
+                    placeholder={t(
+                      lang,
+                      "search.placeholder"
+                    )}
+                  />
+                  <button
+                    className="cta"
+                    type="button"
+                    onClick={() => {
+                      navigate("/booking");
+                      setActiveSection("booking");
+                    }}
+                  >
+                    {t(lang, "cta.bookNow")}
+                  </button>
+                </div>
+              </div>
+            </nav>
+          </header>
         </>
       )}
 
@@ -1225,9 +1061,9 @@ const Homepage = ({ initialSection = "" }) => {
                         <button
                           className="btn ghost"
                           type="button"
-                          onClick={() => scrollToId("#booking")}
+                          onClick={() => scrollToId("#rent")}
                         >
-                          {lang === "vi" ? "Đặt lịch thử đồ" : "Book fitting"}
+                          {t(lang, "hero.btn_view")}
                         </button>
                       </div>
 
@@ -1424,7 +1260,19 @@ const Homepage = ({ initialSection = "" }) => {
             style={{ "--category-columns": displayedCategories.length }}
           >
             {displayedCategories.map((category, index) => (
-              <article className="category-card" key={`${category.slug}-${index}`}>
+              <article
+                className="category-card category-card-clickable"
+                key={`${category.slug}-${index}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigateToBuyCategory(category.value || category.displayName)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigateToBuyCategory(category.value || category.displayName);
+                  }
+                }}
+              >
                 <div className="category-image-wrap">
                   {category.imageUrl ? (
                     <img
@@ -1454,8 +1302,17 @@ const Homepage = ({ initialSection = "" }) => {
                   <ul className="category-children">
                     {category.children.map((child) => (
                       <li key={child.slug}>
-                        <span>{child.displayName}</span>
-                        <strong>{child.count}</strong>
+                        <button
+                          type="button"
+                          className="category-child-btn"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigateToBuyCategory(child.value || child.displayName);
+                          }}
+                        >
+                          <span>{child.displayName}</span>
+                          <strong>{child.count}</strong>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1574,45 +1431,9 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* BOOKING CTA */}
-      <section className="soft" id="booking">
+      {/* FITTING PRODUCTS */}
+      <section className="soft" id="fitting">
         <div className="container">
-          <div className="cta-block">
-            <div>
-              <h2>{t(lang, "booking.title")}</h2>
-              <p>{t(lang, "booking.sub")}</p>
-            </div>
-
-            <form className="form" onSubmit={handleBookingSubmit}>
-              <input
-                className="input"
-                type="date"
-                required
-              />
-              <input
-                className="input"
-                type="time"
-                required
-              />
-              <input
-                className="input"
-                type="number"
-                min="1"
-                defaultValue="1"
-                required
-                placeholder={t(
-                  lang,
-                  "booking.guests"
-                )}
-              />
-              <button
-                className="submit"
-                type="submit"
-              >
-                {t(lang, "booking.btn")}
-              </button>
-            </form>
-          </div>
           <div className="row-head fitting-head">
             <h2>
               {lang === "vi" ? "Váy - đầm cho thuê" : "Dress Rentals"}
@@ -1645,7 +1466,7 @@ const Homepage = ({ initialSection = "" }) => {
                   <p className="pmeta">{product.meta}</p>
                   <div className="pactions">
                     <button className="pbtn primary" type="button">
-                      {t(lang, "booking.btn")}
+                      {t(lang, "btn.rent")}
                     </button>
                     <button
                       className="pbtn"
@@ -1901,14 +1722,6 @@ const Homepage = ({ initialSection = "" }) => {
                 <a href="#packages">
                   {t(lang, "nav.packages")}
                 </a>
-                <Link
-                  to="/booking"
-                  onClick={() => {
-                    setActiveSection("booking");
-                  }}
-                >
-                  {t(lang, "nav.booking")}
-                </Link>
               </div>
             </div>
 
@@ -1958,5 +1771,3 @@ const Homepage = ({ initialSection = "" }) => {
 };
 
 export default Homepage;
-
-

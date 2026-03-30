@@ -1,12 +1,16 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import HomePage from '../pages/public/HomePage'
 import BuyPage from '../pages/public/BuyPage'
+import CollectionPage from '../pages/public/CollectionPage'
+import CollectionEntryPage from '../pages/public/CollectionEntryPage'
 import BlogPage from '../pages/public/BlogPage'
 import BlogDetailPage from '../pages/public/BlogDetailPage'
-import BookingPage from '../pages/customer/BookingPage'
+import FavoritesPage from '../pages/customer/FavoritesPage'
+import MyVouchersPage from '../pages/customer/MyVouchersPage'
 import ProductDetailPage from '../pages/customer/ProductDetailPage'
 import LoginPage from '../pages/auth/LoginPage'
 import SignupPage from '../pages/auth/SignupPage'
+import RoleLoginPage from '../pages/auth/RoleLoginPage'
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage'
 import ProfilePage from '../pages/auth/ProfilePage'
 import StaffPage from '../pages/staff/StaffPage'
@@ -19,6 +23,7 @@ import OwnerMembershipScreen from '../pages/owner/OwnerMembershipScreen'
 import OwnerOrdersScreen from '../pages/owner/OwnerOrdersScreen'
 import OwnerProductDetailScreen from '../pages/owner/OwnerProductDetailScreen'
 import OwnerProductsScreen from '../pages/owner/OwnerProductsScreen'
+import OwnerCategoriesScreen from '../pages/owner/OwnerCategoriesScreen'
 import OwnerPromotionsScreen from '../pages/owner/OwnerPromotionsScreen'
 import OwnerReportsScreen from '../pages/owner/OwnerReportsScreen'
 import OwnerShiftsScreen from '../pages/owner/OwnerShiftsScreen'
@@ -26,12 +31,15 @@ import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen'
 import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen'
 import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen'
 import OwnerInventoryScreen from '../pages/owner/OwnerInventoryScreen'
+import OwnerReviewsScreen from '../pages/owner/OwnerReviewsScreen'
 // Rental pages
 import RentalCheckoutPage from '../pages/RentalCheckoutPage'
-import RentalHistoryPage from '../pages/RentalHistoryPage'
 import RentalDetailPage from '../pages/RentalDetailPage'
 import BuyCheckoutPage from '../pages/BuyCheckoutPage'
 import CartPage from '../pages/CartPage'
+import OrderHistoryPage from '../pages/OrderHistoryPage'
+import OrderDetailPage from '../pages/OrderDetailPage'
+import PaymentResultPage from '../pages/PaymentResultPage'
 
 const AppRoutes = () => {
     return (
@@ -39,22 +47,32 @@ const AppRoutes = () => {
             <Route path="/" element={<HomePage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route path="/buy" element={<BuyPage />} />
+            <Route path="/collection" element={<Navigate to="/collections" replace />} />
+            <Route path="/collections" element={<CollectionEntryPage />} />
+            <Route path="/collections/:slug" element={<CollectionPage />} />
             <Route path="/buy/checkout" element={<BuyCheckoutPage />} />
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/blog/:id" element={<BlogDetailPage />} />
-            <Route path="/booking" element={<BookingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/work/login" element={<RoleLoginPage />} />
+            <Route path="/owner/login" element={<Navigate to="/work/login?role=owner" replace />} />
+            <Route path="/staff/login" element={<Navigate to="/work/login?role=staff" replace />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
 
             {/* Rental Routes */}
             <Route path="/rental/checkout" element={<RentalCheckoutPage />} />
-            <Route path="/rental/history" element={<RentalHistoryPage />} />
+            <Route path="/rental/history" element={<Navigate to="/orders/history" replace />} />
             <Route path="/rental/:id" element={<RentalDetailPage />} />
+            <Route path="/payment-result" element={<PaymentResultPage />} />
 
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/favorites" element={<FavoritesPage />} />
+                <Route path="/my-vouchers" element={<MyVouchersPage />} />
+                <Route path="/orders/history" element={<OrderHistoryPage />} />
+                <Route path="/orders/:id" element={<OrderDetailPage />} />
             </Route>
             <Route element={<PrivateRoute roles={['owner']} />}>
                 <Route path="/owner" element={<OwnerLayout />}>
@@ -63,12 +81,15 @@ const AppRoutes = () => {
                     <Route path="users" element={<OwnerUsersScreen />} />
                     <Route path="users/:userId" element={<OwnerUserDetailScreen />} />
                     <Route path="products" element={<OwnerProductsScreen />} />
+                    <Route path="categories" element={<OwnerCategoriesScreen />} />
                     <Route path="products/:productId" element={<OwnerProductDetailScreen />} />
                     <Route path="inventory" element={<OwnerInventoryScreen />} />
                     <Route path="staff" element={<OwnerStaffScreen />} />
+                    <Route path="shifts" element={<OwnerShiftsScreen />} />
                     <Route path="staff-calendar" element={<OwnerShiftsScreen />} />
                     <Route path="staff-analytics" element={<OwnerAnalyticsScreen />} />
                     <Route path="orders" element={<OwnerOrdersScreen />} />
+                    <Route path="reviews" element={<OwnerReviewsScreen />} />
                     <Route path="promotions" element={<OwnerPromotionsScreen />} />
                     <Route path="membership" element={<OwnerMembershipScreen />} />
                     <Route path="alerts" element={<OwnerAlertsScreen />} />

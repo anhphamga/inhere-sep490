@@ -10,7 +10,8 @@ const router = express.Router();
 
 // Import controller
 const userController = require('../controllers/user.controller');
-const { requireAuth } = require('../middleware/auth.middleware');
+const shiftController = require('../controllers/shift.controller');
+const { requireAuth, authorize } = require('../middleware/auth.middleware');
 const { uploadAvatar } = require('../middleware/upload.middleware');
 
 // CRUD profile cá nhân
@@ -23,5 +24,10 @@ router.put('/me/change-password', requireAuth, userController.changePassword);
 
 // Upload avatar
 router.put('/me/avatar', requireAuth, uploadAvatar, userController.uploadMyAvatar);
+
+// Staff register shifts
+router.get('/me/shifts', requireAuth, authorize('staff'), shiftController.listStaffShiftOptions);
+router.post('/me/shifts/:id/register', requireAuth, authorize('staff'), shiftController.registerMyShift);
+router.delete('/me/shifts/:id/register', requireAuth, authorize('staff'), shiftController.unregisterMyShift);
 
 module.exports = router;

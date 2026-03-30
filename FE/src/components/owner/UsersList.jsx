@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Lock, Search, Unlock } from 'lucide-react'
+﻿import { useEffect, useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight, Lock, Search, Unlock } from 'lucide-react'
 import { getOwnerCustomersApi, updateOwnerCustomerStatusApi } from '../../services/owner.service'
 import { toArray } from '../../utils/owner.utils'
 
@@ -8,6 +8,8 @@ const statusPillClass = {
     locked: 'text-red-600 bg-red-50'
 }
 
+const PAGE_SIZE = 10
+
 export default function UsersList({ onSelectUser }) {
     const [customers, setCustomers] = useState([])
     const [search, setSearch] = useState('')
@@ -15,6 +17,7 @@ export default function UsersList({ onSelectUser }) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [updatingId, setUpdatingId] = useState('')
+    const [currentPage, setCurrentPage] = useState(1)
 
     const loadCustomers = async (status = statusFilter) => {
         try {
@@ -47,6 +50,23 @@ export default function UsersList({ onSelectUser }) {
             return name.includes(keyword) || email.includes(keyword) || phone.includes(keyword)
         })
     }, [customers, search])
+
+    const totalItems = filteredCustomers.length
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+    const safeCurrentPage = Math.min(currentPage, totalPages)
+    const startItemIndex = totalItems === 0 ? 0 : (safeCurrentPage - 1) * PAGE_SIZE
+    const endItemIndex = Math.min(startItemIndex + PAGE_SIZE, totalItems)
+    const paginatedCustomers = filteredCustomers.slice(startItemIndex, endItemIndex)
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, statusFilter])
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages)
+        }
+    }, [currentPage, totalPages])
 
     const handleChangeStatus = async (user, nextStatus) => {
         try {
@@ -111,7 +131,7 @@ export default function UsersList({ onSelectUser }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {filteredCustomers.map((user) => {
+                            {paginatedCustomers.map((user) => {
                                 const status = user?.status || 'active'
                                 const isLocked = status === 'locked'
 
@@ -154,7 +174,7 @@ export default function UsersList({ onSelectUser }) {
                                 )
                             })}
 
-                            {filteredCustomers.length === 0 ? (
+                            {paginatedCustomers.length === 0 ? (
                                 <tr>
                                     <td className="px-6 py-6 text-sm text-slate-500" colSpan={5}>
                                         Không có khách hàng phù hợp.
@@ -165,6 +185,35 @@ export default function UsersList({ onSelectUser }) {
                     </table>
                 </div>
             </div>
+
+            {filteredCustomers.length > 0 ? (
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <p className="text-sm text-slate-600">
+                        Hiển thị {startItemIndex + 1}-{endItemIndex} trên tổng {totalItems} khách hàng
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                            disabled={safeCurrentPage === 1}
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="px-3 text-sm font-medium text-slate-700">
+                            Trang {safeCurrentPage}/{totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                            disabled={safeCurrentPage === totalPages}
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            ) : null}
         </div>
     )
 }

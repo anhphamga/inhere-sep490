@@ -12,6 +12,9 @@
   --container:1220px;
   --pad:80px;
   --gutter:24px;
+  --section-space:clamp(72px, 8vw, 110px);
+  --section-space-mobile:58px;
+  --section-head-gap:44px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, Arial, "Apple Color Emoji","Segoe UI Emoji";
 }
 *{box-sizing:border-box}
@@ -400,10 +403,11 @@ button,input{font-family:inherit}
 }
 
 /* Sections */
-section{
-  padding:92px 0;
+.homepage section{
+  padding:var(--section-space) 0;
   scroll-margin-top:140px; /* tránh bị header sticky che mất khi dùng #anchor */
 }
+.homepage section.hero{padding:0}
 .section-title{
   text-align:center;
   margin:0 0 14px;
@@ -412,7 +416,7 @@ section{
 }
 .section-sub{
   text-align:center;
-  margin:0 auto 40px;
+  margin:0 auto var(--section-head-gap);
   max-width:760px;
   color:#474747;
   line-height:1.75;
@@ -453,7 +457,7 @@ section{
   .grid-6{grid-template-columns: repeat(3, 1fr)}
 }
 @media (max-width: 720px){
-  section{padding:54px 0}
+  .homepage section{padding:var(--section-space-mobile) 0}
   .grid-6{grid-template-columns: repeat(1, 1fr)}
 }
 
@@ -507,6 +511,13 @@ section{
   background:#fff;
   box-shadow: 0 10px 22px rgba(0,0,0,.05);
   transition:transform .24s ease, box-shadow .24s ease, border-color .24s ease;
+}
+.category-card-clickable{
+  cursor:pointer;
+}
+.category-card-clickable:focus-visible{
+  outline:2px solid rgba(176,141,87,.45);
+  outline-offset:2px;
 }
 .category-card:hover{
   transform:translateY(-4px);
@@ -584,6 +595,12 @@ section{
   border-top:1px dashed var(--border);
 }
 .category-children li{
+  list-style:none;
+}
+.category-child-btn{
+  width:100%;
+  border:0;
+  background:transparent;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -592,8 +609,13 @@ section{
   font-size:14px;
   font-weight:600;
   color:#2d2d2d;
+  cursor:pointer;
+  text-align:left;
 }
-.category-children li strong{
+.category-child-btn:hover{
+  color:var(--accent);
+}
+.category-child-btn strong{
   color:var(--accent);
   font-size:13px;
 }
@@ -601,7 +623,7 @@ section{
 /* Product row */
 .row-head{
   display:flex; align-items:flex-end; gap:10px; justify-content:center;
-  margin-bottom:20px;
+  margin-bottom:26px;
   position:relative;
 }
 .row-head h2{margin:0; font-size:30px; font-weight:900; letter-spacing:-.02em; text-align:center}
@@ -625,7 +647,7 @@ section{
   transition:transform .2s ease;
 }
 .row-head a:hover::after{transform:scaleX(1)}
-.fitting-head{margin-top:28px}
+.fitting-head{margin-top:52px}
 .rent-status{
   margin:0 0 14px;
   font-size:14px;
@@ -676,6 +698,7 @@ section{
   display:grid; gap:24px;
   grid-template-columns: 1.1fr .9fr;
   align-items:center;
+  margin-bottom:16px;
   box-shadow: var(--shadow);
 }
 .cta-block h2{margin:0 0 10px; font-size:28px; font-weight:900}

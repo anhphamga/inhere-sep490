@@ -2,20 +2,18 @@
 import { useLocation } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Download, ImagePlus, LayoutGrid, LayoutList, Plus, Trash2, Upload, X } from 'lucide-react'
 import {
-    createOwnerProductApi,
     deleteOwnerProductApi,
     exportOwnerProductsApi,
     getOwnerProductsApi,
     importOwnerProductsApi
 } from '../../services/owner.service'
 import { currencyFormatter, toArray } from '../../utils/owner.utils'
+import { flattenCategoryNames, normalizeCategoryTree } from '../../utils/categoryTree'
 import AddProductModal from './AddProductModal'
 
 const lifecycleOptions = ['', 'Available', 'Rented', 'Washing', 'Repair', 'Lost']
 const initialFilters = { category: '', size: '', color: '', lifecycleStatus: '' }
 const pageSize = 10
-const commonSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREE SIZE']
-const commonColors = ['Red', 'Pink', 'Yellow', 'Blue', 'Green', 'Black', 'White', 'Cream', 'Brown', 'Purple']
 
 const toDisplayText = (value) => {
     if (value === null || value === undefined) {
@@ -43,75 +41,6 @@ const toDisplayText = (value) => {
     return ''
 }
 
-const normalizeCategoryTree = (nodes = []) => {
-    return nodes
-        .map((node) => ({
-            name: String(node?.displayName || '').trim(),
-            children: toArray(node?.children)
-                .map((child) => String(child?.displayName || '').trim())
-                .filter(Boolean),
-        }))
-        .filter((item) => item.name)
-}
-
-const uniqValues = (values = []) => {
-    const seen = new Set()
-    const result = []
-
-    values.forEach((item) => {
-        const normalized = String(item || '').trim()
-        if (!normalized) {
-            return
-        }
-        const key = normalized.toLowerCase()
-        if (seen.has(key)) {
-            return
-        }
-        seen.add(key)
-        result.push(normalized)
-    })
-
-    return result
-}
-
-const normalizeSizeToken = (value) => String(value || '').trim().toUpperCase()
-
-const buildVariantMatrix = (sizes = [], colors = [], seed = []) => {
-    const seedMap = new Map(
-        (Array.isArray(seed) ? seed : []).map((item) => [`${item.size}::${item.color}`, item])
-    )
-
-    const rows = []
-    sizes.forEach((size) => {
-        colors.forEach((color) => {
-            const key = `${size}::${color}`
-            const prev = seedMap.get(key)
-            rows.push({
-                size,
-                color,
-                rentPrice: prev?.rentPrice ?? '',
-                salePrice: prev?.salePrice ?? '',
-                quantity: prev?.quantity ?? '',
-            })
-        })
-    })
-
-    return rows
-}
-
-const flattenCategoryNames = (tree = []) => {
-    const names = []
-    tree.forEach((node) => {
-        if (node?.name) {
-            names.push(node.name)
-        }
-        if (Array.isArray(node?.children) && node.children.length > 0) {
-            names.push(...node.children)
-        }
-    })
-    return uniqValues(names)
-}
-
 export default function ProductsList({ onSelectProduct }) {
     const location = useLocation()
     const [products, setProducts] = useState([])
@@ -120,35 +49,12 @@ export default function ProductsList({ onSelectProduct }) {
     const [error, setError] = useState('')
     const [filters, setFilters] = useState(initialFilters)
     const [openCreateModal, setOpenCreateModal] = useState(false)
-    const [creating, setCreating] = useState(false)
-    const [createError, setCreateError] = useState('')
     const [importing, setImporting] = useState(false)
     const [exporting, setExporting] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
     const [deletingProductId, setDeletingProductId] = useState('')
     const [selectedProductIds, setSelectedProductIds] = useState([])
     const [categoryTree, setCategoryTree] = useState([])
-    const [parentCategory, setParentCategory] = useState('')
-    const [childCategory, setChildCategory] = useState('')
-    const [createSizeValues, setCreateSizeValues] = useState([])
-    const [createColorValues, setCreateColorValues] = useState([])
-    const [createColorBlocks, setCreateColorBlocks] = useState([])
-    const [createColorDraft, setCreateColorDraft] = useState('')
-    const [createTab, setCreateTab] = useState('basic')
-    const [createPricingMode, setCreatePricingMode] = useState('common')
-    const [createVariantMatrix, setCreateVariantMatrix] = useState([])
-    const [createDirty, setCreateDirty] = useState(false)
-    const [createForm, setCreateForm] = useState({
-        name: '',
-        category: '',
-        quantity: '1',
-        baseRentPrice: '',
-        baseSalePrice: '',
-        depositAmount: '',
-        buyoutValue: '',
-        imageFiles: [],
-        description: ''
-    })
     const importInputRef = useRef(null)
 
     const loadProducts = useCallback(async (nextFilters) => {
@@ -181,7 +87,7 @@ export default function ProductsList({ onSelectProduct }) {
 
         const loadCategories = async () => {
             try {
-                const response = await fetch('/api/categories')
+                const response = await fetch('/api/categories?lang=vi')
                 const payload = response.ok ? await response.json() : { categories: [] }
                 if (!mounted) {
                     return
@@ -203,8 +109,6 @@ export default function ProductsList({ onSelectProduct }) {
     const categoryOptions = useMemo(() => flattenCategoryNames(categoryTree), [categoryTree])
     const sizeOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.size)).filter(Boolean))], [products])
     const colorOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.color)).filter(Boolean))], [products])
-    const selectedParentChildren = categoryTree.find((item) => item.name === parentCategory)?.children || []
-
     const filteredProducts = useMemo(() => {
         const searchParams = new URLSearchParams(location.search)
         const query = (searchParams.get('q') || '').trim().toLowerCase()
@@ -276,216 +180,8 @@ export default function ProductsList({ onSelectProduct }) {
         await loadProducts(nextFilters)
     }
 
-    const markCreateDirty = () => setCreateDirty(true)
-
-    const updateCreateSizes = (nextValues) => {
-        const normalized = uniqValues(nextValues.map((item) => normalizeSizeToken(item)).filter(Boolean))
-        setCreateSizeValues(normalized)
-        setCreateVariantMatrix((prev) => buildVariantMatrix(normalized, createColorValues, prev))
-        markCreateDirty()
-    }
-
-    const updateCreateColors = (nextValues) => {
-        const normalized = uniqValues(nextValues.map((item) => String(item || '').trim()).filter(Boolean))
-        setCreateColorValues(normalized)
-        setCreateVariantMatrix((prev) => buildVariantMatrix(createSizeValues, normalized, prev))
-        markCreateDirty()
-    }
-
-    const addCreateColorBlock = () => {
-        const name = String(createColorDraft || '').trim()
-        if (!name) return
-        if (createColorBlocks.some((block) => block.name.toLowerCase() === name.toLowerCase())) {
-            setCreateError('Color already exists.')
-            return
-        }
-
-        const nextBlocks = [...createColorBlocks, { name, images: [], urlDraft: '' }]
-        setCreateColorBlocks(nextBlocks)
-        setCreateColorDraft('')
-        setCreateError('')
-        updateCreateColors(nextBlocks.map((item) => item.name))
-    }
-
-    const removeCreateColorBlock = (name) => {
-        const nextBlocks = createColorBlocks.filter((item) => item.name !== name)
-        setCreateColorBlocks(nextBlocks)
-        updateCreateColors(nextBlocks.map((item) => item.name))
-    }
-
-    const addCreateColorImageUrl = (name) => {
-        setCreateColorBlocks((prev) => prev.map((block) => {
-            if (block.name !== name) return block
-            const nextUrl = String(block.urlDraft || '').trim()
-            if (!nextUrl) return block
-            if (block.images.some((img) => img.url === nextUrl)) return { ...block, urlDraft: '' }
-            return {
-                ...block,
-                images: [...block.images, { id: `${Date.now()}-${Math.random()}`, url: nextUrl, file: null }],
-                urlDraft: '',
-            }
-        }))
-        markCreateDirty()
-    }
-
-    const removeCreateColorImage = (name, imageId) => {
-        setCreateColorBlocks((prev) => prev.map((block) => {
-            if (block.name !== name) return block
-            return { ...block, images: block.images.filter((image) => image.id !== imageId) }
-        }))
-        markCreateDirty()
-    }
-
-    const addCreateColorFiles = (name, files = []) => {
-        const prepared = Array.from(files || [])
-            .filter((file) => file?.type?.startsWith('image/'))
-            .map((file) => ({
-                id: `${Date.now()}-${Math.random()}`,
-                url: URL.createObjectURL(file),
-                file,
-            }))
-
-        if (prepared.length === 0) return
-
-        setCreateColorBlocks((prev) => prev.map((block) => {
-            if (block.name !== name) return block
-            return { ...block, images: [...block.images, ...prepared] }
-        }))
-
-        setCreateForm((prev) => ({ ...prev, imageFiles: [...prev.imageFiles, ...prepared.map((item) => item.file)] }))
-        markCreateDirty()
-    }
-
-    const handleDropMainImages = (event) => {
-        event.preventDefault()
-        const files = Array.from(event.dataTransfer?.files || []).filter((file) => file?.type?.startsWith('image/'))
-        if (files.length === 0) return
-        setCreateForm((prev) => ({ ...prev, imageFiles: [...prev.imageFiles, ...files] }))
-        markCreateDirty()
-    }
-
-    const resetCreateForm = () => {
-        setCreateForm({
-            name: '',
-            category: '',
-            quantity: '1',
-            baseRentPrice: '',
-            baseSalePrice: '',
-            depositAmount: '',
-            buyoutValue: '',
-            imageFiles: [],
-            description: ''
-        })
-        setParentCategory('')
-        setChildCategory('')
-        setCreateSizeValues([])
-        setCreateColorValues([])
-        setCreateColorBlocks([])
-        setCreateColorDraft('')
-        setCreateTab('basic')
-        setCreatePricingMode('common')
-        setCreateVariantMatrix([])
-        setCreateDirty(false)
-        setCreateError('')
-    }
-
     const handleCloseCreateModal = () => {
         setOpenCreateModal(false)
-        resetCreateForm()
-    }
-
-    const handleCreateProduct = async (event) => {
-        event.preventDefault()
-
-        try {
-            setCreating(true)
-            setCreateError('')
-
-            const payload = {
-                name: createForm.name.trim(),
-                category: String(childCategory || parentCategory || '').trim(),
-                size: uniqValues(createSizeValues).join(', '),
-                color: uniqValues(createColorValues).join(', '),
-                categoryParent: parentCategory,
-                categoryChild: childCategory,
-                sizes: uniqValues(createSizeValues),
-                colorVariants: createColorBlocks.map((block) => ({
-                    name: block.name,
-                    images: block.images.filter((img) => !img.file).map((img) => img.url),
-                })),
-                quantity: Number(createForm.quantity),
-                baseRentPrice: Number(createForm.baseRentPrice),
-                baseSalePrice: Number(createForm.baseSalePrice),
-                depositAmount: createForm.depositAmount === '' ? 0 : Number(createForm.depositAmount),
-                buyoutValue: createForm.buyoutValue === '' ? 0 : Number(createForm.buyoutValue),
-                imageFiles: createForm.imageFiles,
-                description: createForm.description.trim(),
-                pricingMode: createPricingMode,
-                commonRentPrice: createForm.baseRentPrice === '' ? 0 : Number(createForm.baseRentPrice),
-                variantMatrix: createVariantMatrix.map((item) => ({
-                    size: item.size,
-                    color: item.color,
-                    rentPrice: item.rentPrice === '' ? 0 : Number(item.rentPrice),
-                    salePrice: item.salePrice === '' ? Number(createForm.baseSalePrice || 0) : Number(item.salePrice),
-                    quantity: item.quantity === '' ? 0 : Number(item.quantity),
-                })),
-                isDraft: false,
-            }
-
-            if (!payload.name || !payload.category || !payload.size || !payload.color) {
-                setCreateError('Please provide name, category, size, and color.')
-                return
-            }
-
-            if ((payload.imageFiles || []).length === 0 && payload.colorVariants.every((item) => (item.images || []).length === 0)) {
-                setCreateError('At least one product image is required.')
-                return
-            }
-
-            if (createForm.baseRentPrice === '' || createForm.baseSalePrice === '') {
-                setCreateError('Please provide base rent price and base sale price.')
-                return
-            }
-
-            if (createForm.quantity === '' || !Number.isInteger(payload.quantity) || payload.quantity <= 0) {
-                setCreateError('Quantity must be a positive integer.')
-                return
-            }
-
-            if (
-                Number.isNaN(payload.baseRentPrice)
-                || Number.isNaN(payload.baseSalePrice)
-                || Number.isNaN(payload.depositAmount)
-                || Number.isNaN(payload.buyoutValue)
-            ) {
-                setCreateError('Price fields must be valid numbers.')
-                return
-            }
-
-            if (
-                payload.baseRentPrice < 0
-                || payload.baseSalePrice < 0
-                || payload.depositAmount < 0
-                || payload.buyoutValue < 0
-            ) {
-                setCreateError('Price values cannot be negative.')
-                return
-            }
-
-            const response = await createOwnerProductApi(payload)
-            const createdId = response?.data?.id || response?.data?._id
-
-            handleCloseCreateModal()
-            await loadProducts(filters)
-
-            if (createdId) {
-                onSelectProduct(createdId)
-            }
-        } catch (apiError) {
-            setCreateError(apiError?.response?.data?.message || apiError?.message || 'Unable to create product.')
-        } finally {
-            setCreating(false)
-        }
     }
 
     const handleImportClick = () => {

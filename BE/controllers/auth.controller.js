@@ -1,13 +1,17 @@
 ﻿const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../model/User.model');
-const { signAccessToken } = require('../utils/jwt');
+const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt');
+const { addRefreshToken, hasRefreshToken, removeRefreshToken } = require('../utils/refreshTokenStore');
 const { hasGoogleClientId, verifyGoogleIdToken } = require('../utils/googleAuth');
 const { hasSmtpConfig, sendResetPasswordEmail } = require('../utils/mailer');
+const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
+const { resolveUserAccess } = require('../services/accessControl.service');
 
-const sanitizeUser = (user) => ({
+const sanitizeUser = (user, access = null) => ({
   id: user._id,
   role: user.role,
+  roleLevel: Number(user.roleLevel || access?.roleLevel || 0),
   name: user.name,
   phone: user.phone,
   email: user.email,
@@ -15,11 +19,34 @@ const sanitizeUser = (user) => ({
   status: user.status,
   avatarUrl: user.avatarUrl,
   address: user.address,
+  segment: user.segment,
   gender: user.gender,
   dateOfBirth: user.dateOfBirth,
   createdAt: user.createdAt,
-  updatedAt: user.updatedAt
+  updatedAt: user.updatedAt,
+  permissions: access?.permissions || [],
+  access: access || {
+    role: user.role,
+    roleLevel: Number(user.roleLevel || 0),
+    permissions: [],
+  }
 });
+
+const createAuthTokens = (user) => {
+  const tokenPayload = {
+    userId: user._id.toString(),
+    role: user.role
+  };
+
+  const accessToken = signAccessToken(tokenPayload);
+  const refreshToken = signRefreshToken(tokenPayload);
+  addRefreshToken(refreshToken);
+
+  return {
+    accessToken,
+    refreshToken
+  };
+};
 
 const handleDuplicateKeyError = (error, res) => {
   if (error?.code !== 11000) {
@@ -28,7 +55,8 @@ const handleDuplicateKeyError = (error, res) => {
 
   const duplicateField = Object.keys(error?.keyPattern || {})[0];
   const messageByField = {
-    email: 'Email already exists'
+    email: 'Email đã được sử dụng',
+    phone: 'Số điện thoại đã được sử dụng'
   };
 
   return res.status(409).json({
@@ -36,6 +64,8 @@ const handleDuplicateKeyError = (error, res) => {
     message: messageByField[duplicateField] || 'Duplicate data'
   });
 };
+
+const buildSanitizedUser = async (user) => sanitizeUser(user, await resolveUserAccess(user));
 
 const signup = async (req, res) => {
   try {
@@ -48,17 +78,39 @@ const signup = async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedPhone = phone.trim();
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedPhone = normalizePhone(phone);
 
-    const existingEmail = await User.findOne({
-      email: normalizedEmail,
-      authProvider: 'local'
-    });
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email không hợp lệ'
+      });
+    }
+
+    if (!isValidPhone(normalizedPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số điện thoại không hợp lệ'
+      });
+    }
+
+    const [existingEmail, existingPhone] = await Promise.all([
+      User.findOne({ email: normalizedEmail }),
+      User.findOne({ phone: normalizedPhone })
+    ]);
+
     if (existingEmail) {
       return res.status(409).json({
         success: false,
-        message: 'Email already exists'
+        message: 'Email đã được sử dụng'
+      });
+    }
+
+    if (existingPhone) {
+      return res.status(409).json({
+        success: false,
+        message: 'Số điện thoại đã được sử dụng'
       });
     }
 
@@ -71,20 +123,19 @@ const signup = async (req, res) => {
       email: normalizedEmail,
       passwordHash,
       authProvider: 'local',
-      status: 'active'
+      status: 'active',
+      segment: 'new_user'
     });
 
-    const token = signAccessToken({
-      userId: user._id.toString(),
-      role: user.role
-    });
+    const { accessToken, refreshToken } = createAuthTokens(user);
 
     return res.status(201).json({
       success: true,
       message: 'Signup successful',
       data: {
-        token,
-        user: sanitizeUser(user)
+        accessToken,
+        refreshToken,
+        user: await buildSanitizedUser(user)
       }
     });
   } catch (error) {
@@ -112,8 +163,8 @@ const login = async (req, res) => {
     }
 
     const hasEmail = typeof email === 'string' && email.trim();
-    const normalizedEmail = hasEmail ? email.trim().toLowerCase() : null;
-    const normalizedPhone = typeof phone === 'string' ? phone.trim() : null;
+    const normalizedEmail = hasEmail ? normalizeEmail(email) : null;
+    const normalizedPhone = typeof phone === 'string' ? normalizePhone(phone) : null;
 
     const loginQuery = {
       authProvider: 'local'
@@ -162,17 +213,15 @@ const login = async (req, res) => {
       });
     }
 
-    const token = signAccessToken({
-      userId: user._id.toString(),
-      role: user.role
-    });
+    const { accessToken, refreshToken } = createAuthTokens(user);
 
     return res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
-        token,
-        user: sanitizeUser(user)
+        accessToken,
+        refreshToken,
+        user: await buildSanitizedUser(user)
       }
     });
   } catch (error) {
@@ -218,10 +267,7 @@ const googleLogin = async (req, res) => {
       });
     }
 
-    let user = await User.findOne({
-      email,
-      authProvider: 'google'
-    });
+    let user = await User.findOne({ email });
 
     if (!user) {
       const randomPassword = crypto.randomBytes(32).toString('hex');
@@ -235,7 +281,8 @@ const googleLogin = async (req, res) => {
         passwordHash,
         authProvider: 'google',
         status: 'active',
-        avatarUrl: payload.picture || null
+        avatarUrl: payload.picture || null,
+        segment: 'new_user'
       });
     } else {
       if (user.status === 'locked') {
@@ -246,9 +293,6 @@ const googleLogin = async (req, res) => {
       }
 
       const updates = {};
-      if (user.authProvider !== 'google') {
-        updates.authProvider = 'google';
-      }
       if (typeof user.phone === 'string' && user.phone.startsWith('google_')) {
         updates.phone = null;
       }
@@ -264,17 +308,15 @@ const googleLogin = async (req, res) => {
       }
     }
 
-    const token = signAccessToken({
-      userId: user._id.toString(),
-      role: user.role
-    });
+    const { accessToken, refreshToken } = createAuthTokens(user);
 
     return res.status(200).json({
       success: true,
       message: 'Google login successful',
       data: {
-        token,
-        user: sanitizeUser(user)
+        accessToken,
+        refreshToken,
+        user: await buildSanitizedUser(user)
       }
     });
   } catch (error) {
@@ -309,7 +351,7 @@ const forgotPassword = async (req, res) => {
 
     const genericResponse = {
       success: true,
-      message: 'Náº¿u email tá»“n táº¡i, hÆ°á»›ng dáº«n Ä‘áº·t láº¡i máº­t kháº©u Ä‘Ã£ Ä‘Æ°á»£c gá»­i.'
+      message: 'Nếu email tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi.'
     };
 
     if (!user) {
@@ -339,7 +381,7 @@ const forgotPassword = async (req, res) => {
     if (process.env.NODE_ENV !== 'production') {
       return res.status(200).json({
         success: true,
-        message: 'SMTP chÆ°a cáº¥u hÃ¬nh. Tráº£ token/link Ä‘á»ƒ test á»Ÿ mÃ´i trÆ°á»ng dev.',
+        message: 'SMTP chưa cấu hình. Trả token/link để test ở môi trường dev.',
         token: rawToken,
         resetLink
       });
@@ -347,12 +389,12 @@ const forgotPassword = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: 'SMTP chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh trÃªn server'
+      message: 'SMTP chưa được cấu hình trên server'
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'KhÃ´ng thá»ƒ xá»­ lÃ½ yÃªu cáº§u quÃªn máº­t kháº©u',
+      message: 'Không thể xử lý yêu cầu quên mật khẩu',
       error: error.message
     });
   }
@@ -387,7 +429,7 @@ const resetPassword = async (req, res) => {
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: 'Token khÃ´ng há»£p lá»‡ hoáº·c Ä‘Ã£ háº¿t háº¡n'
+        message: 'Token không hợp lệ hoặc đã hết hạn'
       });
     }
 
@@ -398,18 +440,73 @@ const resetPassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Äáº·t láº¡i máº­t kháº©u thÃ nh cÃ´ng'
+      message: 'Đặt lại mật khẩu thành công'
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'KhÃ´ng thá»ƒ Ä‘áº·t láº¡i máº­t kháº©u',
+      message: 'Không thể đặt lại mật khẩu',
       error: error.message
     });
   }
 };
 
+const refresh = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'refreshToken is required'
+      });
+    }
+
+    if (!hasRefreshToken(refreshToken)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid refresh token'
+      });
+    }
+
+    const payload = verifyRefreshToken(refreshToken);
+    const user = await User.findById(payload.userId);
+
+    if (!user || user.status === 'locked') {
+      removeRefreshToken(refreshToken);
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized'
+      });
+    }
+
+    const accessToken = signAccessToken({
+      userId: user._id.toString(),
+      role: user.role
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Refresh successful',
+      data: {
+        accessToken
+      }
+    });
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid refresh token'
+    });
+  }
+};
+
 const logout = async (req, res) => {
+  const { refreshToken } = req.body || {};
+
+  if (refreshToken) {
+    removeRefreshToken(refreshToken);
+  }
+
   return res.status(200).json({
     success: true,
     message: 'Logout successful'
@@ -430,7 +527,7 @@ const getCurrentUser = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Get profile successful',
-      data: sanitizeUser(user)
+      data: await buildSanitizedUser(user)
     });
   } catch (error) {
     return res.status(500).json({
@@ -447,6 +544,7 @@ module.exports = {
   googleLogin,
   forgotPassword,
   resetPassword,
+  refresh,
   logout,
   getCurrentUser
 };

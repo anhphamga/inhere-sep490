@@ -19,7 +19,7 @@ export const loadGoogleIdentityScript = () => {
     }
 
     const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
+    script.src = 'https://accounts.google.com/gsi/client?hl=vi';
     script.async = true;
     script.defer = true;
     script.setAttribute('data-google-identity', 'true');

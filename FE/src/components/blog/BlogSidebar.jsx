@@ -43,7 +43,7 @@ export default function BlogSidebar({ latestPosts, popularCategories }) {
           <li>Đặt lịch trước giúp đội ngũ chuẩn bị size, phụ kiện và màu phù hợp hơn.</li>
         </ul>
         <a
-          href="/booking"
+          href="/buy?purpose=rent&openBooking=1"
           className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#b08d57] bg-[#b08d57] px-5 py-3 text-sm font-semibold text-white transition hover:brightness-95"
         >
           Khám phá ngay

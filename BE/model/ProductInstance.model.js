@@ -1,5 +1,16 @@
 const mongoose = require('mongoose');
 
+const CONDITION_LEVEL_ALIASES = {
+  Good: 'New',
+  Damaged: 'Used'
+};
+
+const normalizeConditionLevel = (value) => {
+  if (value === undefined || value === null) return value;
+  const raw = String(value).trim();
+  return CONDITION_LEVEL_ALIASES[raw] || raw;
+};
+
 const productInstanceSchema = new mongoose.Schema({
   productId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -8,13 +19,15 @@ const productInstanceSchema = new mongoose.Schema({
   },
   conditionLevel: {
     type: String,
-    enum: ['New', 'Good', 'Used', 'Damaged'],
-    default: 'New'
+    enum: ['New', 'Used'],
+    default: 'New',
+    set: normalizeConditionLevel
   },
   conditionScore: {
     type: Number,
     min: 0,
     max: 100,
+    enum: [0, 25, 50, 100],
     default: 100
   },
   lifecycleStatus: {

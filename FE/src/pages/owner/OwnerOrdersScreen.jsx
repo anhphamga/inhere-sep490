@@ -1,7 +1,7 @@
 import OrdersList from '../../components/owner/OrdersList'
 
 const OwnerOrdersScreen = () => {
-    return <OrdersList />
+    return <OrdersList showRentOrders={false} allowSaleStatusUpdate={false} />
 }
 
 export default OwnerOrdersScreen

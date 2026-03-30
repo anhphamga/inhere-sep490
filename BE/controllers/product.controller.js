@@ -2,6 +2,8 @@ const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
+const { hasPermission } = require('../services/accessControl.service');
+const { writeAuditLog } = require('../services/auditLog.service');
 const { hasCloudinaryConfig, uploadImageBuffer } = require('../utils/cloudinary');
 const {
   getRequestLang,
@@ -9,6 +11,25 @@ const {
   normalizeLocalizedInput,
   hasLocalizedText,
 } = require('../utils/i18n');
+
+const CONDITION_LEVEL_ALIASES = {
+  Good: 'New',
+  Damaged: 'Used'
+};
+const ALLOWED_CONDITION_LEVELS = new Set(['New', 'Used']);
+const ALLOWED_CONDITION_SCORES = new Set([0, 25, 50, 100]);
+
+const normalizeConditionLevel = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const raw = String(value).trim();
+  return CONDITION_LEVEL_ALIASES[raw] || raw;
+};
+
+const normalizeConditionScore = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const score = Number(value);
+  return Number.isFinite(score) ? score : Number.NaN;
+};
 
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
@@ -28,6 +49,8 @@ const normalizeImages = (images) => {
 };
 
 const normalizeText = (value) => String(value || '').trim();
+
+const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const parseJsonLike = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -61,6 +84,186 @@ const normalizeSizes = (values) => {
 };
 
 const normalizeColorName = (value) => normalizeText(value);
+
+const normalizeStringList = (values) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const result = [];
+
+  source.forEach((item) => {
+    const normalized = normalizeText(item);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(normalized);
+  });
+
+  return result;
+};
+
+const toObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null);
+
+const getLegacyPriceObject = (product = {}) => toObject(product?.price) || null;
+
+const collectProductImages = (product = {}) => {
+  const imageSet = new Set();
+
+  normalizeImages(product?.images).forEach((image) => imageSet.add(image));
+
+  (Array.isArray(product?.colorVariants) ? product.colorVariants : []).forEach((variant) => {
+    normalizeImages(variant?.images).forEach((image) => imageSet.add(image));
+  });
+
+  (Array.isArray(product?.variants) ? product.variants : []).forEach((variant) => {
+    normalizeImages(variant?.images).forEach((image) => imageSet.add(image));
+    normalizeImages(variant?.imageUrls).forEach((image) => imageSet.add(image));
+    normalizeImages(variant?.gallery).forEach((image) => imageSet.add(image));
+    normalizeImages(variant?.galleryImages).forEach((image) => imageSet.add(image));
+
+    const colorValue = toObject(variant?.color);
+    normalizeImages(colorValue?.images).forEach((image) => imageSet.add(image));
+  });
+
+  const directImageUrl = normalizeText(product?.imageUrl);
+  if (directImageUrl) imageSet.add(directImageUrl);
+
+  return Array.from(imageSet);
+};
+
+const getLegacyVariantList = (product = {}) => (Array.isArray(product?.variants) ? product.variants : []);
+
+const resolveProductPrices = (product = {}) => {
+  const legacyPrice = getLegacyPriceObject(product);
+  const firstVariantWithPrice = getLegacyVariantList(product).find((variant) => toObject(variant?.price));
+  const firstVariantPrice = toObject(firstVariantWithPrice?.price);
+
+  const baseRentPrice = Math.max(
+    toNumber(
+      product?.baseRentPrice,
+      toNumber(product?.commonRentPrice, toNumber(legacyPrice?.rent, toNumber(firstVariantPrice?.rent, 0)))
+    ),
+    0
+  );
+
+  const baseSalePrice = Math.max(
+    toNumber(
+      product?.baseSalePrice,
+      toNumber(legacyPrice?.sale, toNumber(firstVariantPrice?.sale, 0))
+    ),
+    0
+  );
+
+  const depositAmount = Math.max(
+    toNumber(product?.depositAmount, toNumber(legacyPrice?.deposit, toNumber(firstVariantPrice?.deposit, 0))),
+    0
+  );
+
+  const buyoutValue = Math.max(toNumber(product?.buyoutValue, baseSalePrice), 0);
+
+  return {
+    baseRentPrice,
+    baseSalePrice,
+    commonRentPrice: Math.max(toNumber(product?.commonRentPrice, baseRentPrice), 0),
+    depositAmount,
+    buyoutValue,
+  };
+};
+
+const resolveProductCategory = (product = {}, lang = 'vi') => {
+  const rawCategory = product?.category;
+  const categoryObject = toObject(rawCategory);
+  const categoryPath = toObject(product?.categoryPath);
+
+  if (categoryPath?.child) return normalizeText(categoryPath.child);
+  if (Array.isArray(categoryPath?.ancestors) && categoryPath.ancestors.length > 0) {
+    return normalizeText(categoryPath.ancestors[categoryPath.ancestors.length - 1]);
+  }
+  if (categoryPath?.parent) return normalizeText(categoryPath.parent);
+
+  if (categoryObject?.child) return normalizeText(categoryObject.child);
+  if (categoryObject?.parent) return normalizeText(categoryObject.parent);
+
+  return resolveLocalizedField(product, 'category', lang);
+};
+
+const resolveProductSizes = (product = {}) => {
+  if (Array.isArray(product?.sizes) && product.sizes.length > 0) {
+    return normalizeSizes(product.sizes);
+  }
+
+  const sizesFromVariants = getLegacyVariantList(product)
+    .map((variant) => normalizeSizeToken(variant?.size))
+    .filter(Boolean);
+  if (sizesFromVariants.length > 0) {
+    return normalizeSizes(sizesFromVariants);
+  }
+
+  return normalizeSizes([product?.size]);
+};
+
+const resolveProductColorVariants = (product = {}) => {
+  const currentVariants = normalizeColorVariants(product?.colorVariants);
+  if (currentVariants.length > 0) {
+    return currentVariants;
+  }
+
+  const grouped = new Map();
+  getLegacyVariantList(product).forEach((variant) => {
+    const name = normalizeColorName(variant?.color || variant?.colorName || variant?.name);
+    if (!name) return;
+    if (!grouped.has(name.toLowerCase())) {
+      grouped.set(name.toLowerCase(), {
+        name,
+        images: [],
+      });
+    }
+    const current = grouped.get(name.toLowerCase());
+    collectProductImages(variant).forEach((image) => {
+      if (!current.images.includes(image)) {
+        current.images.push(image);
+      }
+    });
+  });
+
+  if (grouped.size > 0) {
+    return Array.from(grouped.values());
+  }
+
+  const fallbackColor = normalizeColorName(product?.color);
+  if (!fallbackColor) return [];
+
+  return [{
+    name: fallbackColor,
+    images: collectProductImages(product),
+  }];
+};
+
+const resolveVariantMatrix = (product = {}) => {
+  const current = normalizeVariantMatrix(product?.variantMatrix);
+  if (current.length > 0) return current;
+
+  return normalizeVariantMatrix(
+    getLegacyVariantList(product).map((variant) => ({
+      size: variant?.size,
+      color: variant?.color || variant?.colorName || variant?.name,
+      rentPrice: variant?.price?.rent,
+      salePrice: variant?.price?.sale,
+      quantity: variant?.inventory?.available ?? variant?.inventory?.total ?? variant?.quantity ?? 0,
+    }))
+  );
+};
+
+const resolveVariantRentPrices = (product = {}) => {
+  const variantRows = resolveVariantMatrix(product);
+  return variantRows.reduce((acc, item) => {
+    const size = normalizeSizeToken(item?.size);
+    const color = normalizeColorName(item?.color);
+    if (!size || !color) return acc;
+    acc[`${size}__${color}`] = Math.max(toNumber(item?.rentPrice, 0), 0);
+    return acc;
+  }, {});
+};
 
 const normalizeColorVariants = (values) => {
   const source = Array.isArray(values) ? values : [];
@@ -118,6 +321,11 @@ const applyCategoryFilter = (filter = {}, rawCategory = '') => {
       { category },
       { 'category.vi': category },
       { 'category.en': category },
+      { 'category.parent': category },
+      { 'category.child': category },
+      { 'categoryPath.parent': category },
+      { 'categoryPath.child': category },
+      { 'categoryPath.ancestors': category },
       { categoryVi: category },
       { categoryEn: category },
     ],
@@ -140,6 +348,7 @@ const normalizePayload = (body = {}) => {
 
   const categoryParent = normalizeText(body.categoryParent);
   const categoryChild = normalizeText(body.categoryChild);
+  const categoryAncestors = normalizeStringList(parseJsonLike(body.categoryAncestors, []));
   const categoryValue = normalizeLocalizedInput(body, 'category');
 
   return {
@@ -148,6 +357,7 @@ const normalizePayload = (body = {}) => {
     categoryPath: {
       parent: categoryParent,
       child: categoryChild,
+      ancestors: categoryAncestors,
     },
     size: normalizeText(body.size) || sizes[0] || '',
     sizes,
@@ -218,36 +428,49 @@ const ensureOwnerProductRequired = (payload) => {
   return null;
 };
 
-const toProductImageUrl = (product) =>
-  Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : '';
+const toProductImageUrl = (product) => collectProductImages(product)[0] || '';
 
-const sanitizeProduct = (product, quantity = {}, lang = 'vi') => ({
-  id: product._id,
-  _id: product._id,
-  name: resolveLocalizedField(product, 'name', lang),
-  category: resolveLocalizedField(product, 'category', lang),
-  categoryPath: product.categoryPath || { parent: '', child: '' },
-  size: product.size,
-  sizes: Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes : [product.size].filter(Boolean),
-  color: product.color,
-  colorVariants: Array.isArray(product.colorVariants) ? product.colorVariants : [],
-  pricingMode: product.pricingMode || 'common',
-  commonRentPrice: toNumber(product.commonRentPrice, toNumber(product.baseRentPrice, 0)),
-  variantMatrix: Array.isArray(product.variantMatrix) ? product.variantMatrix : [],
-  isDraft: Boolean(product.isDraft),
-  description: resolveLocalizedField(product, 'description', lang),
-  images: Array.isArray(product.images) ? product.images : [],
-  imageUrl: toProductImageUrl(product),
-  baseRentPrice: product.baseRentPrice,
-  baseSalePrice: product.baseSalePrice,
-  depositAmount: toNumber(product.depositAmount, 0),
-  buyoutValue: toNumber(product.buyoutValue, 0),
-  likeCount: product.likeCount || 0,
-  totalQuantity: quantity.totalQuantity || 0,
-  availableQuantity: quantity.availableQuantity || 0,
-  createdAt: product.createdAt,
-  updatedAt: product.updatedAt,
-});
+const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
+  const prices = resolveProductPrices(product);
+  const category = resolveProductCategory(product, lang);
+  const sizes = resolveProductSizes(product);
+  const colorVariants = resolveProductColorVariants(product);
+  const variantMatrix = resolveVariantMatrix(product);
+  const images = collectProductImages(product);
+  const primaryColor = normalizeColorName(product?.color) || colorVariants[0]?.name || '';
+  const variantRentPrices = resolveVariantRentPrices(product);
+
+  return {
+    id: product._id,
+    _id: product._id,
+    name: resolveLocalizedField(product, 'name', lang),
+    category,
+    categoryPath: product.categoryPath || toObject(product.category) || { parent: '', child: '', ancestors: [] },
+    size: normalizeText(product.size) || sizes[0] || '',
+    sizes,
+    color: primaryColor,
+    colorVariants,
+    pricingMode: product.pricingMode || (variantMatrix.length > 0 ? 'per_variant' : 'common'),
+    commonRentPrice: prices.commonRentPrice,
+    variantMatrix,
+    variantRentPrices,
+    isDraft: Boolean(product.isDraft),
+    description: resolveLocalizedField(product, 'description', lang),
+    images,
+    imageUrl: images[0] || '',
+    baseRentPrice: prices.baseRentPrice,
+    baseSalePrice: prices.baseSalePrice,
+    depositAmount: prices.depositAmount,
+    buyoutValue: prices.buyoutValue,
+    likeCount: product.likeCount || 0,
+    averageRating: Math.max(Number(product.averageRating || 0), 0),
+    reviewCount: Math.max(Number(product.reviewCount || 0), 0),
+    totalQuantity: quantity.totalQuantity || 0,
+    availableQuantity: quantity.availableQuantity || 0,
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+};
 
 const uploadOwnerImages = async (files = []) => {
   if (!Array.isArray(files) || files.length === 0) {
@@ -324,50 +547,50 @@ const getProducts = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 50);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const category = normalizeText(req.query.category);
+    const search = normalizeText(req.query.search);
     const skip = (page - 1) * limit;
 
     const withCategory = (filter) => applyCategoryFilter(filter, category);
 
-    let products = [];
-    let totalItems = 0;
-    if (purpose === 'buy') {
-      const primaryFilter = withCategory({ baseSalePrice: { $gt: 0 } });
-      totalItems = await Product.countDocuments(primaryFilter);
-      if (totalItems > 0) {
-        products = await Product.find(primaryFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
-      } else {
-        const fallbackFilter = withCategory({});
-        totalItems = await Product.countDocuments(fallbackFilter);
-        products = await Product.find(fallbackFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
-      }
-    } else if (purpose === 'fitting') {
-      const filter = withCategory({ baseRentPrice: { $gt: 0 } });
-      totalItems = await Product.countDocuments(filter);
-      products = await Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
-    } else {
-      const filter = withCategory({});
-      totalItems = await Product.countDocuments(filter);
-      products = await Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+    const filter = withCategory({});
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), 'i');
+      filter.$and = [
+        ...(Array.isArray(filter.$and) ? filter.$and : []),
+        {
+          $or: [
+            { name: { $regex: regex } },
+            { 'name.vi': { $regex: regex } },
+            { 'name.en': { $regex: regex } },
+            { category: { $regex: regex } },
+            { 'category.vi': { $regex: regex } },
+            { 'category.en': { $regex: regex } },
+            { color: { $regex: regex } },
+            { size: { $regex: regex } },
+            { sizes: { $elemMatch: { $regex: regex } } },
+            { 'colorVariants.name': { $regex: regex } },
+          ],
+        },
+      ];
     }
+    const allProducts = await Product.find(filter).sort({ createdAt: -1 }).lean();
+    const quantityMap = await getQuantityMap(allProducts.map((product) => product._id));
+    const normalizedProducts = allProducts.map((product) =>
+      sanitizeProduct(product, quantityMap.get(String(product._id)), lang)
+    );
 
-    const data = products.map((product) => ({
-      _id: product._id,
-      name: resolveLocalizedField(product, 'name', lang),
-      category: resolveLocalizedField(product, 'category', lang),
-      imageUrl: toProductImageUrl(product),
-      createdAt: product.createdAt,
-      baseRentPrice: product.baseRentPrice,
-      baseSalePrice: product.baseSalePrice,
-      depositAmount: toNumber(product.depositAmount, 0),
-      buyoutValue: toNumber(product.buyoutValue, 0),
-      likeCount: product.likeCount || 0,
-      size: product.size,
-      sizes: Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes : [product.size].filter(Boolean),
-      color: product.color,
-      colorVariants: Array.isArray(product.colorVariants) ? product.colorVariants : [],
-      description: resolveLocalizedField(product, 'description', lang),
-      images: Array.isArray(product.images) ? product.images : [],
-    }));
+    const filteredProducts = normalizedProducts.filter((product) => {
+      if (purpose === 'buy') {
+        return Number(product.baseSalePrice || 0) > 0;
+      }
+      if (purpose === 'fitting' || purpose === 'rent') {
+        return Number(product.baseRentPrice || 0) > 0;
+      }
+      return true;
+    });
+
+    const totalItems = filteredProducts.length;
+    const data = filteredProducts.slice(skip, skip + limit);
 
     return res.status(200).json({
       success: true,
@@ -508,16 +731,20 @@ const getTopLikedProducts = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 24);
-    const rows = await Product.find({ baseRentPrice: { $gt: 0 } }).sort({ likeCount: -1, createdAt: -1, _id: 1 }).limit(limit).lean();
+    const rows = await Product.find({}).sort({ likeCount: -1, createdAt: -1, _id: 1 }).lean();
 
-    const data = rows.map((product) => ({
-      _id: product._id,
-      name: resolveLocalizedField(product, 'name', lang),
-      category: resolveLocalizedField(product, 'category', lang),
-      imageUrl: toProductImageUrl(product),
-      baseRentPrice: product.baseRentPrice,
-      likeCount: product.likeCount || 0,
-    }));
+    const data = rows
+      .map((product) => sanitizeProduct(product, {}, lang))
+      .filter((product) => Number(product.baseRentPrice || 0) > 0)
+      .slice(0, limit)
+      .map((product) => ({
+        _id: product._id,
+        name: product.name,
+        category: product.category,
+        imageUrl: product.imageUrl,
+        baseRentPrice: product.baseRentPrice,
+        likeCount: product.likeCount || 0,
+      }));
 
     return res.status(200).json({
       success: true,
@@ -585,19 +812,84 @@ const getProductById = async (req, res) => {
         message: 'Product not found',
       });
     }
+    const instances = await ProductInstance.find({ productId: product._id }).lean();
+    const quantity = {
+      totalQuantity: instances.length,
+      availableQuantity: instances.filter((item) => item.lifecycleStatus === 'Available').length,
+    };
     return res.status(200).json({
       success: true,
-      data: {
-        ...product,
-        name: resolveLocalizedField(product, 'name', lang),
-        category: resolveLocalizedField(product, 'category', lang),
-        description: resolveLocalizedField(product, 'description', lang),
-      },
+      data: sanitizeProduct(product, quantity, lang),
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: 'Error getting product',
+      error: error.message,
+    });
+  }
+};
+
+const getSimilarProducts = async (req, res) => {
+  try {
+    const lang = getRequestLang(req.query.lang);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 4, 1), 12);
+    const product = await Product.findById(req.params.id).lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    const categoryCandidates = [
+      normalizeText(product?.categoryPath?.child),
+      normalizeText(product?.categoryPath?.parent),
+      ...normalizeStringList(product?.categoryPath?.ancestors),
+      normalizeText(toObject(product?.category)?.child),
+      normalizeText(toObject(product?.category)?.parent),
+      normalizeText(resolveLocalizedField(product, 'category', 'vi')),
+      normalizeText(resolveLocalizedField(product, 'category', 'en')),
+    ].filter(Boolean);
+
+    let relatedRows = [];
+
+    for (const category of categoryCandidates) {
+      const rows = await Product.find({
+        _id: { $ne: product._id },
+        ...applyCategoryFilter({}, category),
+      })
+        .sort({ likeCount: -1, createdAt: -1, _id: 1 })
+        .limit(limit)
+        .lean();
+
+      if (rows.length > 0) {
+        relatedRows = rows;
+        break;
+      }
+    }
+
+    if (relatedRows.length < limit) {
+      const excludedIds = [product._id, ...relatedRows.map((item) => item._id)];
+      const fallbackRows = await Product.find({
+        _id: { $nin: excludedIds },
+      })
+        .sort({ likeCount: -1, createdAt: -1, _id: 1 })
+        .limit(limit - relatedRows.length)
+        .lean();
+
+      relatedRows = relatedRows.concat(fallbackRows);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: relatedRows.map((item) => sanitizeProduct(item, {}, lang)),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting similar products',
       error: error.message,
     });
   }
@@ -985,7 +1277,14 @@ const getProductInstances = async (req, res) => {
     }
 
     if (conditionLevel) {
-      filter.conditionLevel = conditionLevel;
+      const normalizedLevel = normalizeConditionLevel(conditionLevel);
+      if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        });
+      }
+      filter.conditionLevel = normalizedLevel;
     }
 
     if (lifecycleStatus) {
@@ -1080,6 +1379,7 @@ const updateProductInstance = async (req, res) => {
     } = req.body;
 
     const instance = await ProductInstance.findById(id);
+    const canUpdateCondition = hasPermission(req.access, 'inventory.item.update_condition');
 
     if (!instance) {
       return res.status(404).json({
@@ -1089,8 +1389,35 @@ const updateProductInstance = async (req, res) => {
     }
 
     // Cập nhật các trường được gửi lên
-    if (conditionLevel) instance.conditionLevel = conditionLevel;
-    if (conditionScore !== undefined) instance.conditionScore = conditionScore;
+    const before = instance.toObject();
+
+    if ((conditionLevel !== undefined || conditionScore !== undefined) && !canUpdateCondition) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden - missing permission'
+      });
+    }
+
+    if (conditionLevel !== undefined) {
+      const normalizedLevel = normalizeConditionLevel(conditionLevel);
+      if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        });
+      }
+      instance.conditionLevel = normalizedLevel;
+    }
+    if (conditionScore !== undefined) {
+      const normalizedScore = normalizeConditionScore(conditionScore);
+      if (!ALLOWED_CONDITION_SCORES.has(normalizedScore)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Điểm tình trạng chỉ chấp nhận 0, 25, 50 hoặc 100'
+        });
+      }
+      instance.conditionScore = normalizedScore;
+    }
     if (lifecycleStatus) instance.lifecycleStatus = lifecycleStatus;
     if (currentRentPrice !== undefined) instance.currentRentPrice = currentRentPrice;
     if (currentSalePrice !== undefined) instance.currentSalePrice = currentSalePrice;
@@ -1101,6 +1428,30 @@ const updateProductInstance = async (req, res) => {
     // Populate để trả về
     const updatedInstance = await ProductInstance.findById(id)
       .populate('productId', 'name images category');
+
+    await writeAuditLog({
+      req,
+      user: req.user,
+      action: 'inventory.item.update_condition',
+      resource: 'ProductInstance',
+      resourceId: updatedInstance._id,
+      before: {
+        conditionLevel: before.conditionLevel,
+        conditionScore: before.conditionScore,
+        lifecycleStatus: before.lifecycleStatus,
+        currentRentPrice: before.currentRentPrice,
+        currentSalePrice: before.currentSalePrice,
+        note: before.note,
+      },
+      after: {
+        conditionLevel: updatedInstance.conditionLevel,
+        conditionScore: updatedInstance.conditionScore,
+        lifecycleStatus: updatedInstance.lifecycleStatus,
+        currentRentPrice: updatedInstance.currentRentPrice,
+        currentSalePrice: updatedInstance.currentSalePrice,
+        note: updatedInstance.note,
+      },
+    });
 
     res.json({
       success: true,
@@ -1143,9 +1494,17 @@ const createProductInstance = async (req, res) => {
       });
     }
 
+    const normalizedLevel = conditionLevel ? normalizeConditionLevel(conditionLevel) : 'New';
+    if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+      });
+    }
+
     const instance = new ProductInstance({
       productId,
-      conditionLevel: conditionLevel || 'New',
+      conditionLevel: normalizedLevel,
       conditionScore: 100,
       lifecycleStatus: 'Available',
       currentRentPrice,
@@ -1223,7 +1582,14 @@ const getAvailableInstances = async (req, res) => {
     };
 
     if (conditionLevel) {
-      filter.conditionLevel = conditionLevel;
+      const normalizedLevel = normalizeConditionLevel(conditionLevel);
+      if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        });
+      }
+      filter.conditionLevel = normalizedLevel;
     }
 
     const instances = await ProductInstance.find(filter)
@@ -1252,6 +1618,7 @@ module.exports = {
   getTopLikedProducts,
   getTopSoldProducts,
   getProductById,
+  getSimilarProducts,
   createProduct,
   createOwnerProduct,
   updateProduct,

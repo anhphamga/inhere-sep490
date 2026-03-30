@@ -12,4 +12,8 @@ const virtualTryOnController = require('../controllers/virtual-try-on.controller
 // Proxy request to API4.ai virtual try-on
 router.post('/generate', virtualTryOnController.generateTryOn);
 
+// GET /api/virtual-try-on/proxy-image?url=<encoded-url>
+// Proxy external images to avoid browser CORS issues
+router.get('/proxy-image', virtualTryOnController.proxyImage);
+
 module.exports = router;

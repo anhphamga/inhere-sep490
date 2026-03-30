@@ -25,18 +25,23 @@ export const BuyCartProvider = ({ children }) => {
   const [items, setItems] = useState(getStoredCart)
 
   const addItem = useCallback((product, variant = {}) => {
+    if (Number(product?.availableQuantity || 0) <= 0) {
+      return
+    }
     const price = Number(variant.salePrice ?? product.baseSalePrice ?? 0)
     const quantity = Math.max(Number(variant.quantity || 1), 1)
 
     const newItem = {
       id: `${product._id}_${variant.color || 'default'}_${variant.size || 'default'}`,
       productId: product._id,
+      productInstanceId: variant.productInstanceId || null,
       name: product.name,
       image: product.images?.[0] || product.imageUrl || '',
       color: variant.color || 'Default',
       size: variant.size || 'FREE SIZE',
       salePrice: price,
-      quantity
+      quantity,
+      conditionScore: Number(variant.conditionScore ?? 100),
     }
 
     setItems((prev) => {

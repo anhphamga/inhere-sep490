@@ -1,5 +1,40 @@
 const mongoose = require('mongoose');
 
+const alertActivitySchema = new mongoose.Schema({
+  action: {
+    type: String,
+    enum: ['CREATED', 'STATUS_CHANGED', 'NOTE_ADDED'],
+    required: true
+  },
+  actor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  actorRole: {
+    type: String,
+    default: ''
+  },
+  note: {
+    type: String,
+    default: ''
+  },
+  fromStatus: {
+    type: String,
+    enum: ['New', 'Seen', 'Done', ''],
+    default: ''
+  },
+  toStatus: {
+    type: String,
+    enum: ['New', 'Seen', 'Done', ''],
+    default: ''
+  },
+  at: {
+    type: Date,
+    default: Date.now
+  }
+}, { _id: false });
+
 const alertSchema = new mongoose.Schema({
   type: {
     type: String,
@@ -37,6 +72,15 @@ const alertSchema = new mongoose.Schema({
   handledAt: {
     type: Date,
     default: null
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  activityLogs: {
+    type: [alertActivitySchema],
+    default: []
   },
   createdAt: {
     type: Date,

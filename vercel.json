@@ -1,0 +1,11 @@
+{
+  "installCommand": "cd FE && npm install",
+  "buildCommand": "cd FE && npm run build",
+  "outputDirectory": "FE/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

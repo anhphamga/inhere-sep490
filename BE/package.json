@@ -15,7 +15,10 @@
   },
   "keywords": [],
   "dependencies": {
+    "@chroma-core/default-embed": "^0.1.9",
+    "@payos/node": "^2.0.5",
     "bcryptjs": "^3.0.3",
+    "chromadb": "^3.4.0",
     "cloudinary": "^2.9.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

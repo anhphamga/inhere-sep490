@@ -33,6 +33,10 @@ const productSchema = new mongoose.Schema({
     child: {
       type: String,
       default: ''
+    },
+    ancestors: {
+      type: [String],
+      default: []
     }
   },
   size: {
@@ -108,6 +112,17 @@ const productSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0
+  },
+  averageRating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+  },
+  reviewCount: {
+    type: Number,
+    default: 0,
+    min: 0,
   }
 }, {
   timestamps: true

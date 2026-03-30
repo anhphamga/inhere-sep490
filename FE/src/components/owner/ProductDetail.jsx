@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { deleteOwnerProductApi, getOwnerProductDetailApi, updateOwnerProductApi } from '../../services/owner.service'
 import { numberFormatter, toArray } from '../../utils/owner.utils'
+import { findCategoryPathFromProduct, getCategoryLevelOptions, normalizeCategoryTree } from '../../utils/categoryTree'
 
 const SIZE_PRESETS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREE SIZE']
 
@@ -44,29 +45,6 @@ const buildVariantMatrix = (sizes = [], colors = [], seed = []) => {
     return rows
 }
 
-const normalizeCategoryTree = (nodes = []) => {
-    return (Array.isArray(nodes) ? nodes : [])
-        .map((node) => ({
-            name: String(node?.displayName || '').trim(),
-            children: toArray(node?.children).map((child) => String(child?.displayName || '').trim()).filter(Boolean),
-        }))
-        .filter((item) => item.name)
-}
-
-const getCategorySelection = (tree, value, categoryPath = {}) => {
-    const pathParent = String(categoryPath?.parent || '').trim()
-    const pathChild = String(categoryPath?.child || '').trim()
-    if (pathParent) return { parent: pathParent, child: pathChild }
-    const normalized = String(value || '').trim().toLowerCase()
-    if (!normalized) return { parent: '', child: '' }
-    for (const node of tree) {
-        if (node.name.toLowerCase() === normalized) return { parent: node.name, child: '' }
-        const matched = node.children.find((child) => child.toLowerCase() === normalized)
-        if (matched) return { parent: node.name, child: matched }
-    }
-    return { parent: String(value || '').trim(), child: '' }
-}
-
 export default function ProductDetail({ productId, onBack }) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -77,20 +55,50 @@ export default function ProductDetail({ productId, onBack }) {
     const [tab, setTab] = useState('basic')
     const [categoryTree, setCategoryTree] = useState([])
     const [detail, setDetail] = useState({ product: null, instances: [], totalQuantity: 0, availableQuantity: 0 })
-    const [form, setForm] = useState({ name: '', quantity: '0', baseSalePrice: '', baseRentPrice: '', commonRentPrice: '', description: '', parentCategory: '', childCategory: '', pricingMode: 'common' })
+    const [form, setForm] = useState({ name: '', quantity: '0', baseSalePrice: '', baseRentPrice: '', commonRentPrice: '', description: '', categoryPath: [], pricingMode: 'common' })
     const [sizes, setSizes] = useState([])
     const [sizeDraft, setSizeDraft] = useState('')
     const [colors, setColors] = useState([])
     const [colorDraft, setColorDraft] = useState('')
-    const [mainImageFiles, setMainImageFiles] = useState([])
     const [variantMatrix, setVariantMatrix] = useState([])
 
-    const childOptions = useMemo(() => categoryTree.find((item) => item.name === form.parentCategory)?.children || [], [categoryTree, form.parentCategory])
-    const selectedCategory = form.childCategory || form.parentCategory
-    const previewImage = colors[0]?.images?.[0] || detail.product?.images?.[0] || mainImageFiles[0]?.preview || ''
+    const selectedCategoryPath = useMemo(
+        () => (Array.isArray(form.categoryPath) ? form.categoryPath : []),
+        [form.categoryPath]
+    )
+    const selectedCategory = selectedCategoryPath[selectedCategoryPath.length - 1] || ''
+    const categoryLevelOptions = useMemo(() => {
+        const levels = []
+        let level = 0
+        while (level === 0 || level < selectedCategoryPath.length + 1) {
+            const options = getCategoryLevelOptions(categoryTree, selectedCategoryPath, level)
+            if (options.length === 0) break
+            levels.push(options)
+            level += 1
+        }
+        return levels
+    }, [categoryTree, selectedCategoryPath])
+    const previewImages = useMemo(() => {
+        const imageSet = new Set()
+        ;(detail.product?.images || []).forEach((item) => item && imageSet.add(item))
+        colors.forEach((item) => (item.images || []).forEach((image) => image && imageSet.add(image)))
+        return Array.from(imageSet)
+    }, [colors, detail.product])
+    const previewImage = previewImages[0] || ''
+    const categoryLabel = selectedCategoryPath.join(' / ')
 
     const setField = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }))
+        setDirty(true)
+    }
+
+    const updateCategoryLevel = (level, value) => {
+        setForm((prev) => {
+            const currentPath = Array.isArray(prev.categoryPath) ? prev.categoryPath : []
+            const nextPath = currentPath.slice(0, level)
+            if (value) nextPath.push(value)
+            return { ...prev, categoryPath: nextPath }
+        })
         setDirty(true)
     }
 
@@ -99,7 +107,7 @@ export default function ProductDetail({ productId, onBack }) {
         const colorVariants = Array.isArray(product?.colorVariants) && product.colorVariants.length > 0
             ? product.colorVariants.map((item) => ({ id: `${Date.now()}-${Math.random()}`, name: String(item?.name || '').trim(), images: uniq(toArray(item?.images).map((img) => String(img || '').trim())), urlDraft: '' })).filter((item) => item.name)
             : uniq(parseMultiValues(product?.color)).map((name) => ({ id: `${Date.now()}-${Math.random()}`, name, images: [], urlDraft: '' }))
-        const categoryChoice = getCategorySelection(tree, product?.category, product?.categoryPath)
+        const categoryChoice = findCategoryPathFromProduct(tree, product)
         setForm({
             name: String(product?.name || ''),
             quantity: '0',
@@ -107,14 +115,12 @@ export default function ProductDetail({ productId, onBack }) {
             baseRentPrice: String(product?.baseRentPrice ?? ''),
             commonRentPrice: String(product?.commonRentPrice ?? product?.baseRentPrice ?? ''),
             description: String(product?.description || ''),
-            parentCategory: categoryChoice.parent,
-            childCategory: categoryChoice.child,
+            categoryPath: categoryChoice,
             pricingMode: product?.pricingMode === 'per_variant' ? 'per_variant' : 'common',
         })
         setSizes(sizesInit)
         setColors(colorVariants)
         setVariantMatrix(buildVariantMatrix(sizesInit, colorVariants.map((item) => item.name), toArray(product?.variantMatrix)))
-        setMainImageFiles([])
         setDirty(false)
         setActionError('')
     }
@@ -148,7 +154,7 @@ export default function ProductDetail({ productId, onBack }) {
         let mounted = true
         const loadCategories = async () => {
             try {
-                const response = await fetch('/api/categories')
+                const response = await fetch('/api/categories?lang=vi')
                 const payload = response.ok ? await response.json() : { categories: [] }
                 if (!mounted) return
                 const tree = normalizeCategoryTree(payload?.categories)
@@ -213,15 +219,6 @@ export default function ProductDetail({ productId, onBack }) {
         setDirty(true)
     }
 
-    const addMainFiles = (files) => {
-        const prepared = Array.from(files || [])
-            .filter((file) => file?.type?.startsWith('image/'))
-            .map((file) => ({ id: `${Date.now()}-${Math.random()}`, file, preview: URL.createObjectURL(file) }))
-        if (prepared.length === 0) return
-        setMainImageFiles((prev) => [...prev, ...prepared])
-        setDirty(true)
-    }
-
     const validate = (isDraft) => {
         if (isDraft) return ''
         if (!form.name.trim()) return 'Tên sản phẩm là bắt buộc.'
@@ -229,7 +226,7 @@ export default function ProductDetail({ productId, onBack }) {
         if (sizes.length === 0) return 'Phải có ít nhất 1 size.'
         if (colors.length === 0) return 'Phải có ít nhất 1 màu.'
         if (colors.some((item) => item.images.length === 0)) return 'Mỗi màu cần ít nhất 1 ảnh.'
-        if ((detail.product?.images || []).length === 0 && mainImageFiles.length === 0 && colors.every((item) => item.images.length === 0)) return 'Phải có ít nhất 1 ảnh chính.'
+        if ((detail.product?.images || []).length === 0 && colors.every((item) => item.images.length === 0)) return 'Phải có ít nhất 1 ảnh chính.'
         if (Number(form.baseRentPrice || 0) < 0 || Number(form.baseSalePrice || 0) < 0) return 'Giá không được âm.'
         return ''
     }
@@ -243,8 +240,9 @@ export default function ProductDetail({ productId, onBack }) {
             const payload = {
                 name: form.name.trim() || 'Draft product',
                 category: selectedCategory || 'Draft',
-                categoryParent: form.parentCategory,
-                categoryChild: form.childCategory,
+                categoryParent: selectedCategoryPath[0] || '',
+                categoryChild: selectedCategoryPath.length > 1 ? selectedCategoryPath[selectedCategoryPath.length - 1] : '',
+                categoryAncestors: selectedCategoryPath,
                 size: sizes[0] || 'M',
                 sizes,
                 color: colors[0]?.name || 'Default',
@@ -258,7 +256,6 @@ export default function ProductDetail({ productId, onBack }) {
                     ? variantMatrix.map((item) => ({ size: item.size, color: item.color, rentPrice: Number(item.rentPrice || 0), salePrice: Number(item.salePrice || 0), quantity: Number(item.quantity || 0) }))
                     : [],
                 description: form.description.trim(),
-                imageFiles: mainImageFiles.map((item) => item.file),
                 isDraft,
             }
             await updateOwnerProductApi(productId, payload)
@@ -293,7 +290,6 @@ export default function ProductDetail({ productId, onBack }) {
                 <div className="flex items-center gap-2">
                     <Tab active={tab === 'basic'} onClick={() => setTab('basic')}>Thông tin</Tab>
                     <Tab active={tab === 'variants'} onClick={() => setTab('variants')}>Biến thể</Tab>
-                    <Tab active={tab === 'images'} onClick={() => setTab('images')}>Hình ảnh</Tab>
                 </div>
                 {dirty ? <p className="text-xs text-amber-600 font-medium">Bạn chưa lưu thay đổi</p> : <span />}
                 <div className="flex items-center gap-2">
@@ -319,8 +315,16 @@ export default function ProductDetail({ productId, onBack }) {
                             <Field type="number" label="Giá thuê chung" value={form.commonRentPrice} onChange={(value) => setField('commonRentPrice', value)} hint={form.commonRentPrice ? `${toCurrency(form.commonRentPrice)}đ` : ''} />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <Select label="Danh mục cha" value={form.parentCategory} options={categoryTree.map((item) => item.name)} onChange={(value) => { setForm((prev) => ({ ...prev, parentCategory: value, childCategory: '' })); setDirty(true) }} placeholder="Chọn danh mục cha" />
-                            <Select label="Danh mục con (nếu có)" value={form.childCategory} options={childOptions} onChange={(value) => setField('childCategory', value)} placeholder={childOptions.length > 0 ? 'Chọn danh mục con' : 'Danh mục cha không có thẻ con'} disabled={childOptions.length === 0} />
+                            {categoryLevelOptions.map((options, index) => (
+                                <Select
+                                    key={`category-level-${index}`}
+                                    label={`Danh mục cấp ${index + 1}`}
+                                    value={selectedCategoryPath[index] || ''}
+                                    options={options}
+                                    onChange={(value) => updateCategoryLevel(index, value)}
+                                    placeholder={`Chọn danh mục cấp ${index + 1}`}
+                                />
+                            ))}
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium text-slate-700">Mô tả</label>
@@ -329,13 +333,45 @@ export default function ProductDetail({ productId, onBack }) {
                     </section>
                     <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
                         <h4 className="text-sm font-bold">Preview sản phẩm</h4>
-                        <div className="h-48 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">{previewImage ? <img src={previewImage} alt="preview" className="w-full h-full object-cover" /> : null}</div>
-                        <p className="font-semibold">{form.name || 'Tên sản phẩm'}</p>
-                        <p className="text-sm text-slate-500">{selectedCategory || 'Danh mục'}</p>
-                        <p className="text-lg font-bold text-[#1975d2]">{toCurrency(form.baseRentPrice)}đ</p>
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                            <div className="h-52 overflow-hidden bg-slate-100">
+                                {previewImage ? (
+                                    <img src={previewImage} alt="preview" className="h-full w-full object-cover" />
+                                ) : (
+                                    <div className="flex h-full items-center justify-center text-sm text-slate-400">Chưa có ảnh xem trước</div>
+                                )}
+                            </div>
+                            {previewImages.length > 1 ? (
+                                <div className="flex gap-2 overflow-x-auto border-t border-slate-200 bg-white p-3">
+                                    {previewImages.slice(0, 6).map((image, index) => (
+                                        <div key={`${image}-${index}`} className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-slate-200">
+                                            <img src={image} alt={`preview-${index}`} className="h-full w-full object-cover" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="space-y-1">
+                            <p className="font-semibold text-slate-900">{form.name || 'Tên sản phẩm'}</p>
+                            <p className="text-sm text-slate-500">{categoryLabel || 'Chưa chọn danh mục'}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                <p className="text-[11px] font-bold uppercase text-slate-400">Giá thuê</p>
+                                <p className="text-lg font-bold text-[#1975d2]">{toCurrency(form.commonRentPrice || form.baseRentPrice)}đ</p>
+                            </div>
+                            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                <p className="text-[11px] font-bold uppercase text-slate-400">Giá bán</p>
+                                <p className="text-lg font-bold text-slate-900">{toCurrency(form.baseSalePrice)}đ</p>
+                            </div>
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                             <Stat label="Tổng tồn" value={numberFormatter.format(detail.totalQuantity)} />
                             <Stat label="Khả dụng" value={numberFormatter.format(detail.availableQuantity)} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <Stat label="Size" value={sizes.length ? sizes.join(', ') : '-'} />
+                            <Stat label="Màu" value={colors.length ? colors.map((item) => item.name).join(', ') : '-'} />
                         </div>
                     </section>
                 </div>
@@ -394,15 +430,6 @@ export default function ProductDetail({ productId, onBack }) {
                 </div>
             ) : null}
 
-            {tab === 'images' ? (
-                <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                    <h4 className="text-sm font-bold">Ảnh chính (kéo thả)</h4>
-                    <div className="h-36 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-sm text-slate-500" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addMainFiles(event.dataTransfer?.files) }}>Kéo thả ảnh vào đây</div>
-                    <label className="inline-flex h-10 items-center px-4 rounded-lg border border-slate-200 text-sm cursor-pointer">Chọn ảnh từ máy<input type="file" accept="image/*" multiple className="hidden" onChange={(event) => addMainFiles(event.target.files)} /></label>
-                    <div className="flex flex-wrap gap-2">{(detail.product?.images || []).map((img, idx) => <div key={`existing-${idx}`} className="h-20 w-20 rounded-lg border border-slate-200 overflow-hidden"><img src={img} alt={`existing-${idx}`} className="w-full h-full object-cover" /></div>)}</div>
-                    <div className="flex flex-wrap gap-2">{mainImageFiles.map((item) => <button key={item.id} type="button" className="h-20 w-20 rounded-lg border border-slate-200 overflow-hidden" onClick={() => { setMainImageFiles((prev) => prev.filter((img) => img.id !== item.id)); setDirty(true) }}><img src={item.preview} alt={item.file?.name || 'image'} className="w-full h-full object-cover" /></button>)}</div>
-                </section>
-            ) : null}
         </div>
     )
 }
@@ -427,7 +454,11 @@ function Select({ label, value, onChange, options = [], placeholder = 'Chọn', 
             <label className="text-sm font-medium text-slate-700">{label}</label>
             <select className="w-full h-10 border border-slate-200 rounded-lg px-3 text-sm bg-white disabled:bg-slate-100" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
                 <option value="">{placeholder}</option>
-                {options.map((item) => <option key={item} value={item}>{item}</option>)}
+                {options.map((item) => {
+                    const optionValue = typeof item === 'object' && item !== null ? item.value : item
+                    const optionLabel = typeof item === 'object' && item !== null ? item.label : item
+                    return <option key={optionValue} value={optionValue}>{optionLabel}</option>
+                })}
             </select>
         </div>
     )
@@ -437,7 +468,7 @@ function Stat({ label, value }) {
     return (
         <div className="p-3 border border-slate-100 rounded-lg">
             <p className="text-[11px] text-slate-400 uppercase font-bold">{label}</p>
-            <p className="text-base font-semibold text-slate-900">{value}</p>
+            <p className="text-sm font-semibold text-slate-900 break-words">{value}</p>
         </div>
     )
 }

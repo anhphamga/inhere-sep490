@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Ban, BarChart2, Calendar, Eye, Search, UserPlus, X } from 'lucide-react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Ban, BarChart2, Calendar, ChevronLeft, ChevronRight, Eye, Search, UserPlus, X } from 'lucide-react'
 import { createOwnerStaffApi, getOwnerStaffApi, getOwnerStaffDetailApi, updateOwnerStaffStatusApi } from '../../services/owner.service'
 import { numberFormatter, toArray } from '../../utils/owner.utils'
+
+const PAGE_SIZE = 10
 
 export default function StaffList({ onViewCalendar, onViewAnalytics }) {
     const [staff, setStaff] = useState([])
@@ -15,6 +17,7 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
     const [showDetailModal, setShowDetailModal] = useState(false)
     const [detailLoading, setDetailLoading] = useState(false)
     const [selectedStaffDetail, setSelectedStaffDetail] = useState(null)
+    const [currentPage, setCurrentPage] = useState(1)
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -55,6 +58,23 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
         })
     }, [staff, search])
 
+    const totalItems = filteredStaff.length
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+    const safeCurrentPage = Math.min(currentPage, totalPages)
+    const startItemIndex = totalItems === 0 ? 0 : (safeCurrentPage - 1) * PAGE_SIZE
+    const endItemIndex = Math.min(startItemIndex + PAGE_SIZE, totalItems)
+    const paginatedStaff = filteredStaff.slice(startItemIndex, endItemIndex)
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, statusFilter])
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages)
+        }
+    }, [currentPage, totalPages])
+
     const activeCount = useMemo(() => filteredStaff.filter((item) => item?.status === 'active').length, [filteredStaff])
     const lockedCount = useMemo(() => filteredStaff.filter((item) => item?.status === 'locked').length, [filteredStaff])
 
@@ -68,7 +88,7 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
             const nextStatus = member?.status === 'locked' ? 'active' : 'locked'
             setUpdatingId(member.id)
             await updateOwnerStaffStatusApi(member.id, nextStatus)
-            await loadStaff()
+            await loadStaff(statusFilter)
         } catch (apiError) {
             setError(apiError?.response?.data?.message || apiError?.message || 'Không cập nhật được trạng thái staff')
         } finally {
@@ -123,7 +143,7 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
 
             resetCreateForm()
             setShowCreateForm(false)
-            await loadStaff()
+            await loadStaff(statusFilter)
         } catch (apiError) {
             setError(apiError?.response?.data?.message || apiError?.message || 'Không tạo được staff mới')
         } finally {
@@ -339,7 +359,7 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {filteredStaff.map((member) => {
+                            {paginatedStaff.map((member) => {
                                 const isLocked = member.status === 'locked'
 
                                 return (
@@ -384,7 +404,7 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
                                 )
                             })}
 
-                            {filteredStaff.length === 0 ? (
+                            {paginatedStaff.length === 0 ? (
                                 <tr>
                                     <td className="px-6 py-6 text-sm text-slate-500" colSpan={5}>
                                         Không có staff phù hợp.
@@ -395,6 +415,35 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
                     </table>
                 </div>
             </div>
+
+            {filteredStaff.length > 0 ? (
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <p className="text-sm text-slate-600">
+                        Hiển thị {startItemIndex + 1}-{endItemIndex} trên tổng {totalItems} staff
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                            disabled={safeCurrentPage === 1}
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="px-3 text-sm font-medium text-slate-700">
+                            Trang {safeCurrentPage}/{totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                            disabled={safeCurrentPage === totalPages}
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            ) : null}
 
             {showDetailModal ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40" onClick={handleCloseStaffDetail}>

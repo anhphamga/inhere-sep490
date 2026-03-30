@@ -10,6 +10,7 @@ const User = require('../model/User.model');
 const RentOrder = require('../model/RentOrder.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const { hasCloudinaryConfig, uploadImageBuffer } = require('../utils/cloudinary');
+const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 
 const sanitizeUser = (user) => ({
   id: user._id,
@@ -94,19 +95,65 @@ const updateMyProfile = async (req, res) => {
     }
 
     if (payload.email) {
-      const normalizedEmail = payload.email.trim().toLowerCase();
+      const normalizedEmail = normalizeEmail(payload.email);
+
+      if (!isValidEmail(normalizedEmail)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email không hợp lệ'
+        });
+      }
+
       payload.email = normalizedEmail;
 
       const emailConflict = await User.findOne({
         _id: { $ne: req.user.id },
-        email: normalizedEmail,
-        authProvider: currentUser.authProvider
+        email: normalizedEmail
       });
 
       if (emailConflict) {
         return res.status(409).json({
           success: false,
-          message: 'Email already exists'
+          message: 'Email đã được sử dụng'
+        });
+      }
+    }
+
+    if (payload.phone !== undefined) {
+      const normalizedPhone = normalizePhone(payload.phone);
+
+      if (!normalizedPhone) {
+        payload.phone = null;
+      } else {
+        if (!isValidPhone(normalizedPhone)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Số điện thoại không hợp lệ'
+          });
+        }
+
+        const phoneConflict = await User.findOne({
+          _id: { $ne: req.user.id },
+          phone: normalizedPhone
+        });
+
+        if (phoneConflict) {
+          return res.status(409).json({
+            success: false,
+            message: 'Số điện thoại đã được sử dụng'
+          });
+        }
+
+        payload.phone = normalizedPhone;
+      }
+    }
+
+    if (payload.name) {
+      payload.name = String(payload.name).trim();
+      if (!payload.name) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tên không được để trống'
         });
       }
     }

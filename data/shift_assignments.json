@@ -1,0 +1,26 @@
+[
+  {
+    "shiftCode": "CA_1_2026_03_23",
+    "staffId": "__AUTO_STAFF_ID__",
+    "status": "PENDING",
+    "attendanceStatus": "NOT_CHECKED_IN"
+  },
+  {
+    "shiftCode": "CA_2_2026_03_23",
+    "staffId": "__AUTO_STAFF_ID__",
+    "status": "PENDING",
+    "attendanceStatus": "NOT_CHECKED_IN"
+  },
+  {
+    "shiftCode": "CA_1_2026_03_24",
+    "staffId": "__AUTO_STAFF_ID__",
+    "status": "PENDING",
+    "attendanceStatus": "NOT_CHECKED_IN"
+  },
+  {
+    "shiftCode": "CA_2_2026_03_24",
+    "staffId": "__AUTO_STAFF_ID__",
+    "status": "PENDING",
+    "attendanceStatus": "NOT_CHECKED_IN"
+  }
+]

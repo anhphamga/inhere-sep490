@@ -48,6 +48,26 @@ export const getOwnerProductsApi = async (params = {}) => {
     return response.data
 }
 
+export const getOwnerCategoriesApi = async (params = {}) => {
+    const response = await axiosClient.get('/owner/categories', { params })
+    return response.data
+}
+
+export const createOwnerCategoryApi = async (payload) => {
+    const response = await axiosClient.post('/owner/categories', payload)
+    return response.data
+}
+
+export const updateOwnerCategoryApi = async (categoryId, payload) => {
+    const response = await axiosClient.put(`/owner/categories/${categoryId}`, payload)
+    return response.data
+}
+
+export const deleteOwnerCategoryApi = async (categoryId) => {
+    const response = await axiosClient.delete(`/owner/categories/${categoryId}`)
+    return response.data
+}
+
 export const getOwnerProductDetailApi = async (productId) => {
     const response = await axiosClient.get(`/owner/products/${productId}`)
     return response.data
@@ -199,6 +219,16 @@ export const getOwnerCustomerDetailApi = async (customerId) => {
     return response.data
 }
 
+export const getOwnerOrdersApi = async (params = {}) => {
+    const response = await axiosClient.get('/owner/orders', { params })
+    return response.data
+}
+
+export const updateOwnerOrderStatusApi = async (orderId, status) => {
+    const response = await axiosClient.patch(`/owner/orders/${orderId}/status`, { status })
+    return response.data
+}
+
 export const updateOwnerCustomerStatusApi = async (customerId, status) => {
     const response = await axiosClient.patch(`/owner/customers/${customerId}/status`, { status })
     return response.data
@@ -216,6 +246,11 @@ export const createOwnerShiftApi = async (payload) => {
 
 export const updateOwnerShiftApi = async (shiftId, payload) => {
     const response = await axiosClient.put(`/owner/shifts/${shiftId}`, payload)
+    return response.data
+}
+
+export const deleteOwnerShiftApi = async (shiftId) => {
+    const response = await axiosClient.delete(`/owner/shifts/${shiftId}`)
     return response.data
 }
 

@@ -1,10 +1,7 @@
-import StaffCalendar from '../../components/owner/StaffCalendar'
-import { useNavigate } from 'react-router-dom'
+import ShiftManagementPage from './ShiftManagementPage'
 
 const OwnerShiftsScreen = () => {
-    const navigate = useNavigate()
-
-    return <StaffCalendar onBack={() => navigate('/owner/staff')} />
+    return <ShiftManagementPage />
 }
 
 export default OwnerShiftsScreen
