@@ -18,7 +18,7 @@ export default function ProductInfo({
         <h1 className="text-[28px] font-bold leading-tight text-slate-900 md:text-[32px]">
           {name || "Sản phẩm"}
         </h1>
-        <p className="text-sm text-slate-500">by Inhere Collection</p>
+        <p className="text-sm text-slate-500">Bởi Inhere Collection</p>
       </div>
 
       {/* Price block */}

@@ -296,7 +296,7 @@ const OwnerLayout = () => {
           <div className="owner-settings-overlay" onClick={() => setSettingsOpen(false)} />
           <aside className={cn('owner-settings-drawer', appearance === 'dark' ? 'owner-settings-dark' : 'owner-settings-light')}>
             <div className="owner-settings-head">
-              <button type="button" className="owner-settings-close" onClick={() => setSettingsOpen(false)}>Ã—</button>
+              <button type="button" className="owner-settings-close" onClick={() => setSettingsOpen(false)}>&times;</button>
               <h3>{t('owner.settings.title')}</h3>
             </div>
 
