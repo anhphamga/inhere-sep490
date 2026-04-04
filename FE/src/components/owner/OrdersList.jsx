@@ -303,7 +303,13 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
     const stats = useMemo(() => {
         return orders.reduce((acc, order) => {
             acc.total += 1
-            acc.amount += getOrderAmount(order)
+            if (orderType === ORDER_TYPES.sale) {
+                if (order?.status === 'Completed') {
+                    acc.amount += getOrderAmount(order)
+                }
+            } else {
+                acc.amount += getOrderAmount(order)
+            }
 
             if (orderType === ORDER_TYPES.sale && order?.status === 'PendingConfirmation') acc.pending += 1
             if (orderType === ORDER_TYPES.sale && order?.status === 'Shipping') acc.processing += 1
@@ -720,13 +726,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                                                 value={currencyFormatter.format(selectedOrder.totalAmount || 0)}
                                                 tone="text-white"
                                             />
-                                            {orderType === ORDER_TYPES.sale ? (
-                                                <SummaryTile
-                                                    label="Phí vận chuyển"
-                                                    value={currencyFormatter.format(selectedOrder.shippingFee || 0)}
-                                                    tone="text-slate-100"
-                                                />
-                                            ) : (
+                                            {orderType === ORDER_TYPES.sale ? null : (
                                                 <SummaryTile
                                                     label="Tiền đặt cọc"
                                                     value={currencyFormatter.format(selectedOrder.depositAmount || 0)}

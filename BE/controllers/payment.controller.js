@@ -10,6 +10,7 @@ const Payment = require('../model/Payment.model');
 const getRentOrderController = () => require('./rent-order.controller');
 const { frontendUrl, payosWebBaseUrl } = require('../config/app.config');
 const { ORDER_TYPE } = require('../constants/order.constants');
+const { resolveSaleOrderUserStatus } = require('../utils/saleOrderStatus');
 
 const FRONTEND_URL = frontendUrl;
 const PAYOS_WEB_BASE_URL = String(payosWebBaseUrl || '').replace(/\/+$/, '');
@@ -272,6 +273,7 @@ const processConfirmedPayment = async (txn) => {
                 await Payment.create({ orderType: ORDER_TYPE.SALE, orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'SalePayment', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
             }
             saleOrder.status = 'PendingConfirmation';
+            saleOrder.userStatus = resolveSaleOrderUserStatus('PendingConfirmation', saleOrder.userStatus);
             await saleOrder.save();
             console.log(`[PayOS Polling] Sale payment confirmed for order ${txn.orderId}`);
         }

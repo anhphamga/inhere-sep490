@@ -197,7 +197,7 @@ const Homepage = ({ initialSection = "" }) => {
   const setLang = () => { };
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isSliderPaused, setIsSliderPaused] = useState(false);
-  const [activeSection, setActiveSection] = useState(initialSection || "rent");
+  const [activeSection, setActiveSection] = useState(initialSection || "home");
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState("");
@@ -522,7 +522,7 @@ const Homepage = ({ initialSection = "" }) => {
 
     const handleScroll = () => {
       const offset = 130; // gần bằng chiều cao header + nav
-      let current = sectionIds[0];
+      let current = "home";
 
       sectionIds.forEach((id) => {
         const el = document.getElementById(id);
@@ -749,13 +749,7 @@ const Homepage = ({ initialSection = "" }) => {
 
   return (
     <>
-      <Header
-        active={activeSection}
-        onSectionNavigate={(section) => {
-          scrollToId(`#${section}`);
-          setActiveSection(section);
-        }}
-      />
+      <Header active={activeSection} />
       {SHOW_LEGACY_HEADER && (
         <>
           {/* HEADER */}

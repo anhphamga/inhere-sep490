@@ -12,6 +12,15 @@ const getToday = () => {
 const phoneRegex = /^(0|\+84)\d{9,10}$/;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const FALLBACK_CATEGORY = 'Đặt lịch thử đồ';
+const BOOKING_MIN_TIME = '08:00';
+const BOOKING_MAX_TIME = '22:00';
+
+const toTimeMinutes = (value = '') => {
+  const [hours, minutes] = String(value || '').split(':').map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
 
 export default function BookingForm({ onCancel, onSuccess, selectedProduct = null }) {
   const today = useMemo(() => getToday(), []);
@@ -122,6 +131,16 @@ export default function BookingForm({ onCancel, onSuccess, selectedProduct = nul
     if (!form.date) next.date = 'Vui lòng chọn ngày đến';
     else if (form.date < today) next.date = 'Ngày đến không được nhỏ hơn hôm nay';
     if (!form.time) next.time = 'Vui lòng chọn giờ đến';
+    else {
+      const timeInMinutes = toTimeMinutes(form.time);
+      const minTime = toTimeMinutes(BOOKING_MIN_TIME);
+      const maxTime = toTimeMinutes(BOOKING_MAX_TIME);
+      if (timeInMinutes === null || minTime === null || maxTime === null) {
+        next.time = 'Giờ đến không hợp lệ';
+      } else if (timeInMinutes < minTime || timeInMinutes > maxTime) {
+        next.time = `Giờ đến chỉ từ ${BOOKING_MIN_TIME} đến ${BOOKING_MAX_TIME}`;
+      }
+    }
     return next;
   }, [form, today]);
 

@@ -18,6 +18,11 @@ const saleOrderSchema = new mongoose.Schema({
     enum: ['Draft', 'PendingPayment', 'PendingConfirmation', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],
     default: 'Draft'
   },
+  userStatus: {
+    type: String,
+    enum: ['PENDING', 'CONFIRMED', 'SHIPPING', 'COMPLETED', 'RETURNED'],
+    default: 'PENDING'
+  },
   paymentMethod: {
     type: String,
     enum: ['COD', 'Online', 'BankTransfer'],

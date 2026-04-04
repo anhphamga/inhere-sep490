@@ -48,13 +48,13 @@ export default function BookingModal({ open, onClose, onSuccess, selectedProduct
           <div className="min-w-0">
             <div className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">
               <Sparkles size={12} />
-              INHERE Booking
+              INHERE Đặt lịch
             </div>
             <h2 className="mt-2 flex items-center gap-2 text-lg font-bold text-slate-900 sm:text-xl">
               <CalendarCheck2 size={20} className="text-amber-600" />
               Đặt lịch thử đồ
             </h2>
-            <p className="mt-1 text-sm text-slate-500">Hoàn tất nhanh trong 1 phút, xác nhận sớm qua email.</p>
+            <p className="mt-1 text-sm text-slate-500">Hoàn tất nhanh trong 1 phút, xác nhận sớm qua thư điện tử.</p>
           </div>
           <button
             type="button"

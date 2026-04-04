@@ -31,6 +31,7 @@ const ORDER_TYPE_TABS = [
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'pending_confirmation', label: 'Chờ xác nhận' },
+  { value: 'returned', label: 'Đã trả hàng' },
   { value: 'deposited', label: 'Đã đặt cọc' },
   { value: 'ready_pickup', label: 'Sẵn sàng nhận đồ' },
   { value: 'renting', label: 'Đang thuê' },
@@ -78,6 +79,11 @@ const STATUS_META = {
     label: 'Hoàn tất',
     badgeClass: 'bg-green-50 text-green-700 ring-green-200',
     dotClass: 'bg-green-500',
+  },
+  returned: {
+    label: 'Đã trả hàng',
+    badgeClass: 'bg-slate-100 text-slate-700 ring-slate-200',
+    dotClass: 'bg-slate-500',
   },
   cancelled: {
     label: 'Đã hủy',
@@ -200,9 +206,10 @@ function calculateRentalDays(startDate, endDate) {
 function mapBuyStatus(status) {
   switch (status) {
     case 'Completed':
+      return 'completed'
     case 'Returned':
     case 'Refunded':
-      return 'completed'
+      return 'returned'
     case 'Cancelled':
     case 'Failed':
       return 'cancelled'

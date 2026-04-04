@@ -335,8 +335,8 @@ export default function CartPage() {
   const rentalDepositAmount = Math.round(rentalSubtotalAfterVoucher * 0.5)
   const rentalRemainingAmount = Math.max(rentalSubtotalAfterVoucher - rentalDepositAmount, 0)
   const buyDiscountAmount = Number(buyVoucherResult?.discountAmount || 0)
-  const buyShippingFee = buyItems.length > 0 ? 30000 : 0
-  const buyGrandTotal = Math.max(Number(buyVoucherResult?.finalTotal ?? buySubtotal), 0) + buyShippingFee
+  const buyShippingFee = 0
+  const buyGrandTotal = Math.max(Number(buyVoucherResult?.finalTotal ?? buySubtotal), 0)
   const combinedCount = rentalItems.length + buyItems.length
   const combinedTotal = rentalDepositAmount + buyGrandTotal
   const addressPreview = useMemo(() => buildShippingAddress(buyForm), [buyForm])
@@ -752,7 +752,6 @@ export default function CartPage() {
                   <div className="space-y-3">
                     <SummaryRow label="Tạm tính" value={formatCurrency(buySubtotal)} />
                     {buyVoucherResult ? <SummaryRow label={`Voucher (${buyVoucherResult.code})`} value={`-${formatCurrency(buyDiscountAmount)}`} /> : null}
-                    <SummaryRow label="Phí vận chuyển" value={formatCurrency(buyShippingFee)} />
                     <div className="border-t border-slate-200 pt-3">
                       <SummaryRow label="Tổng thanh toán" value={formatCurrency(buyGrandTotal)} emphasized />
                     </div>

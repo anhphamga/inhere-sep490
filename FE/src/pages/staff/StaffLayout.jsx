@@ -1,5 +1,5 @@
-﻿import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { getAlertsApi } from "../../services/alert.service";
 
@@ -17,12 +17,20 @@ const formatDate = (date) => {
 export default function StaffLayout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState("");
   const notificationRef = useRef(null);
+  const resolveAlertTargetType = useCallback(() => {
+    const path = String(location.pathname || "");
+    if (path.startsWith("/staff/rent-orders") || path.startsWith("/staff/return")) return "RentOrder";
+    if (path.startsWith("/staff/sale-order") || path.startsWith("/staff/walk-in")) return "SaleOrder";
+    if (path.startsWith("/staff/bookings")) return "FittingBooking";
+    return "";
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -52,7 +60,13 @@ export default function StaffLayout({ children }) {
       try {
         setNotificationsLoading(true);
         setNotificationsError("");
-        const response = await getAlertsApi({ page: 1, limit: 8 });
+        const targetType = resolveAlertTargetType();
+        const response = await getAlertsApi({
+          page: 1,
+          limit: 8,
+          status: "New",
+          ...(targetType ? { targetType } : {}),
+        });
         if (!active) return;
         setNotifications(Array.isArray(response?.data) ? response.data : []);
       } catch (apiError) {
@@ -68,7 +82,7 @@ export default function StaffLayout({ children }) {
     return () => {
       active = false;
     };
-  }, [notificationOpen]);
+  }, [notificationOpen, resolveAlertTargetType]);
 
   const handleLogout = async () => {
     await logout();
@@ -90,7 +104,7 @@ export default function StaffLayout({ children }) {
     <div className="flex min-h-screen bg-white">
       <aside className="flex w-56 flex-col border-r border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-6 py-5">
-          <Link to="/" className="text-xl font-bold text-indigo-600 hover:opacity-90">
+          <Link to="/staff" className="text-xl font-bold text-indigo-600 hover:opacity-90">
             INHERE Nhân sự
           </Link>
         </div>
@@ -119,13 +133,13 @@ export default function StaffLayout({ children }) {
 
         <div className="space-y-2 border-t border-gray-200 p-4">
           <Link
-            to="/"
+            to="/staff"
             className="flex items-center gap-3 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50"
           >
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-gray-100 text-xs font-bold">
               HM
             </span>
-            Trang chủ
+            Tổng quan
           </Link>
           <Link
             to="/profile"
@@ -214,3 +228,5 @@ export default function StaffLayout({ children }) {
     </div>
   );
 }
+
+

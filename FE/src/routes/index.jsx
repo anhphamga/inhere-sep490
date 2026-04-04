@@ -5,6 +5,7 @@ import CollectionPage from '../pages/public/CollectionPage'
 import CollectionEntryPage from '../pages/public/CollectionEntryPage'
 import BlogPage from '../pages/public/BlogPage'
 import BlogDetailPage from '../pages/public/BlogDetailPage'
+import ContactPage from '../pages/public/ContactPage'
 import FavoritesPage from '../pages/customer/FavoritesPage'
 import MyVouchersPage from '../pages/customer/MyVouchersPage'
 import ProductDetailPage from '../pages/customer/ProductDetailPage'
@@ -54,6 +55,7 @@ const AppRoutes = () => {
             <Route path="/buy/checkout" element={<BuyCheckoutPage />} />
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/blog/:id" element={<BlogDetailPage />} />
+            <Route path="/contact" element={<ContactPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/work/login" element={<RoleLoginPage />} />
             <Route path="/owner/login" element={<Navigate to="/work/login?role=owner" replace />} />
@@ -67,6 +69,7 @@ const AppRoutes = () => {
             <Route path="/rental/history" element={<Navigate to="/orders/history" replace />} />
             <Route path="/rental/:id" element={<RentalDetailPage />} />
             <Route path="/payment-result" element={<PaymentResultPage />} />
+            <Route path="/orders/guest/:id" element={<OrderDetailPage />} />
 
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />

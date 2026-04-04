@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.post('/checkout', authenticate, orderController.checkout);
 router.post('/guest-checkout', orderController.guestCheckout);
+router.get('/guest/:id', orderController.getGuestSaleOrderById);
 router.get('/my', authenticate, orderController.getMySaleOrders);
 router.get('/my/:id', authenticate, orderController.getMySaleOrderById);
 

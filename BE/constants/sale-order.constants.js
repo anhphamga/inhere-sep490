@@ -22,7 +22,7 @@ const SALE_ORDER_TRANSITIONS = {
   Paid: ['Confirmed', 'Refunded'],
   Confirmed: ['Shipping', 'Completed', 'Cancelled'],
   Shipping: ['Completed', 'Returned'],
-  Completed: ['Refunded'],
+  Completed: [],
   Cancelled: [],
   Returned: ['Refunded'],
   Unpaid: ['PendingPayment', 'Cancelled'],

@@ -89,8 +89,13 @@ axiosClient.interceptors.response.use(
         const originalRequest = error.config
         const status = error?.response?.status
         const requestUrl = originalRequest?.url || ''
+        const skipAuthRedirect = Boolean(originalRequest?.skipAuthRedirect)
 
         if (status !== 401 || !originalRequest || originalRequest._retry) {
+            return Promise.reject(error)
+        }
+
+        if (skipAuthRedirect) {
             return Promise.reject(error)
         }
 
