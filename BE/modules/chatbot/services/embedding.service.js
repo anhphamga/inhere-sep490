@@ -1,6 +1,7 @@
 const { requestWithRetry } = require('../utils/httpClient');
 const ChatbotError = require('../utils/chatbotError');
 const { getChatConfig } = require('../utils/validators');
+const crypto = require('crypto');
 
 const toNumber = (value, fallback) => {
   const parsed = Number(value);
@@ -39,8 +40,52 @@ const averageTokenEmbeddings = (value) => {
   return pooled.map((v) => v / value.length);
 };
 
+const normalizeText = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9\s]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const buildLocalEmbedding = (text, dim) => {
+  const safeDim = Math.max(16, Math.min(dim, 2048));
+  const vector = new Array(safeDim).fill(0);
+  const normalized = normalizeText(text);
+  const tokens = normalized.split(' ').filter(Boolean);
+
+  if (!tokens.length) {
+    return vector;
+  }
+
+  for (const token of tokens) {
+    const digest = crypto.createHash('sha256').update(token).digest();
+
+    for (let i = 0; i < 4; i += 1) {
+      const idx = digest.readUInt16BE(i * 2) % safeDim;
+      const sign = digest[8 + i] % 2 === 0 ? 1 : -1;
+      const weight = (digest[12 + i] / 255) + 0.5;
+      vector[idx] += sign * weight;
+    }
+  }
+
+  const norm = Math.sqrt(vector.reduce((sum, v) => sum + (v * v), 0));
+  if (norm > 0) {
+    for (let i = 0; i < vector.length; i += 1) {
+      vector[i] /= norm;
+    }
+  }
+
+  return vector;
+};
+
 const embedText = async (text) => {
   const provider = (process.env.CHATBOT_EMBEDDING_PROVIDER || 'huggingface').toLowerCase();
+
+  if (provider === 'local') {
+    const dim = toNumber(process.env.CHATBOT_LOCAL_EMBEDDING_DIM, 384);
+    return buildLocalEmbedding(text, dim);
+  }
 
   if (provider !== 'huggingface') {
     throw new ChatbotError('Unsupported embedding provider', {
