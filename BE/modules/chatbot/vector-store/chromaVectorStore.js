@@ -55,7 +55,9 @@ class ChromaVectorStore {
       });
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
-      if (!message.includes('not found') && !message.includes('does not exist')) {
+      if (!message.includes('not found')
+        && !message.includes('does not exist')
+        && !message.includes('could not be found')) {
         throw new ChatbotError('Failed to reset Chroma collection', {
           statusCode: 500,
           code: 'CHROMA_RESET_FAILED',
