@@ -64,20 +64,20 @@ const embedText = async (text) => {
   const maxRetries = toNumber(process.env.CHATBOT_MAX_RETRIES, 3);
   const baseDelayMs = toNumber(process.env.CHATBOT_RETRY_BASE_DELAY_MS, 800);
 
-  const hfBaseUrl = process.env.HF_EMBEDDING_BASE_URL || 'https://router.huggingface.co/hf-inference/pipeline/feature-extraction';
+  const hfEmbeddingsUrl = process.env.HF_EMBEDDING_URL || 'https://router.huggingface.co/v1/embeddings';
 
   const normalizedModel = String(hfModel).replace(/^\/+/, '');
 
   const payload = await requestWithRetry({
-    url: `${hfBaseUrl.replace(/\/$/, '')}/${normalizedModel}`,
+    url: hfEmbeddingsUrl,
     method: 'POST',
     headers: {
       Authorization: `Bearer ${hfApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      inputs: text,
-      options: { wait_for_model: true },
+      model: normalizedModel,
+      input: text,
     }),
     timeoutMs,
     maxRetries,
@@ -85,7 +85,13 @@ const embedText = async (text) => {
     requestName: 'huggingface-embedding',
   });
 
-  const embedding = averageTokenEmbeddings(payload);
+  // Preferred response shape from HF Router embeddings API.
+  let embedding = payload?.data?.[0]?.embedding;
+
+  // Backward compatibility with feature-extraction-like payloads.
+  if (!Array.isArray(embedding)) {
+    embedding = averageTokenEmbeddings(payload);
+  }
 
   if (!embedding.length) {
     throw new ChatbotError('Embedding result is empty', {
