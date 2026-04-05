@@ -66,8 +66,10 @@ const embedText = async (text) => {
 
   const hfBaseUrl = process.env.HF_EMBEDDING_BASE_URL || 'https://router.huggingface.co/hf-inference/pipeline/feature-extraction';
 
+  const normalizedModel = String(hfModel).replace(/^\/+/, '');
+
   const payload = await requestWithRetry({
-    url: `${hfBaseUrl.replace(/\/$/, '')}/${encodeURIComponent(hfModel)}`,
+    url: `${hfBaseUrl.replace(/\/$/, '')}/${normalizedModel}`,
     method: 'POST',
     headers: {
       Authorization: `Bearer ${hfApiKey}`,
