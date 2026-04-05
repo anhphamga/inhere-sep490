@@ -64,8 +64,10 @@ const embedText = async (text) => {
   const maxRetries = toNumber(process.env.CHATBOT_MAX_RETRIES, 3);
   const baseDelayMs = toNumber(process.env.CHATBOT_RETRY_BASE_DELAY_MS, 800);
 
+  const hfBaseUrl = process.env.HF_EMBEDDING_BASE_URL || 'https://router.huggingface.co/hf-inference/models';
+
   const payload = await requestWithRetry({
-    url: `https://api-inference.huggingface.co/pipeline/feature-extraction/${encodeURIComponent(hfModel)}`,
+    url: `${hfBaseUrl.replace(/\/$/, '')}/${encodeURIComponent(hfModel)}`,
     method: 'POST',
     headers: {
       Authorization: `Bearer ${hfApiKey}`,
