@@ -34,6 +34,9 @@ router.get('/staff', requireAuth, requireOwner, staffController.listStaff);
 router.get('/staff/:id', requireAuth, requireOwner, staffController.getStaffDetail);
 router.post('/staff', requireAuth, requireOwner, staffController.createStaff);
 router.patch('/staff/:id/status', requireAuth, requireOwner, staffController.updateStaffStatus);
+router.patch('/staff/:id/role', requireAuth, requireOwner, staffController.updateStaffRole);
+router.get('/staff/:id/permissions', requireAuth, requireOwner, staffController.getStaffPermissions);
+router.patch('/staff/:id/permissions', requireAuth, requireOwner, staffController.updateStaffPermissions);
 
 router.get('/shifts', requireAuth, requireOwner, shiftController.listShifts);
 router.post('/shifts', requireAuth, requireOwner, shiftController.createShift);

@@ -47,13 +47,13 @@ const RENT_MEGA_MENU = [
     title: "Khám phá nhanh",
     items: [
       { label: "Sản phẩm nổi bật", to: "/buy?purpose=rent&sort=top_liked" },
-      { label: "Ưu đãi hiện tại", to: "/#promo" },
+      { label: "Ưu đãi hiện tại", to: "/my-vouchers" },
       { label: "Hướng dẫn khách du lịch", to: "/blog" },
     ],
   },
 ];
 
-export default function Header({ active = "", onSectionNavigate }) {
+export default function Header({ active = "" }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { itemCount } = useRentalCart() || { itemCount: 0 };
@@ -65,7 +65,6 @@ export default function Header({ active = "", onSectionNavigate }) {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
-  const isHomePage = location.pathname === "/";
   const dashboardPath = getRouteByRole(user?.role);
   const totalCartCount = Number(itemCount || 0) + Number(buyItemCount || 0);
   const cartPath = "/cart";
@@ -105,17 +104,6 @@ export default function Header({ active = "", onSectionNavigate }) {
     const params = new URLSearchParams(location.search);
     setSearchValue(params.get("q") || "");
   }, [location.pathname, location.search]);
-
-  const getSectionHref = (section) => (isHomePage ? `#${section}` : `/#${section}`);
-
-  const handleSectionClick = (event, section) => {
-    if (!isHomePage || !onSectionNavigate) {
-      return;
-    }
-
-    event.preventDefault();
-    onSectionNavigate(section);
-  };
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
@@ -286,13 +274,12 @@ export default function Header({ active = "", onSectionNavigate }) {
               {LABELS.navBlog}
             </Link>
 
-            <a
+            <Link
               className={`site-nav-link ${active === "contact" ? "active" : ""}`}
-              href={getSectionHref("contact")}
-              onClick={(e) => handleSectionClick(e, "contact")}
+              to="/contact"
             >
               {LABELS.navContact}
-            </a>
+            </Link>
           </div>
 
           <div className="site-nav-right">

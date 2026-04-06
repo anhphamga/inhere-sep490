@@ -1,6 +1,8 @@
-const { ChromaClient, getEmbeddingFunction } = require('chromadb');
+const { ChromaClient } = require('chromadb');
 const ChatbotError = require('../utils/chatbotError');
 const logger = require('../utils/logger');
+const { chromaUrl } = require('../../../config/app.config');
+const { embedText } = require('../services/embedding.service');
 
 const toNumber = (value, fallback) => {
   const parsed = Number(value);
@@ -9,7 +11,6 @@ const toNumber = (value, fallback) => {
 
 class ChromaVectorStore {
   constructor() {
-    const chromaUrl = process.env.CHROMA_URL || 'http://127.0.0.1:8000';
     const parsedUrl = new URL(chromaUrl);
 
     this.collectionName = process.env.CHATBOT_CHROMA_COLLECTION || 'inhere_chatbot_knowledge';
@@ -27,21 +28,8 @@ class ChromaVectorStore {
     }
 
     try {
-      const embeddingFunction = await getEmbeddingFunction({
-        client: this.client,
-        efConfig: {
-          type: 'known',
-          name: 'default-embed',
-        },
-      });
-
-      if (!embeddingFunction) {
-        throw new Error('Unable to initialize default-embed embedding function.');
-      }
-
       this.collection = await this.client.getOrCreateCollection({
         name: this.collectionName,
-        embeddingFunction,
         metadata: {
           source: 'inhere-chatbot',
         },
@@ -67,7 +55,9 @@ class ChromaVectorStore {
       });
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
-      if (!message.includes('not found') && !message.includes('does not exist')) {
+      if (!message.includes('not found')
+        && !message.includes('does not exist')
+        && !message.includes('could not be found')) {
         throw new ChatbotError('Failed to reset Chroma collection', {
           statusCode: 500,
           code: 'CHROMA_RESET_FAILED',
@@ -93,12 +83,18 @@ class ChromaVectorStore {
     const ids = entries.map((entry) => entry.id);
     const documents = entries.map((entry) => entry.text);
     const metadatas = entries.map((entry) => entry.metadata || {});
+    const embeddings = [];
+
+    for (const entry of entries) {
+      embeddings.push(await embedText(entry.text));
+    }
 
     try {
       await collection.upsert({
         ids,
         documents,
         metadatas,
+        embeddings,
       });
 
       logger.info('Chroma upsert completed', {
@@ -119,12 +115,20 @@ class ChromaVectorStore {
     }
   }
 
-  async query({ queryText, topK }) {
+  async query({ queryText, queryEmbedding, topK }) {
     const collection = await this.getCollection();
+    const resolvedEmbedding = queryEmbedding || (queryText ? await embedText(queryText) : null);
+
+    if (!resolvedEmbedding) {
+      throw new ChatbotError('Query embedding is missing', {
+        statusCode: 400,
+        code: 'QUERY_EMBEDDING_MISSING',
+      });
+    }
 
     try {
       const result = await collection.query({
-        queryTexts: [queryText],
+        queryEmbeddings: [resolvedEmbedding],
         nResults: topK,
         include: ['documents', 'metadatas', 'distances'],
       });

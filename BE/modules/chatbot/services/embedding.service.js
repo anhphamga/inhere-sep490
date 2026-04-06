@@ -1,6 +1,7 @@
 const { requestWithRetry } = require('../utils/httpClient');
 const ChatbotError = require('../utils/chatbotError');
 const { getChatConfig } = require('../utils/validators');
+const crypto = require('crypto');
 
 const toNumber = (value, fallback) => {
   const parsed = Number(value);
@@ -39,8 +40,52 @@ const averageTokenEmbeddings = (value) => {
   return pooled.map((v) => v / value.length);
 };
 
+const normalizeText = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9\s]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const buildLocalEmbedding = (text, dim) => {
+  const safeDim = Math.max(16, Math.min(dim, 2048));
+  const vector = new Array(safeDim).fill(0);
+  const normalized = normalizeText(text);
+  const tokens = normalized.split(' ').filter(Boolean);
+
+  if (!tokens.length) {
+    return vector;
+  }
+
+  for (const token of tokens) {
+    const digest = crypto.createHash('sha256').update(token).digest();
+
+    for (let i = 0; i < 4; i += 1) {
+      const idx = digest.readUInt16BE(i * 2) % safeDim;
+      const sign = digest[8 + i] % 2 === 0 ? 1 : -1;
+      const weight = (digest[12 + i] / 255) + 0.5;
+      vector[idx] += sign * weight;
+    }
+  }
+
+  const norm = Math.sqrt(vector.reduce((sum, v) => sum + (v * v), 0));
+  if (norm > 0) {
+    for (let i = 0; i < vector.length; i += 1) {
+      vector[i] /= norm;
+    }
+  }
+
+  return vector;
+};
+
 const embedText = async (text) => {
   const provider = (process.env.CHATBOT_EMBEDDING_PROVIDER || 'huggingface').toLowerCase();
+
+  if (provider === 'local') {
+    const dim = toNumber(process.env.CHATBOT_LOCAL_EMBEDDING_DIM, 384);
+    return buildLocalEmbedding(text, dim);
+  }
 
   if (provider !== 'huggingface') {
     throw new ChatbotError('Unsupported embedding provider', {
@@ -64,16 +109,20 @@ const embedText = async (text) => {
   const maxRetries = toNumber(process.env.CHATBOT_MAX_RETRIES, 3);
   const baseDelayMs = toNumber(process.env.CHATBOT_RETRY_BASE_DELAY_MS, 800);
 
+  const hfEmbeddingsUrl = process.env.HF_EMBEDDING_URL || 'https://router.huggingface.co/v1/embeddings';
+
+  const normalizedModel = String(hfModel).replace(/^\/+/, '');
+
   const payload = await requestWithRetry({
-    url: `https://api-inference.huggingface.co/pipeline/feature-extraction/${encodeURIComponent(hfModel)}`,
+    url: hfEmbeddingsUrl,
     method: 'POST',
     headers: {
       Authorization: `Bearer ${hfApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      inputs: text,
-      options: { wait_for_model: true },
+      model: normalizedModel,
+      input: text,
     }),
     timeoutMs,
     maxRetries,
@@ -81,7 +130,13 @@ const embedText = async (text) => {
     requestName: 'huggingface-embedding',
   });
 
-  const embedding = averageTokenEmbeddings(payload);
+  // Preferred response shape from HF Router embeddings API.
+  let embedding = payload?.data?.[0]?.embedding;
+
+  // Backward compatibility with feature-extraction-like payloads.
+  if (!Array.isArray(embedding)) {
+    embedding = averageTokenEmbeddings(payload);
+  }
 
   if (!embedding.length) {
     throw new ChatbotError('Embedding result is empty', {

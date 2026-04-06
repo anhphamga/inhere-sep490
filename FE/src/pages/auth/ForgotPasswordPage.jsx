@@ -2,6 +2,8 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { forgotPasswordApi, resetPasswordApi } from '../../services/auth.service'
 import Header from '../../components/common/Header'
+import logoImage from '../../assets/logo/logo.png'
+import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'
 
 const ForgotPasswordPage = () => {
@@ -15,6 +17,8 @@ const ForgotPasswordPage = () => {
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -82,88 +86,156 @@ const ForgotPasswordPage = () => {
     }
   }
 
+  const isResetStep = step === 'reset'
+
   return (
     <>
       <Header />
-      <div className="auth-shell auth-page auth-with-header">
-        <div className="auth-layout">
-        <section className="auth-showcase">
-          <p className="auth-showcase-badge">INHERE HOI AN COSTUME RENTAL</p>
-          <h1>Khôi phục mật khẩu tài khoản</h1>
-          <p>Nhập email để nhận liên kết đặt lại mật khẩu và tiếp tục quản lý đơn thuê trang phục tại Hội An.</p>
-          <ul className="auth-showcase-points">
-            <li>Áp dụng cho tài khoản đăng ký bằng email</li>
-            <li>Tài khoản Google dùng nút đăng nhập Google</li>
-            <li>Mật khẩu mới tối thiểu 6 ký tự</li>
-          </ul>
-        </section>
+      <div className="auth-shell auth-page auth-with-header login-page-shell">
+        <div className="auth-layout auth-layout-login">
+          <section
+            className="auth-showcase login-hero"
+            style={{ backgroundImage: `linear-gradient(rgba(35, 22, 7, 0.55), rgba(35, 22, 7, 0.62)), url(${heroImage})` }}
+          >
+            <div className="login-hero-top">
+              <img src={logoImage} alt="INHERE" className="login-hero-logo" />
+              <p className="auth-showcase-badge">KHÔI PHỤC TÀI KHOẢN</p>
+            </div>
 
-        <section className="auth-card auth-panel">
-          <h2 className="auth-title">Quên mật khẩu</h2>
-          <p className="auth-subtitle">Nhập email đăng ký để nhận liên kết đổi mật khẩu.</p>
+            <div className="login-hero-copy">
+              <h1>{isResetStep ? 'Đặt lại mật khẩu mới' : 'Lấy lại mật khẩu trong vài bước'}</h1>
+              <p className="login-hero-slogan">
+                {isResetStep
+                  ? 'Bạn đang ở bước cuối. Hãy tạo mật khẩu mới để quay lại đặt thuê nhanh cùng INHERE.'
+                  : 'Nhập email đã đăng ký để nhận liên kết đặt lại mật khẩu một cách an toàn.'}
+              </p>
+            </div>
 
-          {step === 'request' && (
-            <form className="auth-form" onSubmit={handleRequestReset}>
-              <div className="auth-input-wrap">
-                <label>Email</label>
-                <input
-                  type="email"
-                  placeholder="Nhập email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-              </div>
+            <ul className="auth-showcase-points login-benefits">
+              <li><span className="benefit-icon">1</span><span>Nhập đúng email đã dùng để đăng ký tài khoản</span></li>
+              <li><span className="benefit-icon">2</span><span>Mở email và truy cập liên kết đặt lại mật khẩu</span></li>
+              <li><span className="benefit-icon">3</span><span>Tạo mật khẩu mới có ít nhất 6 ký tự</span></li>
+            </ul>
+          </section>
 
-              {error && <div className="error-text">{error}</div>}
-              {info && <div className="success-text">{info}</div>}
+          <section className="auth-card auth-panel login-form-card forgot-password-card">
+            <div className="forgot-stepper" role="status" aria-live="polite">
+              <span className={`forgot-step-pill ${!isResetStep ? 'active' : ''}`}>1. Nhập email</span>
+              <span className={`forgot-step-pill ${isResetStep ? 'active' : ''}`}>2. Đặt lại mật khẩu</span>
+            </div>
 
-              <button type="submit" disabled={submitting}>
-                {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
-              </button>
-            </form>
-          )}
+            <h2 className="auth-title">Quên mật khẩu</h2>
+            <p className="auth-subtitle">
+              {isResetStep
+                ? 'Tạo mật khẩu mới để hoàn tất quá trình khôi phục tài khoản.'
+                : 'Nhập email đăng ký để nhận liên kết đổi mật khẩu.'}
+            </p>
 
-          {step === 'reset' && (
-            <form className="auth-form" onSubmit={handleResetPassword}>
-              <div className="auth-input-wrap">
-                <label>Mật khẩu mới</label>
-                <input
-                  type="password"
-                  placeholder="Nhập mật khẩu mới"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  minLength={6}
-                  required
-                />
-              </div>
+            {step === 'request' && (
+              <form className="auth-form" onSubmit={handleRequestReset}>
+                <div className="auth-input-wrap">
+                  <label>Email</label>
+                  <div className="auth-input-icon-wrap">
+                    <span className="auth-input-icon" aria-hidden="true">@</span>
+                    <input
+                      type="email"
+                      placeholder="Nhập email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
+                </div>
 
-              <div className="auth-input-wrap">
-                <label>Xác nhận mật khẩu mới</label>
-                <input
-                  type="password"
-                  placeholder="Nhập lại mật khẩu mới"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  minLength={6}
-                  required
-                />
-              </div>
+                <p className="forgot-hint-text">Liên kết đặt lại sẽ được gửi đến hộp thư của bạn trong ít phút.</p>
 
-              {error && <div className="error-text">{error}</div>}
-              {info && <div className="success-text">{info}</div>}
+                {error && <div className="error-text">{error}</div>}
+                {info && <div className="success-text">{info}</div>}
 
-              <button type="submit" disabled={submitting}>
-                {submitting ? 'Đang cập nhật...' : 'Đổi mật khẩu'}
-              </button>
-            </form>
-          )}
+                <button type="submit" disabled={submitting} className="login-submit-btn">
+                  {submitting ? 'Đang gửi...' : 'Gửi liên kết đặt lại'}
+                </button>
+              </form>
+            )}
 
-          <div className="auth-links">
-            <Link to="/login">Về đăng nhập</Link>
-            <Link to="/signup">Chưa có tài khoản?</Link>
-          </div>
-        </section>
+            {step === 'reset' && (
+              <form className="auth-form" onSubmit={handleResetPassword}>
+                {email && (
+                  <div className="auth-input-wrap">
+                    <label>Email nhận liên kết</label>
+                    <div className="auth-input-icon-wrap">
+                      <span className="auth-input-icon" aria-hidden="true">@</span>
+                      <input type="email" value={email} readOnly aria-readonly="true" />
+                    </div>
+                  </div>
+                )}
+
+                <div className="auth-input-wrap">
+                  <label>Mật khẩu mới</label>
+                  <div className="auth-input-icon-wrap">
+                    <span className="auth-input-icon" aria-hidden="true">*</span>
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      placeholder="Nhập mật khẩu mới"
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      minLength={6}
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowNewPassword((prev) => !prev)}
+                      aria-label={showNewPassword ? 'Ẩn mật khẩu mới' : 'Hiện mật khẩu mới'}
+                    >
+                      {showNewPassword ? 'Ẩn' : 'Hiện'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="auth-input-wrap">
+                  <label>Xác nhận mật khẩu mới</label>
+                  <div className="auth-input-icon-wrap">
+                    <span className="auth-input-icon" aria-hidden="true">*</span>
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      placeholder="Nhập lại mật khẩu mới"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      minLength={6}
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      aria-label={showConfirmPassword ? 'Ẩn mật khẩu xác nhận' : 'Hiện mật khẩu xác nhận'}
+                    >
+                      {showConfirmPassword ? 'Ẩn' : 'Hiện'}
+                    </button>
+                  </div>
+                </div>
+
+                {error && <div className="error-text">{error}</div>}
+                {info && <div className="success-text">{info}</div>}
+
+                <button type="submit" disabled={submitting} className="login-submit-btn">
+                  {submitting ? 'Đang cập nhật...' : 'Đổi mật khẩu'}
+                </button>
+              </form>
+            )}
+
+            <div className="auth-links auth-links-center forgot-links">
+              <Link to="/login">Về đăng nhập</Link>
+              <span className="forgot-link-divider">•</span>
+              <Link to="/signup">Tạo tài khoản mới</Link>
+            </div>
+
+            <p className="auth-foot-note auth-terms-note">Nếu không thấy email, hãy kiểm tra thư mục Spam hoặc Promotions.</p>
+          </section>
         </div>
       </div>
     </>

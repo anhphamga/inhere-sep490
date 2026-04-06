@@ -7,6 +7,18 @@ const { hasGoogleClientId, verifyGoogleIdToken } = require('../utils/googleAuth'
 const { hasSmtpConfig, sendResetPasswordEmail } = require('../utils/mailer');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 const { resolveUserAccess } = require('../services/accessControl.service');
+const { frontendUrl } = require('../config/app.config');
+
+const getPrimaryAdminEmail = () => String(process.env.OWNER_EMAIL || '').trim().toLowerCase();
+const isPrimaryAdminUser = (user) => {
+  const primaryAdminEmail = getPrimaryAdminEmail();
+  if (!primaryAdminEmail) {
+    return false;
+  }
+
+  return String(user?.role || '').trim().toLowerCase() === 'owner'
+    && String(user?.email || '').trim().toLowerCase() === primaryAdminEmail;
+};
 
 const sanitizeUser = (user, access = null) => ({
   id: user._id,
@@ -22,6 +34,7 @@ const sanitizeUser = (user, access = null) => ({
   segment: user.segment,
   gender: user.gender,
   dateOfBirth: user.dateOfBirth,
+  isPrimaryAdmin: isPrimaryAdminUser(user),
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
   permissions: access?.permissions || [],
@@ -66,6 +79,50 @@ const handleDuplicateKeyError = (error, res) => {
 };
 
 const buildSanitizedUser = async (user) => sanitizeUser(user, await resolveUserAccess(user));
+
+const LOGIN_PORTAL = Object.freeze({
+  CUSTOMER: 'customer',
+  STAFF: 'staff'
+});
+
+const normalizeLoginPortal = (portal) => {
+  if (typeof portal !== 'string') {
+    return LOGIN_PORTAL.CUSTOMER;
+  }
+
+  const normalized = portal.trim().toLowerCase();
+  return normalized === LOGIN_PORTAL.STAFF ? LOGIN_PORTAL.STAFF : LOGIN_PORTAL.CUSTOMER;
+};
+
+const isPortalAllowedForRole = (portal, role) => {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+
+  if (portal === LOGIN_PORTAL.STAFF) {
+    return normalizedRole === 'owner' || normalizedRole === 'staff';
+  }
+
+  return normalizedRole === 'customer';
+};
+
+const getPortalDeniedMessage = (portal) => {
+  if (portal === LOGIN_PORTAL.STAFF) {
+    return 'Tài khoản khách hàng vui lòng đăng nhập tại cổng khách hàng.';
+  }
+
+  return 'Tài khoản staff/owner vui lòng đăng nhập tại cổng nhân sự.';
+};
+
+const ensurePortalRoleAccess = (portal, user, res) => {
+  if (isPortalAllowedForRole(portal, user?.role)) {
+    return true;
+  }
+
+  res.status(403).json({
+    success: false,
+    message: getPortalDeniedMessage(portal)
+  });
+  return false;
+};
 
 const signup = async (req, res) => {
   try {
@@ -153,7 +210,8 @@ const signup = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, phone, password } = req.body;
+    const { email, phone, password, portal } = req.body;
+    const loginPortal = normalizeLoginPortal(portal);
 
     if ((!email && !phone) || !password) {
       return res.status(400).json({
@@ -197,6 +255,13 @@ const login = async (req, res) => {
       });
     }
 
+    if (user.status === 'pending') {
+      return res.status(403).json({
+        success: false,
+        message: 'Tài khoản đang chờ owner duyệt'
+      });
+    }
+
     if (user.status === 'locked') {
       return res.status(403).json({
         success: false,
@@ -211,6 +276,10 @@ const login = async (req, res) => {
         success: false,
         message: 'Invalid email or password'
       });
+    }
+
+    if (!ensurePortalRoleAccess(loginPortal, user, res)) {
+      return;
     }
 
     const { accessToken, refreshToken } = createAuthTokens(user);
@@ -234,7 +303,8 @@ const login = async (req, res) => {
 };
 const googleLogin = async (req, res) => {
   try {
-    const { idToken } = req.body;
+    const { idToken, portal } = req.body;
+    const loginPortal = normalizeLoginPortal(portal);
 
     if (!idToken) {
       return res.status(400).json({
@@ -285,6 +355,13 @@ const googleLogin = async (req, res) => {
         segment: 'new_user'
       });
     } else {
+      if (user.status === 'pending') {
+        return res.status(403).json({
+          success: false,
+          message: 'Tài khoản đang chờ owner duyệt'
+        });
+      }
+
       if (user.status === 'locked') {
         return res.status(403).json({
           success: false,
@@ -306,6 +383,10 @@ const googleLogin = async (req, res) => {
       if (Object.keys(updates).length > 0) {
         user = await User.findByIdAndUpdate(user._id, updates, { new: true });
       }
+    }
+
+    if (!ensurePortalRoleAccess(loginPortal, user, res)) {
+      return;
     }
 
     const { accessToken, refreshToken } = createAuthTokens(user);
@@ -365,7 +446,6 @@ const forgotPassword = async (req, res) => {
     user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000);
     await user.save();
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const resetLink = `${frontendUrl}/forgot-password?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(normalizedEmail)}`;
 
     if (hasSmtpConfig()) {

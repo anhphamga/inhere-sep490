@@ -8,6 +8,7 @@ import logo from "../../assets/logo/logo.png";
 import banner1 from "../../assets/banner/banner 1.png";
 import banner2 from "../../assets/banner/banner2 (1).png";
 import banner3 from "../../assets/banner/banner3.png";
+import { CONTACT_LINKS, UI_IMAGE_FALLBACKS } from "../../constants/ui";
 const I18N = {
   vi: {
     "brand.name": "INHERE",
@@ -96,8 +97,8 @@ const I18N = {
     "buy.p4.n": "Set đôi / gia đình",
     "buy.p4.m": "Nhiều lựa chọn màu sắc",
 
-    "btn.rent": "Thuê ngay",
-    "btn.buy": "Mua ngay",
+    "btn.rent": "Thuê",
+    "btn.buy": "Mua",
     "btn.detail": "Xem chi tiết",
 
     "booking.title": "Đặt lịch thử đồ trước khi đến Hội An",
@@ -177,14 +178,15 @@ const year = new Date().getFullYear();
 const AUTO_SLIDE_MS = 5000;
 const CATEGORY_SLIDE_MS = 2800;
 const HOMEPAGE_PRODUCT_LIMIT = 8;
+const SHOW_LEGACY_HEADER = false;
 const CONTACT_INFO = {
   phoneDisplay: "0898 199 099",
   phoneHref: "tel:0898199099",
-  zaloHref: "https://zalo.me/0898199099",
+  zaloHref: CONTACT_LINKS.zaloHref,
   addressDisplay: "24 Đào Duy Từ, Hội An",
-  mapHref: "https://www.google.com/maps/search/?api=1&query=24+Dao+Duy+Tu+Hoi+An",
+  mapHref: CONTACT_LINKS.mapHref,
   instagramLabel: "@inhere_trangphuchoian",
-  instagramHref: "https://www.instagram.com/inhere_trangphuchoian/",
+  instagramHref: CONTACT_LINKS.instagramHref,
 };
 
 const Homepage = ({ initialSection = "" }) => {
@@ -195,7 +197,7 @@ const Homepage = ({ initialSection = "" }) => {
   const setLang = () => { };
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isSliderPaused, setIsSliderPaused] = useState(false);
-  const [activeSection, setActiveSection] = useState(initialSection || "rent");
+  const [activeSection, setActiveSection] = useState(initialSection || "home");
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState("");
@@ -520,7 +522,7 @@ const Homepage = ({ initialSection = "" }) => {
 
     const handleScroll = () => {
       const offset = 130; // gần bằng chiều cao header + nav
-      let current = sectionIds[0];
+      let current = "home";
 
       sectionIds.forEach((id) => {
         const el = document.getElementById(id);
@@ -747,14 +749,8 @@ const Homepage = ({ initialSection = "" }) => {
 
   return (
     <>
-      <Header
-        active={activeSection}
-        onSectionNavigate={(section) => {
-          scrollToId(`#${section}`);
-          setActiveSection(section);
-        }}
-      />
-      {false && (
+      <Header active={activeSection} />
+      {SHOW_LEGACY_HEADER && (
         <>
           {/* HEADER */}
           <header className="header">
@@ -1102,19 +1098,19 @@ const Homepage = ({ initialSection = "" }) => {
                 className="slide-backdrop"
                 style={{
                   backgroundImage:
-                    "url('https://hoianoutfit.com/wp-content/uploads/2022/08/thue-trang-phuc-hoian-hoianoutfit.jpg')",
+                    `url('${UI_IMAGE_FALLBACKS.heroBanner}')`,
                 }}
               />
               <div className="hero-media-frame">
                 <img
                   className="slide-bg-fill"
-                  src="https://hoianoutfit.com/wp-content/uploads/2022/08/thue-trang-phuc-hoian-hoianoutfit.jpg"
+                  src={UI_IMAGE_FALLBACKS.heroBanner}
                   alt=""
                   aria-hidden="true"
                 />
                 <img
                   className="slide-bg"
-                  src="https://hoianoutfit.com/wp-content/uploads/2022/08/thue-trang-phuc-hoian-hoianoutfit.jpg"
+                  src={UI_IMAGE_FALLBACKS.heroBanner}
                   alt="Fallback banner"
                 />
               </div>
@@ -1356,8 +1352,19 @@ const Homepage = ({ initialSection = "" }) => {
                   <p className="ptitle">{product.name}</p>
                   <p className="pmeta">{product.meta}</p>
                   <div className="pactions">
-                    <button className="pbtn primary" type="button">
+                    <button
+                      className="pbtn primary"
+                      type="button"
+                      onClick={() => navigate(`/products/${product.id}`)}
+                    >
                       {t(lang, "btn.rent")}
+                    </button>
+                    <button
+                      className="pbtn"
+                      type="button"
+                      onClick={() => navigate(`/products/${product.id}`)}
+                    >
+                      {t(lang, "btn.buy")}
                     </button>
                     {canViewProductDetail(product.id) ? (
                       <button
@@ -1413,8 +1420,19 @@ const Homepage = ({ initialSection = "" }) => {
                   <p className="ptitle">{product.name}</p>
                   <p className="pmeta">{product.meta}</p>
                   <div className="pactions">
-                    <button className="pbtn primary" type="button">
+                    <button
+                      className="pbtn primary"
+                      type="button"
+                      onClick={() => navigate(`/products/${product.id}`)}
+                    >
                       {t(lang, "btn.buy")}
+                    </button>
+                    <button
+                      className="pbtn"
+                      type="button"
+                      onClick={() => navigate(`/products/${product.id}`)}
+                    >
+                      {t(lang, "btn.rent")}
                     </button>
                     <button
                       className="pbtn"
@@ -1465,8 +1483,19 @@ const Homepage = ({ initialSection = "" }) => {
                   <p className="ptitle">{product.name}</p>
                   <p className="pmeta">{product.meta}</p>
                   <div className="pactions">
-                    <button className="pbtn primary" type="button">
+                    <button
+                      className="pbtn primary"
+                      type="button"
+                      onClick={() => navigate(`/products/${product.id}`)}
+                    >
                       {t(lang, "btn.rent")}
+                    </button>
+                    <button
+                      className="pbtn"
+                      type="button"
+                      onClick={() => navigate(`/products/${product.id}`)}
+                    >
+                      {t(lang, "btn.buy")}
                     </button>
                     <button
                       className="pbtn"

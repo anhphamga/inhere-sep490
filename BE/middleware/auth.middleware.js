@@ -30,7 +30,7 @@ const requireAuth = async (req, res, next) => {
     const payload = verifyAccessToken(token);
     const user = await User.findById(payload.userId);
 
-    if (!user || user.status === 'locked') {
+    if (!user || user.status !== 'active') {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized'
@@ -126,8 +126,13 @@ const authorize = (...roles) => {
   };
 };
 
+const checkRole = (...roles) => authorize(...roles);
+const checkPermission = (permission) => authorizePermission(permission);
+
 module.exports = {
   requireAuth,
+  checkPermission,
+  checkRole,
   requireOwner,
   authenticate: requireAuth,
   authorize,

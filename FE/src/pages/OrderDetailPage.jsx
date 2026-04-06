@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { CreditCard, MapPin, Package, ReceiptText, Truck, UserRound } from 'lucide-react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { CreditCard, MapPin, Package, ReceiptText, UserRound } from 'lucide-react'
 import Header from '../components/common/Header'
 import ReviewForm from '../components/review/ReviewForm'
 import { useAuth } from '../contexts/AuthContext'
-import { getMySaleOrderByIdApi } from '../services/order.service'
+import { getGuestSaleOrderByIdApi, getMySaleOrderByIdApi } from '../services/order.service'
 import { createReviewApi, updateReviewApi } from '../services/review.service'
+import { UI_IMAGE_FALLBACKS } from '../constants/ui'
 
 const statusClassMap = {
   PendingConfirmation: 'bg-amber-50 text-amber-700 ring-amber-200',
@@ -51,12 +52,18 @@ function getPaymentMethodLabel(value) {
 
 function getImageUrl(value) {
   if (Array.isArray(value) && value[0]) return value[0]
-  return 'https://placehold.co/160x160/f8fafc/64748b?text=INHERE'
+  return UI_IMAGE_FALLBACKS.reviewImage
 }
 
 export default function OrderDetailPage() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const { isAuthenticated, loading: authLoading } = useAuth()
+
+  const guestToken = searchParams.get('token') || ''
+  const isGuestView = Boolean(guestToken)
+  const backPath = isGuestView ? '/' : '/orders/history'
+
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -69,12 +76,18 @@ export default function OrderDetailPage() {
     try {
       setLoading(true)
       setError('')
-      const response = await getMySaleOrderByIdApi(id)
+
+      const response = isGuestView
+        ? await getGuestSaleOrderByIdApi(id, guestToken)
+        : await getMySaleOrderByIdApi(id)
+
       setOrder(response.data)
     } catch (fetchError) {
       console.error('Fetch sale order detail error:', fetchError)
       if (fetchError?.response?.status === 404) {
         setError('Không tìm thấy đơn mua này.')
+      } else if (fetchError?.response?.status === 401 && isGuestView) {
+        setError('Liên kết xem đơn hàng đã hết hạn hoặc không hợp lệ.')
       } else if (fetchError?.response?.status === 403) {
         setError('Bạn không có quyền xem đơn mua này.')
       } else {
@@ -83,9 +96,19 @@ export default function OrderDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [guestToken, id, isGuestView])
 
   useEffect(() => {
+    if (isGuestView) {
+      if (id && guestToken) {
+        fetchOrderDetail()
+      } else {
+        setLoading(false)
+        setError('Thiếu thông tin để xem đơn hàng guest.')
+      }
+      return
+    }
+
     if (!authLoading && isAuthenticated && id) {
       fetchOrderDetail()
     }
@@ -93,7 +116,7 @@ export default function OrderDetailPage() {
     if (!authLoading && !isAuthenticated) {
       setLoading(false)
     }
-  }, [authLoading, fetchOrderDetail, id, isAuthenticated])
+  }, [authLoading, fetchOrderDetail, guestToken, id, isAuthenticated, isGuestView])
 
   const subtotal = useMemo(() => {
     if (!order) return 0
@@ -107,8 +130,9 @@ export default function OrderDetailPage() {
   }
 
   const canReviewOrder = useMemo(() => {
+    if (isGuestView) return false
     return ['Completed', 'Returned', 'Refunded'].includes(String(order?.status || ''))
-  }, [order?.status])
+  }, [isGuestView, order?.status])
 
   const openReviewModal = (item) => {
     setActiveReviewItem(item)
@@ -149,7 +173,7 @@ export default function OrderDetailPage() {
     }
   }
 
-  if (!authLoading && !isAuthenticated) {
+  if (!isGuestView && !authLoading && !isAuthenticated) {
     return (
       <>
         <Header />
@@ -183,8 +207,8 @@ export default function OrderDetailPage() {
         <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
           <div className="text-center">
             <p className="mb-4 text-slate-700">{error || 'Không tìm thấy đơn hàng.'}</p>
-            <Link to="/orders/history" className="font-medium text-slate-900 hover:underline">
-              Quay lại lịch sử đơn hàng
+            <Link to={backPath} className="font-medium text-slate-900 hover:underline">
+              {isGuestView ? 'Quay lại trang chủ' : 'Quay lại lịch sử đơn hàng'}
             </Link>
           </div>
         </div>
@@ -198,8 +222,8 @@ export default function OrderDetailPage() {
 
       <main className="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
         <div className="mb-6 flex items-center justify-between">
-          <Link to="/orders/history" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-            ← Quay lại lịch sử đơn hàng
+          <Link to={backPath} className="text-sm font-medium text-slate-600 hover:text-slate-900">
+            {isGuestView ? '← Quay lại trang chủ' : '← Quay lại lịch sử đơn hàng'}
           </Link>
           <span className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ${statusClassMap[order.status] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
             {order.statusLabel || order.status}
@@ -335,13 +359,6 @@ export default function OrderDetailPage() {
                   </span>
                   <span>{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="inline-flex items-center gap-2">
-                    <Truck className="h-4 w-4" />
-                    Phí vận chuyển
-                  </span>
-                  <span>{formatCurrency(order.shippingFee)}</span>
-                </div>
                 {Number(order.discountAmount || 0) > 0 ? (
                   <div className="flex items-center justify-between text-emerald-700">
                     <span>Giảm giá</span>
@@ -391,20 +408,22 @@ export default function OrderDetailPage() {
         </div>
       ) : null}
 
-      <ReviewForm
-        open={reviewModalOpen}
-        onClose={closeReviewModal}
-        product={activeReviewItem?.productId}
-        orderId={order?._id}
-        initialReview={activeReviewItem?.review?.isReviewed ? {
-          _id: activeReviewItem.review.reviewId,
-          rating: activeReviewItem.review.rating,
-          comment: activeReviewItem.review.comment,
-          images: activeReviewItem.review.images,
-        } : null}
-        submitting={reviewSubmitting}
-        onSubmit={handleSubmitReview}
-      />
+      {!isGuestView ? (
+        <ReviewForm
+          open={reviewModalOpen}
+          onClose={closeReviewModal}
+          product={activeReviewItem?.productId}
+          orderId={order?._id}
+          initialReview={activeReviewItem?.review?.isReviewed ? {
+            _id: activeReviewItem.review.reviewId,
+            rating: activeReviewItem.review.rating,
+            comment: activeReviewItem.review.comment,
+            images: activeReviewItem.review.images,
+          } : null}
+          submitting={reviewSubmitting}
+          onSubmit={handleSubmitReview}
+        />
+      ) : null}
     </div>
   )
 }

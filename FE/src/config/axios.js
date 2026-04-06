@@ -1,17 +1,20 @@
 import axios from 'axios'
+import { API_BASE_URL } from './env'
+import { ROLE } from '../constants/role'
 
 export const ACCESS_TOKEN_KEY = 'accessToken'
 export const REFRESH_TOKEN_KEY = 'refreshToken'
+const USER_KEY = 'inhere_user'
 
 const axiosClient = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000/api',
+    baseURL: API_BASE_URL,
     headers: {
         'Content-Type': 'application/json'
     }
 })
 
 const refreshClient = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000/api',
+    baseURL: API_BASE_URL,
     headers: {
         'Content-Type': 'application/json'
     }
@@ -20,13 +23,34 @@ const refreshClient = axios.create({
 const getAccessToken = () => localStorage.getItem(ACCESS_TOKEN_KEY)
 const getRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY)
 
+const getStoredUserRole = () => {
+    const fromLocal = localStorage.getItem(USER_KEY)
+    const fromSession = sessionStorage.getItem(USER_KEY)
+    const rawUser = fromLocal || fromSession
+
+    if (!rawUser) {
+        return ''
+    }
+
+    try {
+        return String(JSON.parse(rawUser)?.role || '').trim().toLowerCase()
+    } catch {
+        return ''
+    }
+}
+
 const redirectToLogin = () => {
     const path = window.location.pathname || ''
-    const target = path.startsWith('/owner')
+    const userRole = getStoredUserRole()
+    const target = userRole === ROLE.OWNER
         ? '/work/login?role=owner'
-        : path.startsWith('/staff')
+        : userRole === ROLE.STAFF
             ? '/work/login?role=staff'
-            : '/login'
+            : path.startsWith('/owner')
+                ? '/work/login?role=owner'
+                : path.startsWith('/staff')
+                    ? '/work/login?role=staff'
+                    : '/login'
     if (path !== target) {
         window.location.href = target
     }
@@ -65,8 +89,13 @@ axiosClient.interceptors.response.use(
         const originalRequest = error.config
         const status = error?.response?.status
         const requestUrl = originalRequest?.url || ''
+        const skipAuthRedirect = Boolean(originalRequest?.skipAuthRedirect)
 
         if (status !== 401 || !originalRequest || originalRequest._retry) {
+            return Promise.reject(error)
+        }
+
+        if (skipAuthRedirect) {
             return Promise.reject(error)
         }
 

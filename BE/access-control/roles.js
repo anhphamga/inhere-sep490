@@ -11,7 +11,9 @@ const DEFAULT_ROLES = {
     name: 'customer',
     level: ROLE_LEVELS.customer,
     inherits: [],
-    permissions: [],
+    permissions: [
+      PERMISSIONS.blog.post.view,
+    ],
   },
   STAFF: {
     name: 'staff',
@@ -33,6 +35,11 @@ const DEFAULT_ROLES = {
       PERMISSIONS.inventory.item.update_condition,
       PERMISSIONS.inventory.item.update_lifecycle,
       PERMISSIONS.customers.contact.read_masked,
+      PERMISSIONS.blog.post.create,
+      PERMISSIONS.blog.post.update,
+      PERMISSIONS.blog.post.delete,
+      PERMISSIONS.blog.post.submit,
+      PERMISSIONS.blog.post.view,
     ],
   },
   OWNER: {
@@ -49,6 +56,8 @@ const DEFAULT_ROLES = {
       PERMISSIONS.customers.contact.read_full,
       PERMISSIONS.inventory.item.create,
       PERMISSIONS.inventory.item.delete,
+      PERMISSIONS.blog.post.approve,
+      PERMISSIONS.blog.post.publish,
     ],
   },
 };

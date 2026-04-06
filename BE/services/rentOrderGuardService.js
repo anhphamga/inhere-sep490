@@ -1,13 +1,19 @@
 const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
+const { ORDER_TYPE } = require('../constants/order.constants');
+const {
+  depositRatio,
+  lateFeeMultiplier,
+  autoPenaltyLateDays,
+} = require('../config/app.config');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_LATE_FEE_MULTIPLIER = Number(process.env.LATE_FEE_MULTIPLIER || 50000);
-const AUTO_PENALTY_LATE_DAYS = Number(process.env.AUTO_PENALTY_LATE_DAYS || 3);
+const DEFAULT_LATE_FEE_MULTIPLIER = lateFeeMultiplier;
+const AUTO_PENALTY_LATE_DAYS = autoPenaltyLateDays;
 
 const roundCurrency = (value) => Math.round(Number(value || 0) * 100) / 100;
 
-const computeExpectedDeposit = (order) => roundCurrency(Number(order?.totalAmount || 0) * 0.5);
+const computeExpectedDeposit = (order) => roundCurrency(Number(order?.totalAmount || 0) * depositRatio);
 
 // Vietnam timezone offset: UTC+7
 const VN_TZ_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -56,7 +62,7 @@ const validateDeposit = (order, amount = order?.depositAmount) => {
 const sumPayments = async (orderId, purpose) => {
   const payments = await Payment.find({
     orderId,
-    orderType: 'Rent',
+    orderType: ORDER_TYPE.RENT,
     status: 'Paid',
     ...(purpose ? { purpose } : {}),
   }).lean();

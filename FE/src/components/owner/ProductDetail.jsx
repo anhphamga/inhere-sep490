@@ -250,18 +250,16 @@ export default function ProductDetail({ productId, onBack }) {
                 quantity: Number(form.quantity || 0),
                 baseRentPrice: Number(form.baseRentPrice || 0),
                 baseSalePrice: Number(form.baseSalePrice || 0),
-                commonRentPrice: Number(form.commonRentPrice || form.baseRentPrice || 0),
-                pricingMode: form.pricingMode,
-                variantMatrix: form.pricingMode === 'per_variant'
-                    ? variantMatrix.map((item) => ({ size: item.size, color: item.color, rentPrice: Number(item.rentPrice || 0), salePrice: Number(item.salePrice || 0), quantity: Number(item.quantity || 0) }))
-                    : [],
+                commonRentPrice: Number(form.baseRentPrice || 0),
+                pricingMode: 'common',
+                variantMatrix: [],
                 description: form.description.trim(),
                 isDraft,
             }
             await updateOwnerProductApi(productId, payload)
             await loadDetail()
         } catch (apiError) {
-            setActionError(apiError?.response?.data?.message || apiError?.message || 'Không thể cập nhật sản phẩm.')
+            setActionError(apiError?.response?.data?.message || apiError?.message || 'Không thỒ cập nhật sản phẩm.')
         } finally {
             setSaving(false)
         }
@@ -275,7 +273,7 @@ export default function ProductDetail({ productId, onBack }) {
             await deleteOwnerProductApi(productId)
             onBack?.()
         } catch (apiError) {
-            setActionError(apiError?.response?.data?.message || apiError?.message || 'Không thể xóa sản phẩm.')
+            setActionError(apiError?.response?.data?.message || apiError?.message || 'Không thỒ xóa sản phẩm.')
         } finally {
             setDeleting(false)
         }
@@ -310,9 +308,17 @@ export default function ProductDetail({ productId, onBack }) {
                         <Field label="Tên sản phẩm" value={form.name} onChange={(value) => setField('name', value)} />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <Field type="number" label="Số lượng bổ sung" value={form.quantity} onChange={(value) => setField('quantity', value)} />
-                            <Field type="number" label="Giá bán cơ bản" value={form.baseSalePrice} onChange={(value) => setField('baseSalePrice', value)} hint={form.baseSalePrice ? `${toCurrency(form.baseSalePrice)}đ` : ''} />
-                            <Field type="number" label="Giá thuê cơ bản" value={form.baseRentPrice} onChange={(value) => setField('baseRentPrice', value)} hint={form.baseRentPrice ? `${toCurrency(form.baseRentPrice)}đ` : ''} />
-                            <Field type="number" label="Giá thuê chung" value={form.commonRentPrice} onChange={(value) => setField('commonRentPrice', value)} hint={form.commonRentPrice ? `${toCurrency(form.commonRentPrice)}đ` : ''} />
+                            <Field type="number" label="Giá bán cơ bản" value={form.baseSalePrice} onChange={(value) => setField('baseSalePrice', value)} hint={form.baseSalePrice ? `${toCurrency(form.baseSalePrice)}₫` : ''} />
+                            <Field
+                                type="number"
+                                label="Giá thuê cơ bản"
+                                value={form.baseRentPrice}
+                                onChange={(value) => {
+                                    setField('baseRentPrice', value)
+                                    setField('commonRentPrice', value)
+                                }}
+                                hint={form.baseRentPrice ? `${toCurrency(form.baseRentPrice)}₫` : ''}
+                            />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {categoryLevelOptions.map((options, index) => (
@@ -336,7 +342,7 @@ export default function ProductDetail({ productId, onBack }) {
                         <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                             <div className="h-52 overflow-hidden bg-slate-100">
                                 {previewImage ? (
-                                    <img src={previewImage} alt="preview" className="h-full w-full object-cover" />
+                                    <img src={previewImage} alt="preview" className="h-full w-full object-contain" />
                                 ) : (
                                     <div className="flex h-full items-center justify-center text-sm text-slate-400">Chưa có ảnh xem trước</div>
                                 )}
@@ -358,11 +364,11 @@ export default function ProductDetail({ productId, onBack }) {
                         <div className="grid grid-cols-2 gap-2">
                             <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                                 <p className="text-[11px] font-bold uppercase text-slate-400">Giá thuê</p>
-                                <p className="text-lg font-bold text-[#1975d2]">{toCurrency(form.commonRentPrice || form.baseRentPrice)}đ</p>
+                                <p className="text-lg font-bold text-[#1975d2]">{toCurrency(form.baseRentPrice)}₫</p>
                             </div>
                             <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                                 <p className="text-[11px] font-bold uppercase text-slate-400">Giá bán</p>
-                                <p className="text-lg font-bold text-slate-900">{toCurrency(form.baseSalePrice)}đ</p>
+                                <p className="text-lg font-bold text-slate-900">{toCurrency(form.baseSalePrice)}₫</p>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
@@ -378,7 +384,7 @@ export default function ProductDetail({ productId, onBack }) {
             ) : null}
 
             {tab === 'variants' ? (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 gap-5">
                     <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
                         <h4 className="text-sm font-bold">Phần 2: Biến thể (Size - Màu)</h4>
                         <div className="space-y-2">
@@ -411,21 +417,6 @@ export default function ProductDetail({ productId, onBack }) {
                                 ))}
                             </div>
                         </div>
-                    </section>
-                    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
-                        <h4 className="text-sm font-bold">Phần 3: Bảng biến thể</h4>
-                        <div className="flex items-center gap-4 text-sm">
-                            <label className="inline-flex items-center gap-2"><input type="radio" checked={form.pricingMode === 'common'} onChange={() => setField('pricingMode', 'common')} />Giá thuê chung</label>
-                            <label className="inline-flex items-center gap-2"><input type="radio" checked={form.pricingMode === 'per_variant'} onChange={() => setField('pricingMode', 'per_variant')} />Giá riêng theo biến thể</label>
-                        </div>
-                        {form.pricingMode === 'common' ? <Field type="number" label="Giá thuê chung" value={form.commonRentPrice} onChange={(value) => setField('commonRentPrice', value)} hint={form.commonRentPrice ? `${toCurrency(form.commonRentPrice)}đ` : ''} /> : (
-                            <div className="rounded-lg border border-slate-200 overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead><tr className="bg-slate-50 border-b border-slate-200"><th className="px-3 py-2 text-left">Size</th><th className="px-3 py-2 text-left">Màu</th><th className="px-3 py-2 text-left">Giá thuê</th><th className="px-3 py-2 text-left">Giá bán</th><th className="px-3 py-2 text-left">SL</th></tr></thead>
-                                    <tbody>{variantMatrix.length === 0 ? <tr><td className="px-3 py-3 text-slate-500" colSpan={5}>Hãy chọn size và màu để tạo bảng biến thể.</td></tr> : variantMatrix.map((row) => <tr key={`${row.size}-${row.color}`} className="border-b border-slate-100"><td className="px-3 py-2">{row.size}</td><td className="px-3 py-2">{row.color}</td><td className="px-3 py-2"><input type="number" className="h-8 w-24 border border-slate-200 rounded px-2" value={row.rentPrice} onChange={(event) => setVariantMatrix((prev) => prev.map((it) => it.size === row.size && it.color === row.color ? { ...it, rentPrice: event.target.value } : it))} /></td><td className="px-3 py-2"><input type="number" className="h-8 w-24 border border-slate-200 rounded px-2" value={row.salePrice} onChange={(event) => setVariantMatrix((prev) => prev.map((it) => it.size === row.size && it.color === row.color ? { ...it, salePrice: event.target.value } : it))} /></td><td className="px-3 py-2"><input type="number" className="h-8 w-20 border border-slate-200 rounded px-2" value={row.quantity} onChange={(event) => setVariantMatrix((prev) => prev.map((it) => it.size === row.size && it.color === row.color ? { ...it, quantity: event.target.value } : it))} /></td></tr>)}</tbody>
-                                </table>
-                            </div>
-                        )}
                     </section>
                 </div>
             ) : null}
@@ -472,3 +463,4 @@ function Stat({ label, value }) {
         </div>
     )
 }
+

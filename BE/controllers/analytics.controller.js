@@ -9,6 +9,11 @@ const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
 const User = require('../model/User.model');
+const {
+    SALE_REVENUE_STATUSES,
+    buildSaleRevenueMatch,
+    buildRentRevenueMatch,
+} = require('../utils/revenueFilters');
 
 const PERIOD_FORMATS = {
     day: '%Y-%m-%d',
@@ -62,9 +67,12 @@ const getRevenueAnalytics = async (req, res) => {
         const dateMatch = range.match ? { createdAt: range.match } : {};
         const dateFormat = PERIOD_FORMATS[period];
 
+        const rentRevenueMatch = buildRentRevenueMatch(dateMatch);
+        const saleRevenueMatch = buildSaleRevenueMatch(dateMatch);
+
         const [rentRows, saleRows] = await Promise.all([
             RentOrder.aggregate([
-                { $match: dateMatch },
+                { $match: rentRevenueMatch },
                 {
                     $group: {
                         _id: { $dateToString: { format: dateFormat, date: '$createdAt' } },
@@ -75,7 +83,7 @@ const getRevenueAnalytics = async (req, res) => {
                 { $sort: { _id: 1 } }
             ]),
             SaleOrder.aggregate([
-                { $match: dateMatch },
+                { $match: saleRevenueMatch },
                 {
                     $group: {
                         _id: { $dateToString: { format: dateFormat, date: '$createdAt' } },
@@ -342,6 +350,20 @@ const getTopProducts = async (req, res) => {
 
         if (type === 'sale') {
             const rows = await SaleOrderItem.aggregate([
+                {
+                    $lookup: {
+                        from: 'saleorders',
+                        localField: 'orderId',
+                        foreignField: '_id',
+                        as: 'order'
+                    }
+                },
+                { $unwind: '$order' },
+                {
+                    $match: {
+                        'order.status': { $in: SALE_REVENUE_STATUSES }
+                    }
+                },
                 {
                     $group: {
                         _id: '$productId',

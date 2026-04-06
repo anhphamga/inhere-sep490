@@ -28,6 +28,8 @@ const {
     buildVoucherSnapshot,
     repairVoucherUsageCounterIfNeeded,
 } = require('../services/voucher.service');
+const { pendingDepositHoldMinutes } = require('../config/app.config');
+const { ORDER_TYPE } = require('../constants/order.constants');
 
 /**
  * Sinh mã đơn thuê dạng TH-YYMMDD-XXXX
@@ -111,7 +113,7 @@ const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow'];
 
 // Đơn PendingDeposit hết hạn sau N phút — sau thời gian này không còn giữ chỗ
 // Đồng nhất với thời gian auto-cancel (env PENDING_DEPOSIT_HOLD_MINUTES, mặc định 5 phút để test)
-const PENDING_DEPOSIT_HOLD_MINUTES = parseInt(process.env.PENDING_DEPOSIT_HOLD_MINUTES || '5', 10);
+const PENDING_DEPOSIT_HOLD_MINUTES = pendingDepositHoldMinutes;
 
 // Số ngày thuê tối đa cho 1 đơn
 const MAX_RENTAL_DAYS = parseInt(process.env.MAX_RENTAL_DAYS || '30', 10);
@@ -225,7 +227,7 @@ const fetchOrderDetail = async (orderId) => {
     const [items, deposits, payments, collaterals, returnRecord] = await Promise.all([
         fetchOrderItems(orderId),
         Deposit.find({ orderId }).lean(),
-        Payment.find({ orderId, orderType: 'Rent' }).lean(),
+        Payment.find({ orderId, orderType: ORDER_TYPE.RENT }).lean(),
         Collateral.find({ orderId }).lean(),
         ReturnRecord.findOne({ orderId }).lean()
     ]);
@@ -307,7 +309,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     // Kiểm tra remaining đã được thu chưa (có thể đã thu tại bước confirmPickup hoặc qua QR ExtraDue)
     const paidRemainingPayments = await Payment.find({
         orderId,
-        orderType: 'Rent',
+        orderType: ORDER_TYPE.RENT,
         purpose: 'Remaining',
         status: 'Paid',
     }).lean();
@@ -328,7 +330,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     // Cũng kiểm tra các bản ghi phí đã thu riêng lẻ
     const paidFeePayments = await Payment.find({
         orderId,
-        orderType: 'Rent',
+        orderType: ORDER_TYPE.RENT,
         purpose: { $in: ['LateFee', 'DamageFee', 'WashingFee', 'Compensation', 'ExtraFee'] },
         status: 'Paid',
     }).lean();
@@ -350,7 +352,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     if (outstandingRemaining > 0 && cashCollateralTotal > 0) {
         const coveredFromCash = Math.min(outstandingRemaining, cashCollateralTotal);
         await Payment.create({
-            orderType: 'Rent',
+            orderType: ORDER_TYPE.RENT,
             orderId,
             amount: coveredFromCash,
             method: 'Cash',
@@ -364,7 +366,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     // Hoàn lại phần thừa của thế chấp tiền mặt
     if (netCashRefund > 0) {
         await Payment.create({
-            orderType: 'Rent',
+            orderType: ORDER_TYPE.RENT,
             orderId,
             amount: netCashRefund,
             method: 'Cash',
@@ -382,7 +384,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
             : damageFee > 0 ? 'DamageFee'
             : 'Remaining';
         await Payment.create({
-            orderType: 'Rent',
+            orderType: ORDER_TYPE.RENT,
             orderId,
             amount: extraDue,
             method,
@@ -822,7 +824,7 @@ exports.payDeposit = async (req, res) => {
         });
 
         const payment = await Payment.create({
-            orderType: 'Rent',
+            orderType: ORDER_TYPE.RENT,
             orderId: id,
             amount: order.depositAmount,
             method,
@@ -1015,7 +1017,7 @@ exports.staffCollectDeposit = async (req, res) => {
         });
 
         await Payment.create({
-            orderType: 'Rent',
+            orderType: ORDER_TYPE.RENT,
             orderId: id,
             amount: order.depositAmount,
             method,
@@ -1878,7 +1880,7 @@ exports.createWalkInOrder = async (req, res) => {
             }], txOptions);
 
             await Payment.create([{
-                orderType: 'Rent',
+                orderType: ORDER_TYPE.RENT,
                 orderId: rentOrder._id,
                 amount: depositAmount,
                 method: depositMethod,

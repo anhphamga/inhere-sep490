@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { MapPin, Phone, UserCircle } from 'lucide-react'
 import { getOwnerCustomerDetailApi, updateOwnerCustomerStatusApi } from '../../services/owner.service'
 import { currencyFormatter, numberFormatter, toArray } from '../../utils/owner.utils'
@@ -37,6 +38,7 @@ const mapSaleOrder = (order) => ({
 })
 
 export default function UserDetail({ userId }) {
+    const navigate = useNavigate()
     const [payload, setPayload] = useState({ customer: null, rentOrders: [], saleOrders: [] })
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -94,6 +96,20 @@ export default function UserDetail({ userId }) {
         } finally {
             setUpdating(false)
         }
+    }
+
+    const handleViewOrderDetail = (tx) => {
+        const targetOrderId = String(tx?.id || '').trim()
+        if (!targetOrderId) {
+            return
+        }
+
+        const targetPath = tx?.type === 'Rent' ? '/owner/rent-orders' : '/owner/orders'
+        navigate(targetPath, {
+            state: {
+                preselectOrderId: targetOrderId
+            }
+        })
     }
 
     if (loading) {
@@ -182,6 +198,7 @@ export default function UserDetail({ userId }) {
                                     <th className="py-3 pr-4">Ngày tạo</th>
                                     <th className="py-3 pr-4">Ngày hoàn tất</th>
                                     <th className="py-3 text-right">Tổng tiền</th>
+                                    <th className="py-3 pl-4 text-right">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody className="text-sm divide-y divide-slate-100">
@@ -193,11 +210,20 @@ export default function UserDetail({ userId }) {
                                         <td className="py-3 pr-4 text-slate-500">{formatDateTime(tx.createdAt)}</td>
                                         <td className="py-3 pr-4 text-slate-500">{formatDateTime(tx.closedAt)}</td>
                                         <td className="py-3 text-right font-semibold">{currencyFormatter.format(tx.amount)}</td>
+                                        <td className="py-3 pl-4 text-right">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleViewOrderDetail(tx)}
+                                                className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                            >
+                                                Xem chi tiết
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                                 {transactions.length === 0 ? (
                                     <tr>
-                                        <td className="py-4 text-slate-500" colSpan={6}>
+                                        <td className="py-4 text-slate-500" colSpan={7}>
                                             Khách hàng chưa có giao dịch.
                                         </td>
                                     </tr>

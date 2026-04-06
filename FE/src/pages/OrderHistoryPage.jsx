@@ -20,6 +20,7 @@ import Header from '../components/common/Header'
 import { useAuth } from '../contexts/AuthContext'
 import { getMySaleOrdersApi } from '../services/order.service'
 import { getMyRentOrdersApi } from '../services/rent-order.service'
+import { UI_IMAGE_FALLBACKS } from '../constants/ui'
 
 const ORDER_TYPE_TABS = [
   { value: 'all', label: 'Tất cả' },
@@ -30,6 +31,7 @@ const ORDER_TYPE_TABS = [
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'pending_confirmation', label: 'Chờ xác nhận' },
+  { value: 'returned', label: 'Đã trả hàng' },
   { value: 'deposited', label: 'Đã đặt cọc' },
   { value: 'ready_pickup', label: 'Sẵn sàng nhận đồ' },
   { value: 'renting', label: 'Đang thuê' },
@@ -77,6 +79,11 @@ const STATUS_META = {
     label: 'Hoàn tất',
     badgeClass: 'bg-green-50 text-green-700 ring-green-200',
     dotClass: 'bg-green-500',
+  },
+  returned: {
+    label: 'Đã trả hàng',
+    badgeClass: 'bg-slate-100 text-slate-700 ring-slate-200',
+    dotClass: 'bg-slate-500',
   },
   cancelled: {
     label: 'Đã hủy',
@@ -174,7 +181,7 @@ function getProductName(product) {
 function getImageUrl(value) {
   if (Array.isArray(value) && value[0]) return value[0]
   if (typeof value === 'string' && value.trim()) return value
-  return 'https://placehold.co/160x160/f8fafc/64748b?text=INHERE'
+  return UI_IMAGE_FALLBACKS.reviewImage
 }
 
 function normalizePaymentMethod(value, fallback = 'Theo quy trình thanh toán') {
@@ -199,9 +206,10 @@ function calculateRentalDays(startDate, endDate) {
 function mapBuyStatus(status) {
   switch (status) {
     case 'Completed':
+      return 'completed'
     case 'Returned':
     case 'Refunded':
-      return 'completed'
+      return 'returned'
     case 'Cancelled':
     case 'Failed':
       return 'cancelled'

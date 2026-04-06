@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import axiosClient from '../../config/axios'
 
-const conditionScoreOptions = [0, 25, 50, 100]
+const conditionScoreOptions = [0, 25, 50, 75, 100]
 
 const conditionLevelOptions = [
   { value: '', label: 'Tất cả tình trạng' },

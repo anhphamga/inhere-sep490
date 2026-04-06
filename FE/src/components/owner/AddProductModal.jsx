@@ -44,7 +44,6 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
     const [error, setError] = useState('')
     const [pricingMode, setPricingMode] = useState('common')
     const [form, setForm] = useState({ name: '', quantity: '1', baseSalePrice: '', baseRentPrice: '', commonRentPrice: '', description: '', categoryPath: [] })
-    const [mainImages, setMainImages] = useState([])
     const [sizes, setSizes] = useState([])
     const [sizeDraft, setSizeDraft] = useState('')
     const [colors, setColors] = useState([])
@@ -69,7 +68,7 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
         return levels
     }, [categoryTree, selectedCategoryPath])
     const previewColor = colors.find((item) => item.name === activePreviewColor) || colors[0]
-    const previewImage = previewColor?.images?.[0] || mainImages[0]?.preview || ''
+    const previewImage = previewColor?.images?.[0] || ''
 
     const updateField = (field, value) => {
         setForm((prev) => ({ ...prev, [field]: value }))
@@ -135,22 +134,12 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
         setDirty(true)
     }
 
-    const addMainFiles = (files) => {
-        const prepared = Array.from(files || [])
-            .filter((file) => file?.type?.startsWith('image/'))
-            .map((file) => ({ id: `${Date.now()}-${Math.random()}`, file, preview: URL.createObjectURL(file) }))
-        if (prepared.length === 0) return
-        setMainImages((prev) => [...prev, ...prepared])
-        setDirty(true)
-    }
-
     const validate = (isDraft) => {
         if (isDraft) return ''
         if (!form.name.trim()) return 'Tên sản phẩm là bắt buộc.'
         if (!selectedCategory) return 'Danh mục là bắt buộc.'
         if (sizes.length === 0) return 'Phải có ít nhất 1 size.'
         if (colors.length === 0) return 'Phải có ít nhất 1 màu.'
-        if (mainImages.length === 0 && colors.every((item) => item.images.length === 0)) return 'Phải có ít nhất 1 ảnh chính.'
         if (colors.some((item) => item.images.length === 0)) return 'Mỗi màu cần ít nhất 1 ảnh.'
         if (Number(form.baseRentPrice || 0) < 0 || Number(form.baseSalePrice || 0) < 0) return 'Giá không được âm.'
         return ''
@@ -175,20 +164,17 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
                 quantity: Number(form.quantity || 1),
                 baseRentPrice: Number(form.baseRentPrice || 0),
                 baseSalePrice: Number(form.baseSalePrice || 0),
-                commonRentPrice: Number(form.commonRentPrice || form.baseRentPrice || 0),
-                pricingMode,
-                variantMatrix: pricingMode === 'per_variant'
-                    ? variantMatrix.map((item) => ({ size: item.size, color: item.color, rentPrice: Number(item.rentPrice || 0), salePrice: Number(item.salePrice || 0), quantity: Number(item.quantity || 0) }))
-                    : [],
+                commonRentPrice: Number(form.baseRentPrice || 0),
+                pricingMode: 'common',
+                variantMatrix: [],
                 description: form.description.trim(),
-                imageFiles: mainImages.map((item) => item.file),
                 isDraft,
             }
             const response = await createOwnerProductApi(payload)
             await onCreated?.(response?.data?._id || response?.data?.id)
             onClose?.()
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Không thể lưu sản phẩm.')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Không thỒ lưu sản phẩm.')
         } finally {
             setSaving(false)
         }
@@ -201,7 +187,6 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
                     <div className="flex items-center gap-2">
                         <Tab active={tab === 'basic'} onClick={() => setTab('basic')}>Thông tin</Tab>
                         <Tab active={tab === 'variants'} onClick={() => setTab('variants')}>Biến thể</Tab>
-                        <Tab active={tab === 'images'} onClick={() => setTab('images')}>Hình ảnh</Tab>
                     </div>
                     {dirty ? <p className="text-xs text-amber-600 font-medium">Bạn chưa lưu thay đổi</p> : <span />}
                     <div className="flex items-center gap-2">
@@ -219,9 +204,17 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
                                 <Field label="Tên sản phẩm" value={form.name} onChange={(value) => updateField('name', value)} />
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <Field type="number" label="Số lượng" value={form.quantity} onChange={(value) => updateField('quantity', value)} />
-                                    <Field type="number" label="Giá bán cơ bản" value={form.baseSalePrice} onChange={(value) => updateField('baseSalePrice', value)} hint={form.baseSalePrice ? `${toCurrency(form.baseSalePrice)}đ` : ''} />
-                                    <Field type="number" label="Giá thuê cơ bản" value={form.baseRentPrice} onChange={(value) => { updateField('baseRentPrice', value); if (!form.commonRentPrice) updateField('commonRentPrice', value) }} hint={form.baseRentPrice ? `${toCurrency(form.baseRentPrice)}đ` : ''} />
-                                    <Field type="number" label="Giá thuê chung" value={form.commonRentPrice} onChange={(value) => updateField('commonRentPrice', value)} hint={form.commonRentPrice ? `${toCurrency(form.commonRentPrice)}đ` : ''} />
+                                    <Field type="number" label="Giá bán cơ bản" value={form.baseSalePrice} onChange={(value) => updateField('baseSalePrice', value)} hint={form.baseSalePrice ? `${toCurrency(form.baseSalePrice)}₫` : ''} />
+                                    <Field
+                                        type="number"
+                                        label="Giá thuê cơ bản"
+                                        value={form.baseRentPrice}
+                                        onChange={(value) => {
+                                            updateField('baseRentPrice', value)
+                                            updateField('commonRentPrice', value)
+                                        }}
+                                        hint={form.baseRentPrice ? `${toCurrency(form.baseRentPrice)}₫` : ''}
+                                    />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {categoryLevelOptions.map((options, index) => (
@@ -242,16 +235,16 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
                             </section>
                             <section className="rounded-xl border border-slate-200 p-4 space-y-3">
                                 <h4 className="text-sm font-bold">Preview sản phẩm</h4>
-                                <div className="h-48 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">{previewImage ? <img src={previewImage} alt="preview" className="w-full h-full object-cover" /> : null}</div>
+                                <div className="h-48 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">{previewImage ? <img src={previewImage} alt="preview" className="w-full h-full object-contain" /> : null}</div>
                                 <p className="font-semibold">{form.name || 'Tên sản phẩm'}</p>
                                 <p className="text-sm text-slate-500">{selectedCategory || 'Danh mục'}</p>
-                                <p className="text-lg font-bold text-[#1975d2]">{toCurrency(form.baseRentPrice)}đ</p>
+                                <p className="text-lg font-bold text-[#1975d2]">{toCurrency(form.baseRentPrice)}₫</p>
                             </section>
                         </div>
                     ) : null}
 
                     {tab === 'variants' ? (
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                        <div className="grid grid-cols-1 gap-5">
                             <section className="rounded-xl border border-slate-200 p-4 space-y-4">
                                 <h4 className="text-sm font-bold">Phần 2: Biến thể (Size - Màu)</h4>
                                 <div className="space-y-2">
@@ -285,31 +278,7 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
                                     </div>
                                 </div>
                             </section>
-                            <section className="rounded-xl border border-slate-200 p-4 space-y-4">
-                                <h4 className="text-sm font-bold">Phần 3: Bảng biến thể</h4>
-                                <div className="flex items-center gap-4 text-sm">
-                                    <label className="inline-flex items-center gap-2"><input type="radio" checked={pricingMode === 'common'} onChange={() => setPricingMode('common')} />Giá thuê chung</label>
-                                    <label className="inline-flex items-center gap-2"><input type="radio" checked={pricingMode === 'per_variant'} onChange={() => setPricingMode('per_variant')} />Giá riêng theo biến thể</label>
-                                </div>
-                                {pricingMode === 'common' ? <Field type="number" label="Giá thuê chung" value={form.commonRentPrice} onChange={(value) => updateField('commonRentPrice', value)} hint={form.commonRentPrice ? `${toCurrency(form.commonRentPrice)}đ` : ''} /> : (
-                                    <div className="rounded-lg border border-slate-200 overflow-x-auto">
-                                        <table className="w-full text-sm">
-                                            <thead><tr className="bg-slate-50 border-b border-slate-200"><th className="px-3 py-2 text-left">Size</th><th className="px-3 py-2 text-left">Màu</th><th className="px-3 py-2 text-left">Giá thuê</th><th className="px-3 py-2 text-left">Giá bán</th><th className="px-3 py-2 text-left">SL</th></tr></thead>
-                                            <tbody>{variantMatrix.length === 0 ? <tr><td className="px-3 py-3 text-slate-500" colSpan={5}>Hãy chọn size và màu để tạo bảng biến thể.</td></tr> : variantMatrix.map((row) => <tr key={`${row.size}-${row.color}`} className="border-b border-slate-100"><td className="px-3 py-2">{row.size}</td><td className="px-3 py-2">{row.color}</td><td className="px-3 py-2"><input type="number" className="h-8 w-24 border border-slate-200 rounded px-2" value={row.rentPrice} onChange={(event) => setVariantMatrix((prev) => prev.map((it) => it.size === row.size && it.color === row.color ? { ...it, rentPrice: event.target.value } : it))} /></td><td className="px-3 py-2"><input type="number" className="h-8 w-24 border border-slate-200 rounded px-2" value={row.salePrice} onChange={(event) => setVariantMatrix((prev) => prev.map((it) => it.size === row.size && it.color === row.color ? { ...it, salePrice: event.target.value } : it))} /></td><td className="px-3 py-2"><input type="number" className="h-8 w-20 border border-slate-200 rounded px-2" value={row.quantity} onChange={(event) => setVariantMatrix((prev) => prev.map((it) => it.size === row.size && it.color === row.color ? { ...it, quantity: event.target.value } : it))} /></td></tr>)}</tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </section>
                         </div>
-                    ) : null}
-
-                    {tab === 'images' ? (
-                        <section className="rounded-xl border border-slate-200 p-4 space-y-3">
-                            <h4 className="text-sm font-bold">Ảnh chính (kéo thả)</h4>
-                            <div className="h-36 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-sm text-slate-500" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addMainFiles(event.dataTransfer?.files) }}>Kéo thả ảnh vào đây</div>
-                            <label className="inline-flex h-10 items-center px-4 rounded-lg border border-slate-200 text-sm cursor-pointer">Chọn ảnh từ máy<input type="file" accept="image/*" multiple className="hidden" onChange={(event) => addMainFiles(event.target.files)} /></label>
-                            <div className="flex flex-wrap gap-2">{mainImages.map((item) => <button key={item.id} type="button" className="h-20 w-20 rounded-lg border border-slate-200 overflow-hidden" onClick={() => { setMainImages((prev) => prev.filter((img) => img.id !== item.id)); setDirty(true) }}><img src={item.preview} alt={item.file?.name || 'image'} className="w-full h-full object-cover" /></button>)}</div>
-                        </section>
                     ) : null}
 
                     {error ? <div className="owner-alert">{error}</div> : null}
@@ -348,3 +317,5 @@ function Select({ label, value, onChange, options = [], placeholder = 'Chọn', 
         </div>
     )
 }
+
+

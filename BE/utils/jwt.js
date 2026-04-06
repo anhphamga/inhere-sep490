@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
+const { jwtAccessSecret, jwtRefreshSecret } = require('../config/security.config');
 
-const getAccessTokenSecret = () => process.env.JWT_ACCESS_SECRET || 'dev_access_secret_change_me';
-const getRefreshTokenSecret = () => process.env.JWT_REFRESH_SECRET || 'dev_refresh_secret_change_me';
+const getAccessTokenSecret = () => jwtAccessSecret;
+const getRefreshTokenSecret = () => jwtRefreshSecret;
 
 const signAccessToken = (payload) => {
   return jwt.sign(payload, getAccessTokenSecret(), { expiresIn: '15m' });
@@ -16,6 +17,11 @@ const signGuestVerificationToken = (payload) => {
   return jwt.sign({ ...payload, scope: 'guest-checkout' }, getAccessTokenSecret(), { expiresIn });
 };
 
+const signGuestOrderViewToken = (payload) => {
+  const expiresIn = process.env.GUEST_ORDER_VIEW_TOKEN_EXPIRES_IN || '7d';
+  return jwt.sign({ ...payload, scope: 'guest-order-view' }, getAccessTokenSecret(), { expiresIn });
+};
+
 const verifyAccessToken = (token) => {
   return jwt.verify(token, getAccessTokenSecret());
 };
@@ -28,6 +34,14 @@ const verifyGuestVerificationToken = (token) => {
   const payload = jwt.verify(token, getAccessTokenSecret());
   if (payload?.scope !== 'guest-checkout') {
     throw new Error('Invalid guest verification token');
+  }
+  return payload;
+};
+
+const verifyGuestOrderViewToken = (token) => {
+  const payload = jwt.verify(token, getAccessTokenSecret());
+  if (payload?.scope !== 'guest-order-view') {
+    throw new Error('Invalid guest order view token');
   }
   return payload;
 };
@@ -49,8 +63,10 @@ module.exports = {
   signAccessToken,
   signRefreshToken,
   signGuestVerificationToken,
+  signGuestOrderViewToken,
   verifyAccessToken,
   verifyRefreshToken,
   verifyGuestVerificationToken,
+  verifyGuestOrderViewToken,
   extractBearerToken
 };

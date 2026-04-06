@@ -686,7 +686,9 @@ export default function ProductDetailPage() {
                       loadingAction={loadingAction}
                       canSubmit={canSubmit}
                       canBuy={canBuy}
-                      productImage={currentImagesByColor[0]}
+                      productImage={
+                        currentImagesByColor[selectedImageIndex] || currentImagesByColor[0] || product.imageUrl || ""
+                      }
                     />
                   }
                 />

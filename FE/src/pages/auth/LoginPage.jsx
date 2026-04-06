@@ -51,7 +51,7 @@ const LoginPage = () => {
 
             try {
               setError('')
-              const data = await loginWithGoogle({ idToken: response.credential })
+              const data = await loginWithGoogle({ idToken: response.credential, portal: 'customer' })
               const fallbackPath = getRouteByRole(data.user.role)
               const enforceRoleDashboard = isDashboardRole(data.user.role)
               const targetPath = enforceRoleDashboard ? fallbackPath : (redirectPath || fallbackPath)
@@ -93,6 +93,10 @@ const LoginPage = () => {
       return 'Tài khoản đang bị khóa. Vui lòng liên hệ cửa hàng để được hỗ trợ'
     }
 
+    if (normalized.includes('cho owner duyet') || normalized.includes('chờ owner duyệt') || normalized.includes('pending')) {
+      return 'Tài khoản đang chờ owner duyệt'
+    }
+
     if (normalized.includes('verify') || normalized.includes('kích hoạt')) {
       return 'Vui lòng xác minh email trước khi đăng nhập'
     }
@@ -129,8 +133,8 @@ const LoginPage = () => {
 
     try {
       const payload = isPhone
-        ? { phone: identifier, password }
-        : { email: identifier.toLowerCase(), password }
+        ? { phone: identifier, password, portal: 'customer' }
+        : { email: identifier.toLowerCase(), password, portal: 'customer' }
 
       const data = await login(payload, { rememberMe: form.rememberMe })
       const fallbackPath = getRouteByRole(data.user.role)

@@ -674,6 +674,52 @@
   color: #6b7280;
 }
 
+.forgot-password-card {
+  gap: 2px;
+}
+
+.forgot-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.forgot-step-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e9dcc2;
+  background: #fff7e6;
+  color: #8b6a2a;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.forgot-step-pill.active {
+  border-color: #f4b63a;
+  background: #f4b63a;
+  color: #2a1a08;
+}
+
+.forgot-hint-text {
+  margin: -2px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.forgot-links {
+  margin-top: 16px;
+}
+
+.forgot-link-divider {
+  color: #c8b087;
+  user-select: none;
+}
+
 @media (max-width: 900px) {
   .auth-page {
     padding: 18px;

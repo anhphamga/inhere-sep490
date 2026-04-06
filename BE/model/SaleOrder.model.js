@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ORDER_TYPE } = require('../constants/order.constants');
 
 const saleOrderSchema = new mongoose.Schema({
   customerId: {
@@ -17,6 +18,11 @@ const saleOrderSchema = new mongoose.Schema({
     enum: ['Draft', 'PendingPayment', 'PendingConfirmation', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],
     default: 'Draft'
   },
+  userStatus: {
+    type: String,
+    enum: ['PENDING', 'CONFIRMED', 'SHIPPING', 'COMPLETED', 'RETURNED'],
+    default: 'PENDING'
+  },
   paymentMethod: {
     type: String,
     enum: ['COD', 'Online', 'BankTransfer'],
@@ -24,8 +30,8 @@ const saleOrderSchema = new mongoose.Schema({
   },
   orderType: {
     type: String,
-    enum: ['Buy', 'Rent'],
-    default: 'Buy'
+    enum: [ORDER_TYPE.BUY, ORDER_TYPE.RENT],
+    default: ORDER_TYPE.BUY
   },
   guestName: {
     type: String,

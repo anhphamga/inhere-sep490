@@ -11,7 +11,7 @@ import {
   getAllBlogCategoryLabel,
   normalizeBlogPosts,
 } from "../../utils/blogData";
-import { getBlogPostsFromData } from "../../utils/blogSource";
+import { getPublishedBlogsApi } from "../../services/blog.service";
 
 export default function BlogPage() {
   const navigate = useNavigate();
@@ -27,10 +27,28 @@ export default function BlogPage() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    setError("");
-    setPosts(normalizeBlogPosts(getBlogPostsFromData()));
-    setLoading(false);
+    let mounted = true;
+    const loadBlogs = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const response = await getPublishedBlogsApi({ page: 1, limit: 60 });
+        const list = Array.isArray(response?.data) ? response.data : [];
+        if (!mounted) return;
+        setPosts(normalizeBlogPosts(list));
+      } catch (fetchError) {
+        if (!mounted) return;
+        setError(fetchError?.response?.data?.message || "Không thể tải bài viết từ máy chủ.");
+        setPosts([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadBlogs();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const categories = useMemo(() => buildBlogCategories(posts), [posts]);
@@ -71,7 +89,7 @@ export default function BlogPage() {
 
   const handleReadPost = (post) => {
     if (!post) return;
-    navigate(`/blog/${post.id}`);
+    navigate(`/blog/${post.slug || post.id}`);
   };
 
   return (

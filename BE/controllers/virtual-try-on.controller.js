@@ -10,6 +10,7 @@
 const https = require('https');
 const http = require('http');
 const { URL } = require('url');
+const { virtualTryOnApiUrl } = require('../config/app.config');
 
 /**
  * Proxy virtual try-on request to API4.ai demo
@@ -18,7 +19,7 @@ const { URL } = require('url');
 exports.generateTryOn = async (req, res) => {
     try {
         // Create request to API4.ai demo endpoint
-        const url = new URL('https://demo.api4ai.cloud/virtual-try-on/v1/results');
+        const url = new URL(virtualTryOnApiUrl);
         const options = {
             hostname: url.hostname,
             path: url.pathname,

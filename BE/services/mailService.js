@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { frontendUrl, orderMailImagePlaceholder } = require('../config/app.config');
 
 const normalizeText = (value = '') => String(value || '').trim();
 
@@ -62,11 +63,11 @@ const buildOrderConfirmationEmail = (order = {}) => {
   const orderCode = getOrderCode(order);
   const customer = order.customer || {};
   const items = Array.isArray(order.items) ? order.items : [];
-  const orderUrl = normalizeText(order.orderUrl) || process.env.FRONTEND_URL || 'http://localhost:3000';
+  const orderUrl = normalizeText(order.orderUrl) || frontendUrl;
 
   const itemRows = items
     .map((item) => {
-      const image = escapeHtml(item.image || 'https://via.placeholder.com/70x70?text=INHERE');
+      const image = escapeHtml(item.image || orderMailImagePlaceholder);
       const productName = escapeHtml(item.productName || 'Sản phẩm');
       const variantText = escapeHtml(item.size || item.variant || 'Mặc định');
       const quantity = escapeHtml(item.quantity || 1);

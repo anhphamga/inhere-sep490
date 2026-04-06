@@ -9,9 +9,11 @@ import FilterSidebar from '../../components/collection/FilterSidebar';
 import SortDropdown from '../../components/collection/SortDropdown';
 import ProductGrid from '../../components/collection/ProductGrid';
 import RelatedCollections from '../../components/collection/RelatedCollections';
+import Pagination from '../../components/catalog/shop/Pagination';
 import { getCollectionBySlugApi } from '../../services/collection.service';
 
 const LAST_COLLECTION_SLUG_KEY = 'last_collection_slug';
+const COLLECTION_PAGE_SIZE = 12;
 const toArray = (value) => (Array.isArray(value) ? value : []);
 const toText = (value) => String(value || '').trim();
 const normalize = (value = '') =>
@@ -88,6 +90,7 @@ export default function CollectionPage() {
     priceRange: { min: 0, max: 0 },
   });
   const [sort, setSort] = useState('newest');
+  const [page, setPage] = useState(1);
   const [selectedFilters, setSelectedFilters] = useState({
     category: [],
     color: [],
@@ -206,6 +209,23 @@ export default function CollectionPage() {
     setFilteredProducts(next);
   }, [products, selectedFilters, sort, filters.priceRange.max, filters.priceRange.min]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [slug, selectedFilters, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / COLLECTION_PAGE_SIZE));
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const paginatedProducts = useMemo(() => {
+    const start = (page - 1) * COLLECTION_PAGE_SIZE;
+    return filteredProducts.slice(start, start + COLLECTION_PAGE_SIZE);
+  }, [filteredProducts, page]);
+
   const stickyCount = filteredProducts.length;
 
   const collectionData = useMemo(
@@ -259,6 +279,10 @@ export default function CollectionPage() {
   };
 
   const handleRentNow = (product) => {
+    if (!product?._id && !product?.id) return;
+    navigate(`/products/${product?._id || product?.id}`);
+  };
+  const handleBuyNow = (product) => {
     if (!product?._id && !product?.id) return;
     navigate(`/products/${product?._id || product?.id}`);
   };
@@ -322,8 +346,15 @@ export default function CollectionPage() {
                 onReset={handleResetFilters}
               />
             </div>
-            <ProductGrid products={filteredProducts} loading={loading} onRentNow={handleRentNow} onQuickView={setQuickViewProduct} />
+            <ProductGrid
+              products={paginatedProducts}
+              loading={loading}
+              onRentNow={handleRentNow}
+              onBuyNow={handleBuyNow}
+              onQuickView={setQuickViewProduct}
+            />
           </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </section>
 
         <RelatedCollections collections={collectionData.relatedCollections} />

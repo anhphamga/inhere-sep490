@@ -6,6 +6,7 @@ const RentOrder = require('../model/RentOrder.model');
 const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const Category = require('../model/Category.model');
+const { ORDER_TYPE } = require('../constants/order.constants');
 
 const INVALID_SALE_STATUSES = ['Cancelled', 'Failed', 'Refunded'];
 const INVALID_RENT_STATUSES = ['Cancelled'];
@@ -338,7 +339,7 @@ const buildVoucherOrderQuery = ({ voucher, userId, orderType }) => {
 
   if (orderType === 'sale') {
     query.status = { $nin: INVALID_SALE_STATUSES };
-    query.orderType = 'Buy';
+    query.orderType = ORDER_TYPE.BUY;
   } else if (orderType === 'rental') {
     query.status = { $nin: INVALID_RENT_STATUSES };
   }
@@ -408,7 +409,7 @@ const hasEligibleHistoricalOrders = async ({ userId }) => {
   const [saleOrderCount, rentOrderCount] = await Promise.all([
     SaleOrder.countDocuments({
       customerId: userId,
-      orderType: 'Buy',
+      orderType: ORDER_TYPE.BUY,
       status: { $nin: INVALID_SALE_STATUSES },
     }),
     RentOrder.countDocuments({

@@ -204,6 +204,21 @@ export const updateOwnerStaffStatusApi = async (staffId, status) => {
     return response.data
 }
 
+export const updateOwnerStaffRoleApi = async (staffId, role) => {
+    const response = await axiosClient.patch(`/owner/staff/${staffId}/role`, { role })
+    return response.data
+}
+
+export const getOwnerStaffPermissionsApi = async (staffId) => {
+    const response = await axiosClient.get(`/owner/staff/${staffId}/permissions`)
+    return response.data
+}
+
+export const updateOwnerStaffPermissionsApi = async (staffId, payload) => {
+    const response = await axiosClient.patch(`/owner/staff/${staffId}/permissions`, payload)
+    return response.data
+}
+
 export const lockOwnerStaffApi = async (staffId) => {
     const response = await axiosClient.patch(`/owner/staff/${staffId}/lock`)
     return response.data

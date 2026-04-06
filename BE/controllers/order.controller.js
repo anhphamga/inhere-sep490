@@ -7,7 +7,12 @@ const GuestVerification = require('../model/GuestVerification.model');
 const Voucher = require('../model/Voucher.model');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 const { normalizeIdempotencyKey, isDuplicateIdempotencyError } = require('../utils/idempotency');
-const { verifyGuestVerificationToken } = require('../utils/jwt');
+const {
+  verifyGuestVerificationToken,
+  signGuestOrderViewToken,
+  verifyGuestOrderViewToken,
+  extractBearerToken,
+} = require('../utils/jwt');
 const { sendOrderConfirmationEmail } = require('../services/mailService');
 const {
   validateVoucher,
@@ -25,6 +30,14 @@ const {
   REVIEWABLE_SALE_STATUSES,
   getReviewedMapForOrders,
 } = require('../services/review.service');
+const { ORDER_TYPE } = require('../constants/order.constants');
+const { frontendUrl } = require('../config/app.config');
+const {
+  normalizeSaleOrderStatusInput,
+  isRefundedSaleStatus,
+  resolveSaleOrderUserStatus,
+  getSaleOrderUserStatusLabel,
+} = require('../utils/saleOrderStatus');
 
 const normalizePaymentMethod = (value = '') => {
   if (value === 'BankTransfer') return 'BankTransfer';
@@ -58,7 +71,8 @@ const buildFallbackHistory = (order) => {
   return history;
 };
 
-const normalizeHistory = (order) => {
+const normalizeHistory = (order, options = {}) => {
+  const customerFacing = options.customerFacing === true;
   const source = Array.isArray(order?.history) && order.history.length > 0
     ? order.history
     : buildFallbackHistory(order);
@@ -67,9 +81,14 @@ const normalizeHistory = (order) => {
     .map((item) => {
       const status = String(item?.status || order?.status || '').trim();
       const statusMeta = getSaleStatusMeta(status);
+      const userStatus = resolveSaleOrderUserStatus(status, order?.userStatus);
+      const userStatusLabel = getSaleOrderUserStatusLabel(userStatus);
+      const shouldUseUserFacingReturned = customerFacing && isRefundedSaleStatus(status);
       return {
         status,
-        statusLabel: statusMeta.label,
+        statusLabel: shouldUseUserFacingReturned ? userStatusLabel : statusMeta.label,
+        userStatus,
+        userStatusLabel,
         action: item?.action || '',
         description: item?.description || '',
         updatedAt: item?.updatedAt || null,
@@ -85,14 +104,20 @@ const normalizeHistory = (order) => {
     .sort((a, b) => new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime());
 };
 
-const mapSaleOrderForOwner = (order) => {
+const mapSaleOrderForOwner = (order, options = {}) => {
+  const customerFacing = options.customerFacing === true;
   const statusMeta = getSaleStatusMeta(order?.status);
+  const userStatus = resolveSaleOrderUserStatus(order?.status, order?.userStatus);
+  const userStatusLabel = getSaleOrderUserStatusLabel(userStatus);
+  const shouldUseUserFacingReturned = customerFacing && isRefundedSaleStatus(order?.status);
   return {
     ...order,
-    statusLabel: statusMeta.label,
+    statusLabel: shouldUseUserFacingReturned ? userStatusLabel : statusMeta.label,
+    userStatus,
+    userStatusLabel,
     statusBadgeClass: statusMeta.badgeClass,
     availableNextStatuses: SALE_ORDER_TRANSITIONS[order?.status] || [],
-    history: normalizeHistory(order),
+    history: normalizeHistory(order, { customerFacing }),
   };
 };
 
@@ -187,12 +212,13 @@ const createSaleOrderWithItems = async ({
     customerId,
     staffId: null,
     status: initialStatus,
+    userStatus: resolveSaleOrderUserStatus(initialStatus),
     paymentMethod: normalizedMethod,
     totalAmount,
     shippingFee,
     shippingAddress,
     shippingPhone,
-    orderType: 'Buy',
+    orderType: ORDER_TYPE.BUY,
     guestName,
     guestEmail,
     guestVerificationMethod,
@@ -204,7 +230,7 @@ const createSaleOrderWithItems = async ({
     discountAmount,
     history: [
       {
-        status: 'PendingConfirmation',
+        status: initialStatus,
         action: 'order_created',
         description: 'Đơn hàng được tạo',
         updatedBy: customerId || null,
@@ -238,6 +264,7 @@ const buildCheckoutSuccessResponse = (saleOrder) => ({
     orderId: saleOrder._id,
     orderType: saleOrder.orderType,
     status: saleOrder.status,
+    userStatus: resolveSaleOrderUserStatus(saleOrder.status, saleOrder.userStatus),
     totalAmount: saleOrder.totalAmount,
   },
 });
@@ -448,9 +475,24 @@ const getProductDisplayName = (product = {}) => {
   return '';
 };
 
+const buildGuestOrderViewUrl = (saleOrder = {}) => {
+  const orderId = String(saleOrder?._id || '').trim();
+  if (!orderId) return `${frontendUrl}/cart`;
+
+  const token = signGuestOrderViewToken({
+    orderId,
+    guestVerificationId: saleOrder?.guestVerificationId ? String(saleOrder.guestVerificationId) : '',
+    guestEmail: String(saleOrder?.guestEmail || '').trim().toLowerCase(),
+  });
+
+  return `${frontendUrl}/orders/guest/${orderId}?token=${encodeURIComponent(token)}`;
+};
+
 const buildOrderEmailPayload = ({ saleOrder, items, customer }) => {
-  const frontendUrl = String(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const orderUrl = `${frontendUrl}/cart`;
+  const isGuestOrder = !saleOrder?.customerId;
+  const orderUrl = isGuestOrder
+    ? buildGuestOrderViewUrl(saleOrder)
+    : `${frontendUrl}/orders/${saleOrder?._id}`;
 
   return {
     _id: saleOrder?._id,
@@ -473,6 +515,12 @@ const buildOrderEmailPayload = ({ saleOrder, items, customer }) => {
     })),
     orderUrl,
   };
+};
+
+const getGuestOrderViewTokenFromRequest = (req) => {
+  const queryToken = String(req?.query?.token || '').trim();
+  if (queryToken) return queryToken;
+  return extractBearerToken(req?.headers?.authorization);
 };
 
 const sendOrderConfirmationEmailSafely = async ({ saleOrder, customer }) => {
@@ -594,8 +642,8 @@ exports.guestCheckout = async (req, res) => {
       return res.status(400).json(voucherApplication.error);
     }
 
-    const normalizedShippingFee = Math.max(Number(shippingFee || 0), 0);
-    const totalAmount = voucherApplication.finalSubtotal + normalizedShippingFee;
+    const normalizedShippingFee = 0;
+    const totalAmount = voucherApplication.finalSubtotal;
 
     const saleOrder = await runSaleCheckoutTransaction({
       createOrderPayload: {
@@ -739,8 +787,8 @@ exports.checkout = async (req, res) => {
       return res.status(400).json(voucherApplication.error);
     }
 
-    const normalizedShippingFee = Math.max(Number(shippingFee || 0), 0);
-    const totalAmount = voucherApplication.finalSubtotal + normalizedShippingFee;
+    const normalizedShippingFee = 0;
+    const totalAmount = voucherApplication.finalSubtotal;
 
     const saleOrder = await runSaleCheckoutTransaction({
       createOrderPayload: {
@@ -815,12 +863,12 @@ exports.getOwnerSaleOrders = async (req, res) => {
       limit = 20,
     } = req.query;
 
-    const normalizedStatus = String(status || '').trim();
+    const normalizedStatus = normalizeSaleOrderStatusInput(status);
     const normalizedKeyword = String(keyword || '').trim();
     const currentPage = Math.max(Number(page) || 1, 1);
     const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
 
-    const query = { orderType: 'Buy' };
+    const query = { orderType: ORDER_TYPE.BUY };
     if (normalizedStatus && SALE_ORDER_ALLOWED_STATUSES.has(normalizedStatus)) {
       query.status = normalizedStatus;
     }
@@ -858,7 +906,7 @@ exports.getOwnerSaleOrders = async (req, res) => {
       });
     }
 
-    const mappedData = data.map((order) => mapSaleOrderForOwner(order));
+    const mappedData = data.map((order) => mapSaleOrderForOwner(order, { customerFacing: false }));
 
     return res.json({
       success: true,
@@ -898,10 +946,10 @@ exports.getMySaleOrders = async (req, res) => {
       });
     }
 
-    const normalizedStatus = String(status || '').trim();
+    const normalizedStatus = normalizeSaleOrderStatusInput(status);
     const query = {
       customerId,
-      orderType: 'Buy',
+      orderType: ORDER_TYPE.BUY,
     };
 
     if (normalizedStatus && SALE_ORDER_ALLOWED_STATUSES.has(normalizedStatus)) {
@@ -917,7 +965,7 @@ exports.getMySaleOrders = async (req, res) => {
 
     return res.json({
       success: true,
-      data: ordersWithReviewState.map((order) => mapSaleOrderForOwner(order)),
+      data: ordersWithReviewState.map((order) => mapSaleOrderForOwner(order, { customerFacing: true })),
     });
   } catch (error) {
     console.error('Get my sale orders error:', error);
@@ -943,7 +991,7 @@ exports.getMySaleOrderById = async (req, res) => {
     const order = await SaleOrder.findOne({
       _id: id,
       customerId,
-      orderType: 'Buy',
+      orderType: ORDER_TYPE.BUY,
     })
       .populate('customerId', 'name phone email')
       .populate('staffId', 'name phone email')
@@ -961,7 +1009,7 @@ exports.getMySaleOrderById = async (req, res) => {
 
     return res.json({
       success: true,
-      data: mapSaleOrderForOwner(orderWithReviewState),
+      data: mapSaleOrderForOwner(orderWithReviewState, { customerFacing: true }),
     });
   } catch (error) {
     console.error('Get my sale order detail error:', error);
@@ -972,11 +1020,86 @@ exports.getMySaleOrderById = async (req, res) => {
   }
 };
 
+exports.getGuestSaleOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const guestOrderViewToken = getGuestOrderViewTokenFromRequest(req);
+
+    if (!guestOrderViewToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Thieu token xem don hang guest.',
+      });
+    }
+
+    let payload;
+    try {
+      payload = verifyGuestOrderViewToken(guestOrderViewToken);
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: 'Token xem don hang khong hop le hoac da het han.',
+      });
+    }
+
+    if (String(payload?.orderId || '') !== String(id || '')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Token khong khop voi don hang.',
+      });
+    }
+
+    const order = await SaleOrder.findOne({
+      _id: id,
+      customerId: null,
+      orderType: ORDER_TYPE.BUY,
+    })
+      .populate('staffId', 'name phone email')
+      .populate('history.updatedBy', 'name email');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Khong tim thay don mua guest.',
+      });
+    }
+
+    if (payload?.guestVerificationId && String(order?.guestVerificationId || '') !== String(payload.guestVerificationId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Token khong hop le cho don hang nay.',
+      });
+    }
+
+    const payloadEmail = String(payload?.guestEmail || '').trim().toLowerCase();
+    const orderEmail = String(order?.guestEmail || '').trim().toLowerCase();
+    if (payloadEmail && orderEmail && payloadEmail !== orderEmail) {
+      return res.status(403).json({
+        success: false,
+        message: 'Token khong hop le cho don hang nay.',
+      });
+    }
+
+    const [attachedOrder] = await attachSaleOrderItems([order]);
+
+    return res.json({
+      success: true,
+      data: mapSaleOrderForOwner(attachedOrder, { customerFacing: true }),
+    });
+  } catch (error) {
+    console.error('Get guest sale order detail error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Khong the lay chi tiet don mua guest luc nay.',
+    });
+  }
+};
+
 exports.updateOwnerSaleOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body || {};
-    const normalizedStatus = String(status || '').trim();
+    const normalizedStatus = normalizeSaleOrderStatusInput(status);
 
     if (!SALE_ORDER_ALLOWED_STATUSES.has(normalizedStatus)) {
       return res.status(400).json({
@@ -986,7 +1109,7 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
     }
 
     const order = await SaleOrder.findById(id);
-    if (!order || order.orderType !== 'Buy') {
+    if (!order || order.orderType !== ORDER_TYPE.BUY) {
       return res.status(404).json({
         success: false,
         message: 'Khong tim thay don mua.',
@@ -1009,19 +1132,37 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
       });
     }
 
-    order.status = normalizedStatus;
+    if (isRefundedSaleStatus(normalizedStatus)) {
+      order.status = 'Refunded';
+      order.userStatus = 'RETURNED';
+    } else {
+      order.status = normalizedStatus;
+      order.userStatus = resolveSaleOrderUserStatus(normalizedStatus, order.userStatus);
+    }
     if (!order.staffId) {
       order.staffId = req.user?.id || null;
     }
     order.history = Array.isArray(order.history) ? order.history : [];
     const actorRole = String(req.user?.role || '').trim().toLowerCase();
-    order.history.push({
-      status: normalizedStatus,
-      action: actorRole === 'staff' ? 'staff_update_status' : 'owner_update_status',
-      description: `Cập nhật trạng thái sang ${normalizedStatus}`,
-      updatedBy: req.user?.id || null,
-      updatedAt: new Date(),
-    });
+    if (isRefundedSaleStatus(normalizedStatus)) {
+      const refundedLabel = getSaleStatusMeta('Refunded').label;
+      order.history.push({
+        status: 'Refunded',
+        action: actorRole === 'staff' ? 'staff_update_status' : 'owner_update_status',
+        description: `Đơn hàng ${refundedLabel.toLowerCase()} và đã được đánh dấu trả hàng`,
+        updatedBy: req.user?.id || null,
+        updatedAt: new Date(),
+      });
+    } else {
+      const statusLabel = getSaleStatusMeta(normalizedStatus).label;
+      order.history.push({
+        status: normalizedStatus,
+        action: actorRole === 'staff' ? 'staff_update_status' : 'owner_update_status',
+        description: `Cập nhật trạng thái sang ${statusLabel}`,
+        updatedBy: req.user?.id || null,
+        updatedAt: new Date(),
+      });
+    }
     await order.save();
 
     const [populated] = await attachSaleOrderItems([

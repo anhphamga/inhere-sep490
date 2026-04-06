@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import StarRating from './StarRating'
+import { UI_IMAGE_FALLBACKS } from '../../constants/ui'
 
 const getProductName = (product) => {
   if (typeof product?.name === 'string') return product.name
@@ -11,7 +12,7 @@ const getProductName = (product) => {
 
 const getProductImage = (product) => {
   if (Array.isArray(product?.images) && product.images[0]) return product.images[0]
-  return 'https://placehold.co/160x160/f8fafc/64748b?text=INHERE'
+  return UI_IMAGE_FALLBACKS.reviewImage
 }
 
 const splitImageText = (value) =>

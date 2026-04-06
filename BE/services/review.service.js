@@ -3,6 +3,7 @@ const Product = require('../model/Product.model');
 const Review = require('../model/Review.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
+const { ORDER_TYPE } = require('../constants/order.constants');
 
 const REVIEWABLE_SALE_STATUSES = new Set(['Completed', 'Returned', 'Refunded']);
 const REVIEW_STATUSES = new Set(['pending', 'approved', 'hidden', 'rejected']);
@@ -125,7 +126,7 @@ const validateOrderForReview = async (userId, orderId, productId, options = {}) 
   const order = await SaleOrder.findOne({
     _id: orderObjectId,
     customerId: userObjectId,
-    orderType: 'Buy',
+    orderType: ORDER_TYPE.BUY,
   }).lean();
 
   if (!order) {

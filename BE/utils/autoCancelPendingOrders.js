@@ -3,12 +3,13 @@ const RentOrderItem = require('../model/RentOrderItem.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const Deposit = require('../model/Deposit.model');
 const Alert = require('../model/Alert.model');
+const { pendingDepositHoldMinutes, autoCancelIntervalMs } = require('../config/app.config');
 
 // Thời gian tối đa cho đơn PendingDeposit — đồng nhất với PENDING_DEPOSIT_HOLD_MINUTES
 // Mặc định 5 phút để dễ test; production nên đặt 30 hoặc cao hơn
-const AUTO_CANCEL_MINUTES = parseInt(process.env.PENDING_DEPOSIT_HOLD_MINUTES || '5', 10);
+const AUTO_CANCEL_MINUTES = pendingDepositHoldMinutes;
 // Thời gian chạy cron (5 phút)
-const INTERVAL_MS = 5 * 60 * 1000;
+const INTERVAL_MS = autoCancelIntervalMs;
 
 const cancelOrder = async (order) => {
   const orderId = order._id;
@@ -29,7 +30,7 @@ const cancelOrder = async (order) => {
   await order.save();
 
   await Alert.create({
-    type: 'Cancelled',
+    type: 'Task',
     targetType: 'RentOrder',
     targetId: orderId,
     status: 'New',

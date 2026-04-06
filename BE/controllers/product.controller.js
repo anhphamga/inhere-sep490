@@ -17,7 +17,7 @@ const CONDITION_LEVEL_ALIASES = {
   Damaged: 'Used'
 };
 const ALLOWED_CONDITION_LEVELS = new Set(['New', 'Used']);
-const ALLOWED_CONDITION_SCORES = new Set([0, 25, 50, 100]);
+const ALLOWED_CONDITION_SCORES = new Set([0, 25, 50, 75, 100]);
 
 const normalizeConditionLevel = (value) => {
   if (value === undefined || value === null || value === '') return '';
@@ -1179,11 +1179,271 @@ const deleteOwnerProduct = async (req, res) => {
   }
 };
 
+const IMPORT_ID_PATTERN = /^[a-f\d]{24}$/i;
+
+const parseCsvLine = (line = '') => {
+  const result = [];
+  let token = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        token += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      result.push(token);
+      token = '';
+      continue;
+    }
+
+    token += char;
+  }
+
+  result.push(token);
+  return result.map((value) => String(value || '').trim());
+};
+
+const parseCsvContent = (content = '') => {
+  const rows = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (current.trim().length > 0) {
+        rows.push(parseCsvLine(current));
+      }
+      current = '';
+      if (char === '\r' && next === '\n') {
+        index += 1;
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.trim().length > 0) {
+    rows.push(parseCsvLine(current));
+  }
+
+  if (rows.length === 0) {
+    return { headers: [], records: [] };
+  }
+
+  const headers = rows[0].map((item) => String(item || '').trim().toLowerCase());
+  const records = rows.slice(1);
+  return { headers, records };
+};
+
+const parseImportNumber = (value, fallback = 0) => {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  let raw = String(value).trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  raw = raw.replace(/[^\d,.\-]/g, '');
+  if (!raw) {
+    return fallback;
+  }
+
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw)) {
+    raw = raw.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw)) {
+    raw = raw.replace(/,/g, '');
+  } else {
+    raw = raw.replace(',', '.');
+  }
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 const importOwnerProducts = async (req, res) => {
-  return res.status(501).json({
-    success: false,
-    message: 'Excel import is not implemented yet',
-  });
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thiếu file import',
+      });
+    }
+
+    const originalName = String(req.file.originalname || '').toLowerCase();
+    const isCsv = originalName.endsWith('.csv') || String(req.file.mimetype || '').includes('csv');
+    if (!isCsv) {
+      return res.status(400).json({
+        success: false,
+        message: 'Hiện tại chỉ hỗ trợ import CSV (hãy dùng file export từ hệ thống).',
+      });
+    }
+
+    const csvText = req.file.buffer.toString('utf8').replace(/^\uFEFF/, '');
+    const { headers, records } = parseCsvContent(csvText);
+    if (headers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'File CSV rỗng hoặc sai định dạng',
+      });
+    }
+
+    const headerIndex = new Map(headers.map((item, index) => [item, index]));
+    const requiredHeaders = ['name', 'category', 'size', 'color'];
+    const missingHeaders = requiredHeaders.filter((key) => !headerIndex.has(key));
+    if (missingHeaders.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Thiếu cột bắt buộc: ${missingHeaders.join(', ')}`,
+      });
+    }
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors = [];
+
+    const getCell = (row, key) => {
+      const index = headerIndex.get(key);
+      if (index === undefined) return '';
+      return String(row[index] || '').trim();
+    };
+
+    for (let rowIndex = 0; rowIndex < records.length; rowIndex += 1) {
+      const row = records[rowIndex];
+      const lineNumber = rowIndex + 2;
+
+      const name = getCell(row, 'name');
+      const category = getCell(row, 'category');
+      const size = getCell(row, 'size');
+      const color = getCell(row, 'color');
+      const sourceId = getCell(row, 'id');
+
+      if (!name && !category && !size && !color) {
+        skipped += 1;
+        continue;
+      }
+
+      const payload = normalizePayload({
+        name,
+        category,
+        size,
+        color,
+        baseRentPrice: parseImportNumber(getCell(row, 'baserentprice'), 0),
+        baseSalePrice: parseImportNumber(getCell(row, 'basesaleprice'), 0),
+        depositAmount: parseImportNumber(getCell(row, 'depositamount'), 0),
+        buyoutValue: parseImportNumber(getCell(row, 'buyoutvalue'), 0),
+      });
+
+      const validationError = ensureOwnerProductRequired(payload);
+      if (validationError) {
+        errors.push({ line: lineNumber, message: validationError });
+        skipped += 1;
+        continue;
+      }
+
+      let product = null;
+      if (sourceId && IMPORT_ID_PATTERN.test(sourceId)) {
+        product = await Product.findById(sourceId);
+      }
+
+      if (!product) {
+        product = await Product.findOne({
+          name: payload.name,
+          category: payload.category,
+          size: payload.size,
+          color: payload.color,
+        });
+      }
+
+      if (product) {
+        Object.assign(product, payload);
+        await product.save();
+        updated += 1;
+      } else {
+        product = await Product.create(payload);
+        created += 1;
+      }
+
+      const totalQuantityText = getCell(row, 'totalquantity');
+      if (totalQuantityText !== '') {
+        const targetQuantity = Math.max(toIntegerOrNaN(parseImportNumber(totalQuantityText, Number.NaN)), 0);
+        if (!Number.isNaN(targetQuantity)) {
+          const currentTotal = await ProductInstance.countDocuments({ productId: product._id });
+          if (targetQuantity > currentTotal) {
+            await createInstances({
+              productId: product._id,
+              quantity: targetQuantity - currentTotal,
+              baseRentPrice: product.baseRentPrice,
+              baseSalePrice: product.baseSalePrice,
+            });
+          } else if (targetQuantity < currentTotal) {
+            const removeNeeded = currentTotal - targetQuantity;
+            const removableInstances = await ProductInstance.find({
+              productId: product._id,
+              lifecycleStatus: 'Available',
+            })
+              .sort({ createdAt: -1 })
+              .limit(removeNeeded)
+              .select('_id')
+              .lean();
+
+            const removableIds = removableInstances.map((item) => item._id);
+            if (removableIds.length > 0) {
+              await ProductInstance.deleteMany({ _id: { $in: removableIds } });
+            }
+          }
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Import sản phẩm thành công',
+      data: {
+        created,
+        updated,
+        skipped,
+        totalRows: records.length,
+        errors,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi import sản phẩm',
+      error: error.message,
+    });
+  }
 };
 
 const exportOwnerProducts = async (req, res) => {
@@ -1413,7 +1673,7 @@ const updateProductInstance = async (req, res) => {
       if (!ALLOWED_CONDITION_SCORES.has(normalizedScore)) {
         return res.status(400).json({
           success: false,
-          message: 'Điểm tình trạng chỉ chấp nhận 0, 25, 50 hoặc 100'
+          message: 'Điểm tình trạng chỉ chấp nhận 0, 25, 50, 75 hoặc 100'
         });
       }
       instance.conditionScore = normalizedScore;

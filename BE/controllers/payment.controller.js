@@ -8,8 +8,12 @@ const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
 // Dùng lazy require để tránh circular dependency
 const getRentOrderController = () => require('./rent-order.controller');
+const { frontendUrl, payosWebBaseUrl } = require('../config/app.config');
+const { ORDER_TYPE } = require('../constants/order.constants');
+const { resolveSaleOrderUserStatus } = require('../utils/saleOrderStatus');
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = frontendUrl;
+const PAYOS_WEB_BASE_URL = String(payosWebBaseUrl || '').replace(/\/+$/, '');
 
 /**
  * Tạo mã PayOS duy nhất (số nguyên 9 chữ số)
@@ -87,7 +91,7 @@ exports.createDepositPaymentLink = async (req, res) => {
 
         await PayOSTransaction.create({
             orderId,
-            orderType: 'Rent',
+            orderType: ORDER_TYPE.RENT,
             purpose: 'Deposit',
             payosOrderCode,
             payosPaymentLinkId: paymentLink.paymentLinkId,
@@ -127,7 +131,7 @@ exports.createExtraDuePaymentLink = async (req, res) => {
             try {
                 const info = await payos.paymentRequests.get(existing.payosOrderCode);
                 if (info.status === 'PENDING') {
-                    return res.json({ success: true, data: { paymentUrl: `https://pay.payos.vn/web/${existing.payosPaymentLinkId}`, orderCode: existing.payosOrderCode } });
+                    return res.json({ success: true, data: { paymentUrl: `${PAYOS_WEB_BASE_URL}/${existing.payosPaymentLinkId}`, orderCode: existing.payosOrderCode } });
                 }
             } catch (_) { /* expired */ }
             await PayOSTransaction.deleteOne({ _id: existing._id });
@@ -148,7 +152,7 @@ exports.createExtraDuePaymentLink = async (req, res) => {
 
         await PayOSTransaction.create({
             orderId,
-            orderType: 'Rent',
+            orderType: ORDER_TYPE.RENT,
             purpose: 'ExtraDue',
             payosOrderCode,
             payosPaymentLinkId: paymentLink.paymentLinkId,
@@ -182,7 +186,7 @@ exports.createSalePaymentLink = async (req, res) => {
             try {
                 const info = await payos.paymentRequests.get(existing.payosOrderCode);
                 if (info.status === 'PENDING') {
-                    return res.json({ success: true, data: { paymentUrl: `https://pay.payos.vn/web/${existing.payosPaymentLinkId}`, orderCode: existing.payosOrderCode } });
+                    return res.json({ success: true, data: { paymentUrl: `${PAYOS_WEB_BASE_URL}/${existing.payosPaymentLinkId}`, orderCode: existing.payosOrderCode } });
                 }
             } catch (_) { /* expired */ }
             await PayOSTransaction.deleteOne({ _id: existing._id });
@@ -202,7 +206,7 @@ exports.createSalePaymentLink = async (req, res) => {
 
         await PayOSTransaction.create({
             orderId,
-            orderType: 'Sale',
+            orderType: ORDER_TYPE.SALE,
             purpose: 'SalePayment',
             payosOrderCode,
             payosPaymentLinkId: paymentLink.paymentLinkId,
@@ -232,7 +236,7 @@ const processConfirmedPayment = async (txn) => {
             }
             const existingPayment = await Payment.findOne({ orderId: txn.orderId, purpose: 'Deposit', status: 'Paid' });
             if (!existingPayment) {
-                await Payment.create({ orderType: 'Rent', orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'Deposit', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
+                await Payment.create({ orderType: ORDER_TYPE.RENT, orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'Deposit', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
             }
             order.status = 'Deposited';
             await order.save();
@@ -266,9 +270,10 @@ const processConfirmedPayment = async (txn) => {
         if (saleOrder && ['PendingPayment', 'PendingConfirmation'].includes(saleOrder.status)) {
             const existingPayment = await Payment.findOne({ orderId: txn.orderId, purpose: 'SalePayment', status: 'Paid' });
             if (!existingPayment) {
-                await Payment.create({ orderType: 'Sale', orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'SalePayment', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
+                await Payment.create({ orderType: ORDER_TYPE.SALE, orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'SalePayment', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
             }
             saleOrder.status = 'PendingConfirmation';
+            saleOrder.userStatus = resolveSaleOrderUserStatus('PendingConfirmation', saleOrder.userStatus);
             await saleOrder.save();
             console.log(`[PayOS Polling] Sale payment confirmed for order ${txn.orderId}`);
         }
@@ -280,7 +285,7 @@ const processConfirmedPayment = async (txn) => {
             // Ghi nhận payment nếu chưa có
             const existingPayment = await Payment.findOne({ orderId: txn.orderId, purpose: 'Remaining', transactionCode: `PAYOS_${txn.payosOrderCode}` });
             if (!existingPayment) {
-                await Payment.create({ orderType: 'Rent', orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'Remaining', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
+                await Payment.create({ orderType: ORDER_TYPE.RENT, orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Paid', purpose: 'Remaining', transactionCode: `PAYOS_${txn.payosOrderCode}`, paidAt: new Date() });
             }
 
             // Tự động hoàn tất đơn: quyết toán cọc/thế chấp → Completed, trả instances về Available
@@ -340,7 +345,7 @@ exports.checkPayosStatus = async (req, res) => {
         }
 
         let order = null;
-        if (txn.orderType === 'Sale') {
+        if (txn.orderType === ORDER_TYPE.SALE) {
             order = await SaleOrder.findById(txn.orderId).lean();
         } else {
             order = await RentOrder.findById(txn.orderId).lean();

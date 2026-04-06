@@ -13,6 +13,16 @@ const toDateOnlyRange = (value) => {
   return { $gte: start, $lte: end };
 };
 
+const toTimeMinutes = (value = '') => {
+  const [hours, minutes] = String(value || '').split(':').map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const BOOKING_MIN_TIME = '08:00';
+const BOOKING_MAX_TIME = '22:00';
+
 const createBooking = async (req, res) => {
   try {
     const {
@@ -34,16 +44,27 @@ const createBooking = async (req, res) => {
     const normalizedDate = new Date(date);
 
     if (!normalizedName || !normalizedPhone || !normalizedEmail || !date || !time || !category) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ thông tin bắt buộc' });
     }
     if (!isValidPhone(normalizedPhone)) {
-      return res.status(400).json({ success: false, message: 'Invalid phone number' });
+      return res.status(400).json({ success: false, message: 'Số điện thoại không hợp lệ' });
     }
     if (!isValidEmail(normalizedEmail)) {
-      return res.status(400).json({ success: false, message: 'Invalid email' });
+      return res.status(400).json({ success: false, message: 'Email không hợp lệ' });
     }
     if (Number.isNaN(normalizedDate.getTime())) {
-      return res.status(400).json({ success: false, message: 'Invalid date' });
+      return res.status(400).json({ success: false, message: 'Ngày hẹn không hợp lệ' });
+    }
+
+    const normalizedTime = String(time || '').trim();
+    const timeInMinutes = toTimeMinutes(normalizedTime);
+    const minTime = toTimeMinutes(BOOKING_MIN_TIME);
+    const maxTime = toTimeMinutes(BOOKING_MAX_TIME);
+    if (timeInMinutes === null || minTime === null || maxTime === null) {
+      return res.status(400).json({ success: false, message: 'Giờ hẹn không hợp lệ' });
+    }
+    if (timeInMinutes < minTime || timeInMinutes > maxTime) {
+      return res.status(400).json({ success: false, message: `Giờ hẹn chỉ được chọn từ ${BOOKING_MIN_TIME} đến ${BOOKING_MAX_TIME}` });
     }
 
     const normalizedProductId = String(productId || '').trim();
@@ -56,7 +77,7 @@ const createBooking = async (req, res) => {
       phone: normalizedPhone,
       email: normalizedEmail,
       date: normalizedDate,
-      time: String(time).trim(),
+      time: normalizedTime,
       category: String(category).trim(),
       productId: validProductId,
       productName: String(productName || '').trim(),
@@ -67,7 +88,7 @@ const createBooking = async (req, res) => {
 
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Error creating booking', error: error.message });
+    return res.status(500).json({ success: false, message: 'Không thể tạo lịch hẹn lúc này', error: error.message });
   }
 };
 
@@ -104,7 +125,7 @@ const listBookings = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Error listing bookings', error: error.message });
+    return res.status(500).json({ success: false, message: 'Không thể lấy danh sách lịch hẹn', error: error.message });
   }
 };
 
@@ -115,7 +136,7 @@ const respondBooking = async (req, res) => {
     const normalizedStatus = String(status).trim().toLowerCase();
 
     if (!['confirmed', 'rejected'].includes(normalizedStatus)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
+      return res.status(400).json({ success: false, message: 'Trạng thái phản hồi không hợp lệ' });
     }
 
     const updated = await Booking.findByIdAndUpdate(
@@ -130,7 +151,7 @@ const respondBooking = async (req, res) => {
     ).lean();
 
     if (!updated) {
-      return res.status(404).json({ success: false, message: 'Booking not found' });
+      return res.status(404).json({ success: false, message: 'Không tìm thấy lịch hẹn' });
     }
 
     try {
@@ -141,7 +162,7 @@ const respondBooking = async (req, res) => {
 
     return res.status(200).json({ success: true, data: updated });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Error responding booking', error: error.message });
+    return res.status(500).json({ success: false, message: 'Không thể phản hồi lịch hẹn lúc này', error: error.message });
   }
 };
 

@@ -6,6 +6,7 @@ import StaffRentOrders from './StaffRentOrders';
 import StaffWalkInPage from './StaffWalkInPage';
 import StaffShiftRegistration from './StaffShiftRegistration';
 import StaffReviewsPage from './StaffReviewsPage';
+import StaffBlogsPage from './StaffBlogsPage';
 import BookingPage from './bookings/BookingPage';
 import OrdersList from '../../components/owner/OrdersList';
 
@@ -14,6 +15,7 @@ const STAFF_PLACEHOLDER_TITLES = {
   'sale-order': 'staff.createSaleOrder',
   shifts: 'staff.shiftRegistration',
   reviews: 'staff.reviewManagement',
+  blogs: 'Quản lý bài viết',
   bookings: 'staff.fittingBookings',
   fitting: 'staff.fittingBookings',
   return: 'staff.returns',
@@ -53,6 +55,10 @@ const StaffPage = () => {
 
     if (subPath === 'bookings') {
       return <BookingPage />;
+    }
+
+    if (subPath === 'blogs') {
+      return <StaffBlogsPage pathName={location.pathname} />;
     }
 
     return (

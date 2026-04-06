@@ -1,4 +1,10 @@
-import { checkoutRequest, guestCheckoutRequest, getMySaleOrderByIdRequest, getMySaleOrdersRequest } from '../api/order.api'
+import {
+  checkoutRequest,
+  getGuestSaleOrderByIdRequest,
+  getMySaleOrderByIdRequest,
+  getMySaleOrdersRequest,
+  guestCheckoutRequest,
+} from '../api/order.api'
 
 export const checkoutApi = async (payload) => {
   const response = await checkoutRequest(payload)
@@ -17,5 +23,10 @@ export const getMySaleOrdersApi = async (params = {}) => {
 
 export const getMySaleOrderByIdApi = async (id) => {
   const response = await getMySaleOrderByIdRequest(id)
+  return response.data
+}
+
+export const getGuestSaleOrderByIdApi = async (id, token) => {
+  const response = await getGuestSaleOrderByIdRequest(id, token)
   return response.data
 }

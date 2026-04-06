@@ -33,6 +33,9 @@ const normalizeLoginError = (apiError) => {
   if (normalized.includes('locked')) {
     return 'Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.';
   }
+  if (normalized.includes('cho owner duyet') || normalized.includes('chờ owner duyệt') || normalized.includes('pending')) {
+    return 'Tài khoản đang chờ owner duyệt.';
+  }
   return message || 'Đăng nhập thất bại.';
 };
 
@@ -90,12 +93,12 @@ export default function RoleLoginPage({ role }) {
 
             try {
               setError('');
-              const data = await loginWithGoogle({ idToken: response.credential }, { rememberMe });
+              const data = await loginWithGoogle({ idToken: response.credential, portal: 'staff' }, { rememberMe });
               await enforceRole(data);
               const targetPath = redirectPath || getRouteByRole(data.user.role);
               navigate(targetPath, { replace: true });
             } catch (apiError) {
-              setError(apiError?.message || normalizeLoginError(apiError));
+              setError(normalizeLoginError(apiError));
             }
           },
         });
@@ -139,15 +142,15 @@ export default function RoleLoginPage({ role }) {
     setSubmitting(true);
     try {
       const payload = isPhone
-        ? { phone: normalizedIdentifier, password }
-        : { email: normalizedIdentifier.toLowerCase(), password };
+        ? { phone: normalizedIdentifier, password, portal: 'staff' }
+        : { email: normalizedIdentifier.toLowerCase(), password, portal: 'staff' };
 
       const data = await login(payload, { rememberMe });
       await enforceRole(data);
       const targetPath = redirectPath || getRouteByRole(data.user.role);
       navigate(targetPath, { replace: true });
     } catch (apiError) {
-      setError(apiError?.message || normalizeLoginError(apiError));
+      setError(normalizeLoginError(apiError));
     } finally {
       setSubmitting(false);
     }

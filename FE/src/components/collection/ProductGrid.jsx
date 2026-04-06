@@ -13,7 +13,7 @@ function ProductCardSkeleton() {
   );
 }
 
-export default function ProductGrid({ products = [], loading = false, onRentNow, onQuickView }) {
+export default function ProductGrid({ products = [], loading = false, onRentNow, onBuyNow, onQuickView }) {
   if (loading) {
     return (
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -39,6 +39,7 @@ export default function ProductGrid({ products = [], loading = false, onRentNow,
           key={product?._id || product?.id || product?.slug || product?.name}
           product={product}
           onRentNow={onRentNow}
+          onBuyNow={onBuyNow}
           onQuickView={onQuickView}
         />
       ))}

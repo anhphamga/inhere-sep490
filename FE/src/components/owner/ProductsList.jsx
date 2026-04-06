@@ -10,10 +10,18 @@ import {
 import { currencyFormatter, toArray } from '../../utils/owner.utils'
 import { flattenCategoryNames, normalizeCategoryTree } from '../../utils/categoryTree'
 import AddProductModal from './AddProductModal'
+import { UI_IMAGE_FALLBACKS } from '../../constants/ui'
 
 const lifecycleOptions = ['', 'Available', 'Rented', 'Washing', 'Repair', 'Lost']
 const initialFilters = { category: '', size: '', color: '', lifecycleStatus: '' }
 const pageSize = 10
+const lifecycleLabelMap = {
+    Available: 'Sẵn sàng',
+    Rented: 'Đang cho thuê',
+    Washing: 'Đang giặt',
+    Repair: 'Đang sửa',
+    Lost: 'Thất lạc'
+}
 
 const toDisplayText = (value) => {
     if (value === null || value === undefined) {
@@ -39,6 +47,19 @@ const toDisplayText = (value) => {
     }
 
     return ''
+}
+
+const getDisplaySizes = (product) => {
+    const fromSizes = toArray(product?.sizes)
+        .map((item) => toDisplayText(item))
+        .filter(Boolean)
+
+    if (fromSizes.length > 0) {
+        return [...new Set(fromSizes)].join(', ')
+    }
+
+    const singleSize = toDisplayText(product?.size)
+    return singleSize || 'Không có'
 }
 
 export default function ProductsList({ onSelectProduct }) {
@@ -72,7 +93,7 @@ export default function ProductsList({ onSelectProduct }) {
             const response = await getOwnerProductsApi(params)
             setProducts(toArray(response?.data))
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to load products list.')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Không tải được danh sách sản phẩm.')
         } finally {
             setLoading(false)
         }
@@ -200,7 +221,7 @@ export default function ProductsList({ onSelectProduct }) {
             await importOwnerProductsApi(file)
             await loadProducts(filters)
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to import products.')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Không thể nhập danh sách sản phẩm.')
         } finally {
             setImporting(false)
             event.target.value = ''
@@ -226,14 +247,14 @@ export default function ProductsList({ onSelectProduct }) {
             link.remove()
             window.URL.revokeObjectURL(url)
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to export products.')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Không thể xuất danh sách sản phẩm.')
         } finally {
             setExporting(false)
         }
     }
 
     const handleDeleteProduct = async (productId) => {
-        const confirmed = window.confirm('Are you sure you want to delete this product?')
+        const confirmed = window.confirm('Bạn có chắc chắn muốn xóa sản phẩm này?')
         if (!confirmed) {
             return
         }
@@ -244,7 +265,7 @@ export default function ProductsList({ onSelectProduct }) {
             await deleteOwnerProductApi(productId)
             await loadProducts(filters)
         } catch (apiError) {
-            setError(apiError?.response?.data?.message || apiError?.message || 'Unable to delete product.')
+            setError(apiError?.response?.data?.message || apiError?.message || 'Không thể xóa sản phẩm.')
         } finally {
             setDeletingProductId('')
         }
@@ -272,7 +293,7 @@ export default function ProductsList({ onSelectProduct }) {
     }
 
     if (loading) {
-        return <div className="owner-card owner-loading">Loading products...</div>
+        return <div className="owner-card owner-loading">Đang tải danh sách sản phẩm...</div>
     }
 
     return (
@@ -286,7 +307,7 @@ export default function ProductsList({ onSelectProduct }) {
                             value={filters.category}
                             onChange={(event) => handleFilterChange('category', event.target.value)}
                         >
-                            <option value="">All Category</option>
+                            <option value="">Tất cả danh mục</option>
                             {categoryOptions.map((option, index) => (
                                 <option key={`category-${option}-${index}`} value={option}>{option}</option>
                             ))}
@@ -297,7 +318,7 @@ export default function ProductsList({ onSelectProduct }) {
                             value={filters.size}
                             onChange={(event) => handleFilterChange('size', event.target.value)}
                         >
-                            <option value="">size</option>
+                            <option value="">Kích cỡ</option>
                             {sizeOptions.map((option, index) => (
                                 <option key={`size-${option}-${index}`} value={option}>{option}</option>
                             ))}
@@ -308,7 +329,7 @@ export default function ProductsList({ onSelectProduct }) {
                             value={filters.color}
                             onChange={(event) => handleFilterChange('color', event.target.value)}
                         >
-                            <option value="">Color</option>
+                            <option value="">Màu sắc</option>
                             {colorOptions.map((option, index) => (
                                 <option key={`color-${option}-${index}`} value={option}>{option}</option>
                             ))}
@@ -319,9 +340,9 @@ export default function ProductsList({ onSelectProduct }) {
                             value={filters.lifecycleStatus}
                             onChange={(event) => handleFilterChange('lifecycleStatus', event.target.value)}
                         >
-                            <option value="">Status</option>
+                            <option value="">Trạng thái</option>
                             {lifecycleOptions.filter(Boolean).map((option) => (
-                                <option key={option} value={option}>{option}</option>
+                                <option key={option} value={option}>{lifecycleLabelMap[option] || option}</option>
                             ))}
                         </select>
 
@@ -346,7 +367,7 @@ export default function ProductsList({ onSelectProduct }) {
                         <input
                             ref={importInputRef}
                             type="file"
-                            accept=".xlsx,.xls"
+                            accept=".csv,.xlsx,.xls"
                             className="hidden"
                             onChange={handleImportProducts}
                         />
@@ -358,7 +379,7 @@ export default function ProductsList({ onSelectProduct }) {
                             disabled={importing}
                         >
                             <Upload className="w-4 h-4" />
-                            {importing ? 'Importing...' : 'Import'}
+                            {importing ? 'Đang nhập...' : 'Nhập CSV'}
                         </button>
 
                         <button
@@ -368,7 +389,7 @@ export default function ProductsList({ onSelectProduct }) {
                             disabled={exporting}
                         >
                             <Download className="w-4 h-4" />
-                            {exporting ? 'Exporting...' : 'Export'}
+                            {exporting ? 'Đang xuất...' : 'Xuất CSV'}
                         </button>
 
                         <button
@@ -377,7 +398,7 @@ export default function ProductsList({ onSelectProduct }) {
                             onClick={() => setOpenCreateModal(true)}
                         >
                             <Plus className="w-4 h-4" />
-                            Add Product
+                            Thêm sản phẩm
                         </button>
                     </div>
                 </div>
@@ -399,15 +420,15 @@ export default function ProductsList({ onSelectProduct }) {
                                             onChange={handleToggleSelectAllPage}
                                         />
                                     </th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Image</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Product Name</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Size</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Color</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Rent Price</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Sale Price</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Quantity</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Action</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Hình ảnh</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Tên sản phẩm</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Kích cỡ</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Màu sắc</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá thuê</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá bán</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Số lượng</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -415,11 +436,11 @@ export default function ProductsList({ onSelectProduct }) {
                                     const productId = product._id || product.id
                                     const totalQuantity = Number(product.totalQuantity || 0)
                                     const availableQuantity = Number(product.availableQuantity || 0)
-                                    const productStatus = availableQuantity > 0 ? 'In stock' : 'Out of stock'
-                                    const productName = toDisplayText(product.name) || 'N/A'
-                                    const productCategory = toDisplayText(product.category) || 'N/A'
-                                    const productSize = toDisplayText(product.size) || 'N/A'
-                                    const productColor = toDisplayText(product.color) || 'N/A'
+                                    const productStatus = availableQuantity > 0 ? 'Còn hàng' : 'Hết hàng'
+                                    const productName = toDisplayText(product.name) || 'Không có'
+                                    const productCategory = toDisplayText(product.category) || 'Không có'
+                                    const productSize = getDisplaySizes(product)
+                                    const productColor = toDisplayText(product.color) || 'Không có'
 
                                     return (
                                         <tr
@@ -437,7 +458,7 @@ export default function ProductsList({ onSelectProduct }) {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <img
-                                                    src={product?.images?.[0] || 'https://picsum.photos/seed/product-default/200/300'}
+                                                    src={product?.images?.[0] || UI_IMAGE_FALLBACKS.ownerProductCard}
                                                     alt={productName}
                                                     className="w-12 h-12 rounded-lg object-cover bg-slate-100"
                                                 />
@@ -454,7 +475,7 @@ export default function ProductsList({ onSelectProduct }) {
                                             <td className="px-6 py-4 text-sm font-semibold">{currencyFormatter.format(Number(product.baseSalePrice || 0))}</td>
                                             <td className="px-6 py-4 text-sm">{totalQuantity}</td>
                                             <td className="px-6 py-4 text-sm">
-                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'In stock' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'Còn hàng' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                                                     {productStatus}
                                                 </span>
                                             </td>
@@ -478,7 +499,7 @@ export default function ProductsList({ onSelectProduct }) {
                                 {paginatedProducts.length === 0 ? (
                                     <tr>
                                         <td className="px-6 py-6 text-sm text-slate-500" colSpan={10}>
-                                            No matching products.
+                                            Không có sản phẩm phù hợp.
                                         </td>
                                     </tr>
                                 ) : null}
@@ -496,17 +517,17 @@ export default function ProductsList({ onSelectProduct }) {
                         >
                             <div className="relative aspect-3/4 overflow-hidden bg-slate-100">
                                 <img
-                                    src={product?.images?.[0] || 'https://picsum.photos/seed/product-grid/400/600'}
-                                    alt={toDisplayText(product.name) || 'Product'}
+                                    src={product?.images?.[0] || UI_IMAGE_FALLBACKS.ownerProductGrid}
+                                    alt={toDisplayText(product.name) || 'Sản phẩm'}
                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                                 />
                             </div>
                             <div className="p-5">
-                                <h3 className="font-bold text-slate-900 line-clamp-1">{toDisplayText(product.name) || 'N/A'}</h3>
-                                <p className="text-sm text-slate-500 mb-2">{toDisplayText(product.category) || 'N/A'}</p>
-                                <p className="text-sm text-slate-500 mb-3">{toDisplayText(product.size) || 'N/A'} â€¢ {toDisplayText(product.color) || 'N/A'}</p>
+                                <h3 className="font-bold text-slate-900 line-clamp-1">{toDisplayText(product.name) || 'Không có'}</h3>
+                                <p className="text-sm text-slate-500 mb-2">{toDisplayText(product.category) || 'Không có'}</p>
+                                <p className="text-sm text-slate-500 mb-3">{getDisplaySizes(product)} • {toDisplayText(product.color) || 'Không có'}</p>
                                 <div className="flex flex-col">
-                                    <span className="text-xs text-slate-400 font-medium">Rent Price</span>
+                                    <span className="text-xs text-slate-400 font-medium">Giá thuê</span>
                                     <span className="text-lg font-bold text-[#1975d2]">{currencyFormatter.format(Number(product.baseRentPrice || 0))}</span>
                                 </div>
                             </div>
@@ -517,7 +538,7 @@ export default function ProductsList({ onSelectProduct }) {
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <p className="text-slate-600 font-medium">
-                    Showing {totalItems === 0 ? 0 : startItemIndex + 1} to {endItemIndex} of {totalItems} products
+                    Hiển thị {totalItems === 0 ? 0 : startItemIndex + 1}-{endItemIndex} trên tổng {totalItems} sản phẩm
                 </p>
 
                 <div className="flex items-center gap-2">

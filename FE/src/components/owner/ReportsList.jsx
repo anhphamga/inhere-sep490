@@ -1,27 +1,120 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { FileText, Download, Search, Calendar, FileSpreadsheet, FileJson, MoreVertical } from 'lucide-react';
-import { REPORTS } from '../../constants/ui.constants';
-import { cn } from '../../utils/ui.utils';
+import { useEffect, useMemo, useState } from 'react'
+import { Calendar, FileText, RefreshCw } from 'lucide-react'
+import { getOwnerRevenueAnalyticsApi } from '../../services/owner.service'
+
+const toArray = (value) => (Array.isArray(value) ? value : [])
+const toNumber = (value) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const toPeriodLabel = (item) => (
+  String(item?.label || item?.period || item?.date || item?.month || item?.name || '').trim()
+)
+
+const toRevenueValue = (item) => (
+  toNumber(item?.total || item?.revenue || item?.amount || item?.value)
+)
+
 export default function ReportsList() {
-    return (_jsxs("div", {
-        className: "space-y-6", children: [_jsxs("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-4", children: [_jsxs("div", { className: "flex flex-wrap items-center gap-3 flex-1", children: [_jsxs("div", { className: "relative w-full max-w-xs", children: [_jsx(Search, { className: "absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" }), _jsx("input", { type: "text", placeholder: "Search reports...", className: "w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1975d2]/50 text-sm outline-none" })] }), _jsxs("select", { className: "bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 focus:ring-[#1975d2] outline-none", children: [_jsx("option", { children: "All Categories" }), _jsx("option", { children: "Financial" }), _jsx("option", { children: "Inventory" }), _jsx("option", { children: "Staff" }), _jsx("option", { children: "Customers" })] })] }), _jsxs("button", { className: "bg-[#1975d2] hover:bg-[#1975d2]/90 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all", children: [_jsx(FileText, { className: "w-4 h-4" }), "Generate New Report"] })] }), _jsx("div", {
-            className: "bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden", children: _jsx("div", {
-                className: "overflow-x-auto", children: _jsxs("table", {
-                    className: "w-full text-left border-collapse", children: [_jsx("thead", { children: _jsxs("tr", { className: "border-b border-slate-100 bg-slate-50/50", children: [_jsx("th", { className: "px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider", children: "Report Name" }), _jsx("th", { className: "px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider", children: "Category" }), _jsx("th", { className: "px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider", children: "Date Generated" }), _jsx("th", { className: "px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider", children: "Format" }), _jsx("th", { className: "px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider", children: "Size" }), _jsx("th", { className: "px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right", children: "Actions" })] }) }), _jsx("tbody", {
-                        className: "divide-y divide-slate-100", children: REPORTS.map((report) => (_jsxs("tr", {
-                            className: "hover:bg-slate-50/80 transition-colors group", children: [_jsx("td", {
-                                className: "px-6 py-4 whitespace-nowrap", children: _jsxs("div", {
-                                    className: "flex items-center gap-3", children: [_jsxs("div", {
-                                        className: cn("p-2 rounded-lg", report.format === 'PDF' ? "bg-red-50 text-red-500" :
-                                            report.format === 'XLS' ? "bg-green-50 text-green-500" :
-                                                "bg-blue-50 text-blue-500"), children: [report.format === 'PDF' && _jsx(FileText, { className: "w-5 h-5" }), report.format === 'XLS' && _jsx(FileSpreadsheet, { className: "w-5 h-5" }), report.format === 'CSV' && _jsx(FileJson, { className: "w-5 h-5" })]
-                                    }), _jsx("span", { className: "text-sm font-bold text-slate-900 group-hover:text-[#1975d2] transition-colors", children: report.title })]
-                                })
-                            }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap", children: _jsx("span", { className: "px-2.5 py-1 text-[10px] font-bold rounded-full bg-slate-100 text-slate-600 uppercase", children: report.category }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-slate-500", children: _jsxs("div", { className: "flex items-center gap-2", children: [_jsx(Calendar, { className: "w-3.5 h-3.5" }), report.date] }) }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-700", children: report.format }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-sm text-slate-400 font-medium", children: report.size }), _jsx("td", { className: "px-6 py-4 whitespace-nowrap text-right", children: _jsxs("div", { className: "flex justify-end gap-2", children: [_jsxs("button", { className: "flex items-center gap-2 px-3 py-1.5 bg-[#1975d2] text-white text-xs font-bold rounded-lg hover:bg-[#1975d2]/90 transition-all", children: [_jsx(Download, { className: "w-3.5 h-3.5" }), "Download"] }), _jsx("button", { className: "p-1.5 text-slate-400 hover:text-slate-600 transition-colors", children: _jsx(MoreVertical, { className: "w-4 h-4" }) })] }) })]
-                        }, report.id)))
-                    })]
-                })
-            })
-        })]
-    }));
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [rows, setRows] = useState([])
+
+  const fetchReports = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      const response = await getOwnerRevenueAnalyticsApi({ period: 'month' })
+      const source = response?.series || response?.data || response?.items || []
+      setRows(toArray(source))
+    } catch (apiError) {
+      setError(apiError?.response?.data?.message || apiError?.message || 'Không thể tải báo cáo')
+      setRows([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchReports()
+  }, [])
+
+  const reportRows = useMemo(() => {
+    return rows
+      .map((item, index) => ({
+        id: String(item?._id || item?.id || `${index}`),
+        period: toPeriodLabel(item) || `Kỳ ${index + 1}`,
+        total: toRevenueValue(item),
+        createdAt: item?.createdAt || item?.updatedAt || item?.date || null,
+      }))
+      .filter((item) => item.period)
+  }, [rows])
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold text-slate-900">Revenue Reports</h3>
+        <button
+          type="button"
+          onClick={fetchReports}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Làm mới
+        </button>
+      </div>
+
+      {error ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Kỳ báo cáo</th>
+              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Doanh thu</th>
+              <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Mốc thời gian</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr>
+                <td colSpan={3} className="px-6 py-6 text-sm text-slate-500">Đang tải dữ liệu...</td>
+              </tr>
+            ) : null}
+
+            {!loading && reportRows.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-6 py-6 text-sm text-slate-500">
+                  Chưa có dữ liệu báo cáo từ API.
+                </td>
+              </tr>
+            ) : null}
+
+            {!loading && reportRows.map((row) => (
+              <tr key={row.id} className="hover:bg-slate-50/70">
+                <td className="px-6 py-4 text-sm font-semibold text-slate-900">
+                  <span className="inline-flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-slate-400" />
+                    {row.period}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-sm font-bold text-slate-800">{row.total.toLocaleString('vi-VN')}đ</td>
+                <td className="px-6 py-4 text-sm text-slate-500">
+                  <span className="inline-flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-slate-400" />
+                    {row.createdAt ? new Date(row.createdAt).toLocaleDateString('vi-VN') : 'N/A'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
 }

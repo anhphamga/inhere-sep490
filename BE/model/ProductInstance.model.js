@@ -27,7 +27,7 @@ const productInstanceSchema = new mongoose.Schema({
     type: Number,
     min: 0,
     max: 100,
-    enum: [0, 25, 50, 100],
+    enum: [0, 25, 50, 75, 100],
     default: 100
   },
   lifecycleStatus: {

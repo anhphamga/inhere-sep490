@@ -8,9 +8,11 @@ const resolveTag = (product = {}) => {
   return '';
 };
 
-export default function ProductCard({ product, onRentNow, onQuickView }) {
+export default function ProductCard({ product, onRentNow, onBuyNow, onQuickView }) {
   const image = product?.image || product?.imageUrl || product?.images?.[0] || '';
-  const price = Number(product?.price ?? product?.baseRentPrice ?? 0);
+  const rentPrice = Number(product?.baseRentPrice ?? product?.price ?? 0);
+  const buyPrice = Number(product?.baseSalePrice ?? 0);
+  const displayPrice = rentPrice > 0 ? rentPrice : buyPrice;
   const tag = resolveTag(product);
 
   return (
@@ -66,17 +68,29 @@ export default function ProductCard({ product, onRentNow, onQuickView }) {
 
       <div className="space-y-3 p-3.5">
         <h3 className="line-clamp-2 min-h-[2.75rem] text-sm font-semibold text-slate-800">{product?.name || 'Sản phẩm'}</h3>
-        <p className="text-lg font-extrabold text-amber-600">{formatVnd(price)}</p>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onRentNow?.(product);
-          }}
-          className="w-full rounded-xl bg-amber-500 px-3 py-2.5 text-sm font-semibold text-white transition duration-300 hover:bg-amber-600"
-        >
-          Thuê ngay
-        </button>
+        <p className="text-lg font-extrabold text-amber-600">{formatVnd(displayPrice)}</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRentNow?.(product);
+            }}
+            className="w-full rounded-xl bg-amber-500 px-3 py-2.5 text-sm font-semibold text-white transition duration-300 hover:bg-amber-600"
+          >
+            Thuê
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onBuyNow?.(product);
+            }}
+            className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-sm font-semibold text-amber-700 transition duration-300 hover:bg-amber-50"
+          >
+            Mua
+          </button>
+        </div>
       </div>
     </article>
   );

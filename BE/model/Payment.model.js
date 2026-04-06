@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
+const { ORDER_TYPE } = require('../constants/order.constants');
 
 const paymentSchema = new mongoose.Schema({
   orderType: {
     type: String,
-    enum: ['Rent', 'Sale'],
+    enum: [ORDER_TYPE.RENT, ORDER_TYPE.SALE],
     required: true
   },
   orderId: {

@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
 import { X, Upload, Loader2 } from "lucide-react";
+import { API_BASE_URL } from "../../config/env";
+import { useAuth } from "../../hooks/useAuth";
+
+const GUEST_TRY_ON_LIMIT = 5;
+const GUEST_TRY_ON_COUNT_KEY = "inhere_guest_virtual_try_on_count";
+const GUEST_TRY_ON_RESET_AT_KEY = "inhere_guest_virtual_try_on_reset_at";
+const GUEST_TRY_ON_RESET_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Virtual Try-On Modal Component
@@ -19,7 +26,8 @@ import { X, Upload, Loader2 } from "lucide-react";
  */
 
 export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:9000/api";
+    const apiBaseUrl = API_BASE_URL;
+    const { isAuthenticated } = useAuth();
     const [personImage, setPersonImage] = useState(null);
     const [outfitImage, setOutfitImage] = useState(null);
     const [personPreview, setPersonPreview] = useState("");
@@ -27,9 +35,35 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [guestTryCount, setGuestTryCount] = useState(0);
 
     // Auto-set outfit from product image
     const effectiveOutfitPreview = outfitPreview || outfitImageUrl;
+    const remainingGuestTries = Math.max(0, GUEST_TRY_ON_LIMIT - guestTryCount);
+    const guestLimitReached = !isAuthenticated && remainingGuestTries <= 0;
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            setGuestTryCount(0);
+            return;
+        }
+
+        const now = Date.now();
+        const storedCount = Number(localStorage.getItem(GUEST_TRY_ON_COUNT_KEY) || 0);
+        const storedResetAt = Number(localStorage.getItem(GUEST_TRY_ON_RESET_AT_KEY) || 0);
+
+        const isResetAtInvalid = !Number.isFinite(storedResetAt) || storedResetAt <= 0;
+        const shouldResetByTime = !isResetAtInvalid && now - storedResetAt >= GUEST_TRY_ON_RESET_WINDOW_MS;
+
+        if (isResetAtInvalid || shouldResetByTime) {
+            localStorage.setItem(GUEST_TRY_ON_COUNT_KEY, "0");
+            localStorage.setItem(GUEST_TRY_ON_RESET_AT_KEY, String(now));
+            setGuestTryCount(0);
+            return;
+        }
+
+        setGuestTryCount(Number.isFinite(storedCount) ? storedCount : 0);
+    }, [isAuthenticated, isOpen]);
 
     // Hide header and body scroll when modal is open
     useEffect(() => {
@@ -92,6 +126,11 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
             return;
         }
 
+        if (guestLimitReached) {
+            setError("Bạn đã hết 5 lượt thử đồ khi chưa đăng nhập. Vui lòng đăng nhập để tiếp tục.");
+            return;
+        }
+
         // Use uploaded outfit image or product image
         const outfitToUse = outfitImage || (outfitPreview || outfitImageUrl);
 
@@ -148,6 +187,17 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
             if (firstEntity?.image) {
                 const format = (firstEntity.format || "png").toLowerCase();
                 setResult(`data:image/${format};base64,${firstEntity.image}`);
+                if (!isAuthenticated) {
+                    setGuestTryCount((prev) => {
+                        const next = Math.min(prev + 1, GUEST_TRY_ON_LIMIT);
+                        const now = Date.now();
+                        localStorage.setItem(GUEST_TRY_ON_COUNT_KEY, String(next));
+                        if (!Number(localStorage.getItem(GUEST_TRY_ON_RESET_AT_KEY))) {
+                            localStorage.setItem(GUEST_TRY_ON_RESET_AT_KEY, String(now));
+                        }
+                        return next;
+                    });
+                }
             } else {
                 throw new Error(statusMessage || "API không trả về ảnh kết quả");
             }
@@ -160,7 +210,7 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
     };
 
     const urlToFile = async (url, filename) => {
-        const proxyUrl = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:9000/api"}/virtual-try-on/proxy-image?url=${encodeURIComponent(url)}`;
+        const proxyUrl = `${API_BASE_URL}/virtual-try-on/proxy-image?url=${encodeURIComponent(url)}`;
         const response = await fetch(proxyUrl);
 
         if (!response.ok) {
@@ -288,7 +338,7 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
                         {/* Generate Button */}
                         <button
                             onClick={handleGenerate}
-                            disabled={!personImage || (!outfitImage && !outfitImageUrl) || loading}
+                            disabled={!personImage || !effectiveOutfitPreview || loading || guestLimitReached}
                             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                             {loading ? (
@@ -303,6 +353,14 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
                                 </>
                             )}
                         </button>
+
+                        {!isAuthenticated && (
+                            <p className={`text-xs ${guestLimitReached ? "text-red-600" : "text-slate-500"}`}>
+                                {guestLimitReached
+                                    ? "Bạn đã dùng hết 5/5 lượt thử đồ cho khách. Đăng nhập để tiếp tục."
+                                    : `Bạn còn ${remainingGuestTries}/5 lượt thử đồ khi chưa đăng nhập.`}
+                            </p>
+                        )}
 
                         {error && (
                             <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>

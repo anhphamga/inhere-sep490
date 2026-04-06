@@ -1,4 +1,15 @@
 const PERMISSIONS = {
+  blog: {
+    post: {
+      create: 'CREATE_POST',
+      update: 'UPDATE_POST',
+      delete: 'DELETE_POST',
+      submit: 'SUBMIT_POST',
+      approve: 'APPROVE_POST',
+      publish: 'PUBLISH_POST',
+      view: 'VIEW_POST',
+    },
+  },
   orders_rent: {
     order: {
       read: 'orders_rent.order.read',
@@ -55,6 +66,13 @@ const PERMISSIONS = {
 };
 
 const LEGACY_PERMISSION_ALIASES = {
+  create_post: ['create_post'],
+  update_post: ['update_post'],
+  delete_post: ['delete_post'],
+  submit_post: ['submit_post'],
+  approve_post: ['approve_post'],
+  publish_post: ['publish_post'],
+  view_post: ['view_post'],
   'orders_rent.confirm': ['orders_rent.order.confirm'],
   'orders_rent.deposit': ['orders_rent.deposit.confirm'],
   'orders_rent.pickup': ['orders_rent.pickup.complete'],

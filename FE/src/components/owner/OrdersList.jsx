@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
     CalendarDays,
     CheckCircle2,
@@ -26,6 +27,20 @@ const ORDER_TYPES = {
     rent: 'rent'
 }
 const PAGE_SIZE = 10
+const RENT_STATUS_LABELS = {
+    PendingDeposit: 'Chờ đặt cọc',
+    Deposited: 'Đã đặt cọc',
+    Confirmed: 'Đã xác nhận',
+    WaitingPickup: 'Chờ lấy đồ',
+    Renting: 'Đang thuê',
+    WaitingReturn: 'Chờ trả đồ',
+    Late: 'Trễ hạn',
+    Returned: 'Đã trả đồ',
+    Cancelled: 'Đã hủy',
+    NoShow: 'Khách không đến',
+    Compensation: 'Bồi thường',
+    Completed: 'Hoàn tất'
+}
 
 const DEFAULT_STATUS_BADGE = 'bg-slate-100 text-slate-700'
 
@@ -50,9 +65,11 @@ const getStatusOptions = (orderType, saleMeta, orders) => (
     orderType === ORDER_TYPES.sale ? getSaleStatusOptions(saleMeta) : getRentStatusOptions(orders)
 )
 
+const getRentStatusLabel = (status) => RENT_STATUS_LABELS[status] || status || 'N/A'
+
 const getCustomerName = (order, orderType) => (
     orderType === ORDER_TYPES.sale
-        ? (order?.customerId?.name || order?.guestName || 'Khách guest')
+        ? (order?.customerId?.name || order?.guestName || 'Khách vãng lai')
         : (order?.customerId?.name || 'Khách thuê')
 )
 
@@ -79,11 +96,19 @@ const getSaleStatusOption = (saleMeta, status) => (
     toArray(saleMeta?.statusOptions).find((item) => item?.value === status) || null
 )
 
+const getStatusOptionLabel = (orderType, saleMeta, status) => {
+    if (status === 'All') return 'Tất cả trạng thái'
+    if (orderType === ORDER_TYPES.sale) {
+        return getSaleStatusOption(saleMeta, status)?.label || status
+    }
+    return getRentStatusLabel(status)
+}
+
 const getStatusLabel = (order, orderType, saleMeta) => {
     if (orderType === ORDER_TYPES.sale) {
         return order?.statusLabel || getSaleStatusOption(saleMeta, order?.status)?.label || order?.status || 'N/A'
     }
-    return order?.status || 'N/A'
+    return getRentStatusLabel(order?.status)
 }
 
 const getStatusClassName = (order, orderType, saleMeta) => {
@@ -115,8 +140,8 @@ const getTimelineItems = (order, orderType) => {
     }
 
     return [{
-        label: order?.status || 'Đơn thuê',
-        description: 'Dữ liệu lịch sử hiện tại được lấy từ API đơn thuê.',
+        label: getRentStatusLabel(order?.status) || '??n thu?',
+        description: 'D? li?u ti?n tr?nh hi?n ???c l?y t? API ??n thu?.',
         value: order?.updatedAt || order?.createdAt,
         actor: order?.staffId?.name || '',
         active: true
@@ -172,8 +197,12 @@ function TypeTab({ active, icon, label, description, onClick }) {
     )
 }
 
-export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdate = true }) {
-    const [orderType, setOrderType] = useState(ORDER_TYPES.sale)
+export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdate = true, fixedOrderType = '' }) {
+    const location = useLocation()
+    const normalizedFixedOrderType = fixedOrderType === ORDER_TYPES.rent || fixedOrderType === ORDER_TYPES.sale
+        ? fixedOrderType
+        : ''
+    const [orderType, setOrderType] = useState(normalizedFixedOrderType || ORDER_TYPES.sale)
     const [orders, setOrders] = useState([])
     const [saleMeta, setSaleMeta] = useState({ statusOptions: [] })
     const [loading, setLoading] = useState(true)
@@ -183,12 +212,18 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
     const [selectedOrder, setSelectedOrder] = useState(null)
     const [savingStatus, setSavingStatus] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
+    const [preselectOrderId, setPreselectOrderId] = useState(() => String(location.state?.preselectOrderId || '').trim())
 
     useEffect(() => {
-        if (!showRentOrders && orderType !== ORDER_TYPES.sale) {
+        if (normalizedFixedOrderType && orderType !== normalizedFixedOrderType) {
+            setOrderType(normalizedFixedOrderType)
+            return
+        }
+
+        if (!normalizedFixedOrderType && !showRentOrders && orderType !== ORDER_TYPES.sale) {
             setOrderType(ORDER_TYPES.sale)
         }
-    }, [orderType, showRentOrders])
+    }, [normalizedFixedOrderType, orderType, showRentOrders])
 
     useEffect(() => {
         setStatusFilter('All')
@@ -268,7 +303,13 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
     const stats = useMemo(() => {
         return orders.reduce((acc, order) => {
             acc.total += 1
-            acc.amount += getOrderAmount(order)
+            if (orderType === ORDER_TYPES.sale) {
+                if (order?.status === 'Completed') {
+                    acc.amount += getOrderAmount(order)
+                }
+            } else {
+                acc.amount += getOrderAmount(order)
+            }
 
             if (orderType === ORDER_TYPES.sale && order?.status === 'PendingConfirmation') acc.pending += 1
             if (orderType === ORDER_TYPES.sale && order?.status === 'Shipping') acc.processing += 1
@@ -295,6 +336,29 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
         }
     }, [currentPage, totalPages])
 
+    useEffect(() => {
+        const nextId = String(location.state?.preselectOrderId || '').trim()
+        if (nextId) {
+            setPreselectOrderId(nextId)
+        }
+    }, [location.state])
+
+    useEffect(() => {
+        if (!preselectOrderId || loading || orders.length === 0) {
+            return
+        }
+
+        const matchedOrder = orders.find((order) => {
+            const orderId = String(order?._id || order?.id || '').trim()
+            return orderId === preselectOrderId
+        })
+
+        if (matchedOrder) {
+            setSelectedOrder(matchedOrder)
+            setPreselectOrderId('')
+        }
+    }, [loading, orders, preselectOrderId])
+
     const handleUpdateSaleStatus = async (nextStatus) => {
         if (orderType !== ORDER_TYPES.sale || !selectedOrder?._id || !nextStatus || nextStatus === selectedOrder.status) {
             return
@@ -319,13 +383,13 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
 
     return (
         <div className="space-y-6">
-            {showRentOrders ? (
+            {showRentOrders && !normalizedFixedOrderType ? (
             <div className="grid gap-4 lg:grid-cols-2">
                 <TypeTab
                     active={orderType === ORDER_TYPES.sale}
                     icon={ShoppingBag}
                     label="Đơn mua"
-                    description="Quản lý đơn mua của guest và khách đã đăng nhập."
+                    description="Quản lý đơn mua của khách vãng lai và khách đã đăng nhập."
                     onClick={() => setOrderType(ORDER_TYPES.sale)}
                 />
                 <TypeTab
@@ -387,7 +451,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                         >
                             {getStatusOptions(orderType, saleMeta, orders).map((status) => (
                                 <option key={status} value={status}>
-                                    {status === 'All' ? 'Tất cả trạng thái' : (getSaleStatusOption(saleMeta, status)?.label || status)}
+                                    {getStatusOptionLabel(orderType, saleMeta, status)}
                                 </option>
                             ))}
                         </select>
@@ -662,13 +726,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                                                 value={currencyFormatter.format(selectedOrder.totalAmount || 0)}
                                                 tone="text-white"
                                             />
-                                            {orderType === ORDER_TYPES.sale ? (
-                                                <SummaryTile
-                                                    label="Phí vận chuyển"
-                                                    value={currencyFormatter.format(selectedOrder.shippingFee || 0)}
-                                                    tone="text-slate-100"
-                                                />
-                                            ) : (
+                                            {orderType === ORDER_TYPES.sale ? null : (
                                                 <SummaryTile
                                                     label="Tiền đặt cọc"
                                                     value={currencyFormatter.format(selectedOrder.depositAmount || 0)}
@@ -752,7 +810,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                                             <p className="mt-1 text-sm text-slate-500">
                                                 {orderType === ORDER_TYPES.sale
                                                     ? 'Chọn nhanh trạng thái tiếp theo cho đơn mua.'
-                                                    : 'Đơn thuê đang được theo dõi tổng quan trong dashboard owner.'}
+                                                    : 'Đơn thuê đang được theo dõi tổng quan trong bảng điều khiển.'}
                                             </p>
                                         </div>
 
@@ -784,11 +842,11 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                                             </div>
                                         ) : orderType === ORDER_TYPES.sale ? (
                                             <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
-                                                Owner đang ở chế độ chỉ xem cho đơn mua.
+                                                Chủ cửa hàng đang ở chế độ chỉ xem cho đơn mua.
                                             </div>
                                         ) : (
                                             <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
-                                                Màn này giúp owner xem nhanh khách hàng, timeline và giá trị đơn thuê. Những bước vận hành chuyên sâu của đơn thuê vẫn đi theo quy trình riêng của staff hoặc owner.
+                                                Màn này giúp chủ cửa hàng xem nhanh khách hàng, tiến trình và giá trị đơn thuê. Những bước vận hành chuyên sâu của đơn thuê vẫn đi theo quy trình riêng của nhân sự vận hành.
                                             </div>
                                         )}
                                     </section>
