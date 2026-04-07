@@ -1,4 +1,4 @@
-import { createElement, useEffect, useMemo, useState } from 'react'
+﻿import { createElement, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Lock, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Trash2, User, CreditCard } from 'lucide-react'
 import Header from '../components/common/Header'
@@ -12,31 +12,31 @@ import { checkoutApi, guestCheckoutApi } from '../services/order.service'
 import { getMyVouchersApi, validateVoucherApi } from '../services/voucher.service'
 import { ADDRESS_DATA } from '../constants/addressData'
 
-const PHONE_REGEX = /^(0|\+84)[0-9]{9,10}$/
+const PHONE_REGEX = /^\+?[0-9]{9,15}$/
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const ADDRESS_HISTORY_KEY = 'inhere_checkout_address_history'
 
 const PAYMENT_OPTIONS = [
-  { value: 'COD', title: '🚚 Thanh toán khi nhận hàng', description: 'Phù hợp khi bạn muốn kiểm tra đơn trước khi thanh toán.' },
-  { value: 'PayOS', title: '📱 Thanh toán bằng QR', description: 'Thanh toán ngay bằng mã QR hoặc chuyển khoản. Đơn được xác nhận tự động.' },
+  { value: 'COD', title: 'ðŸšš Thanh toÃ¡n khi nháº­n hÃ ng', description: 'PhÃ¹ há»£p khi báº¡n muá»‘n kiá»ƒm tra Ä‘Æ¡n trÆ°á»›c khi thanh toÃ¡n.' },
+  { value: 'PayOS', title: 'ðŸ“± Thanh toÃ¡n báº±ng QR', description: 'Thanh toÃ¡n ngay báº±ng mÃ£ QR hoáº·c chuyá»ƒn khoáº£n. ÄÆ¡n Ä‘Æ°á»£c xÃ¡c nháº­n tá»± Ä‘á»™ng.' },
 ]
 
-const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
+const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}Ä‘`
 const normalizePhoneInput = (value = '') => value.replace(/\s+/g, '').trim()
 const normalizeVoucherCode = (value = '') => String(value || '').trim().toUpperCase()
 const createIdempotencyKey = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 const formatVoucherValue = (voucher) => {
   if (String(voucher?.voucherType || '').toLowerCase() === 'percent') {
-    const maxDiscount = Number(voucher?.maxDiscount || 0) > 0 ? `, tối đa ${formatCurrency(voucher.maxDiscount)}` : ''
-    return `Giảm ${voucher.value}%${maxDiscount}`
+    const maxDiscount = Number(voucher?.maxDiscount || 0) > 0 ? `, tá»‘i Ä‘a ${formatCurrency(voucher.maxDiscount)}` : ''
+    return `Giáº£m ${voucher.value}%${maxDiscount}`
   }
 
-  return `Giảm ${formatCurrency(voucher?.value || 0)}`
+  return `Giáº£m ${formatCurrency(voucher?.value || 0)}`
 }
 const getVoucherAppliesLabel = (voucher) => {
-  if (voucher?.appliesTo === 'both') return 'Thuê và mua'
-  if (voucher?.appliesTo === 'rental') return 'Đơn thuê'
-  return 'Đơn mua'
+  if (voucher?.appliesTo === 'both') return 'ThuÃª vÃ  mua'
+  if (voucher?.appliesTo === 'rental') return 'ÄÆ¡n thuÃª'
+  return 'ÄÆ¡n mua'
 }
 
 const calculateDays = (startDate, endDate) => {
@@ -79,11 +79,21 @@ const saveAddressHistory = (entry) => {
   localStorage.setItem(ADDRESS_HISTORY_KEY, JSON.stringify(next))
 }
 
-const validateBuyForm = (form) => {
+const validateBuyForm = (form, options = {}) => {
   const errors = {}
+  const normalizedEmail = String(form.email || '').trim().toLowerCase()
+
   if (!form.name.trim()) errors.name = 'Vui lòng nhập họ và tên.'
   if (!PHONE_REGEX.test(normalizePhoneInput(form.phone))) errors.phone = 'Số điện thoại chưa hợp lệ.'
-  if (!EMAIL_REGEX.test(String(form.email || '').trim().toLowerCase())) errors.email = 'Email chưa hợp lệ.'
+  if (!EMAIL_REGEX.test(normalizedEmail)) {
+    errors.email = 'Email chưa hợp lệ.'
+  } else if (
+    options.requireVerifiedEmail &&
+    options.verifiedEmail &&
+    normalizedEmail !== String(options.verifiedEmail).trim().toLowerCase()
+  ) {
+    errors.email = 'Email thanh toán phải trùng với email đã xác minh.'
+  }
   if (!form.province) errors.province = 'Chọn tỉnh/thành phố.'
   if (!form.district) errors.district = 'Chọn quận/huyện.'
   if (!form.ward) errors.ward = 'Chọn phường/xã.'
@@ -128,11 +138,11 @@ function EmptyState() {
       <div className="mx-auto flex min-h-[calc(100vh-140px)] max-w-3xl items-center justify-center px-4 py-12">
         <div className="w-full rounded-[28px] border border-white/70 bg-white/90 p-10 text-center shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
           <ShoppingBag className="mx-auto mb-5 h-16 w-16 text-rose-300" />
-          <h1 className="text-3xl font-semibold text-slate-900">Giỏ hàng đang trống</h1>
-          <p className="mt-3 text-slate-500">Thêm sản phẩm thuê hoặc mua để xem tổng quan đơn hàng ở một nơi.</p>
+          <h1 className="text-3xl font-semibold text-slate-900">Giá» hÃ ng Ä‘ang trá»‘ng</h1>
+          <p className="mt-3 text-slate-500">ThÃªm sáº£n pháº©m thuÃª hoáº·c mua Ä‘á»ƒ xem tá»•ng quan Ä‘Æ¡n hÃ ng á»Ÿ má»™t nÆ¡i.</p>
           <div className="mt-8 flex justify-center gap-3">
-            <Link to="/buy" className="rounded-full bg-rose-600 px-6 py-3 font-semibold text-white">Khám phá sản phẩm</Link>
-            <Link to="/buy?purpose=rent&openBooking=1" className="rounded-full border border-slate-200 px-6 py-3 font-semibold text-slate-700">Đặt lịch thử đồ</Link>
+            <Link to="/buy" className="rounded-full bg-rose-600 px-6 py-3 font-semibold text-white">KhÃ¡m phÃ¡ sáº£n pháº©m</Link>
+            <Link to="/buy?purpose=rent&openBooking=1" className="rounded-full border border-slate-200 px-6 py-3 font-semibold text-slate-700">Äáº·t lá»‹ch thá»­ Ä‘á»“</Link>
           </div>
         </div>
       </div>
@@ -147,11 +157,11 @@ function CheckoutResultState({ message, rentalOrderId }) {
       <div className="mx-auto flex min-h-[calc(100vh-140px)] max-w-3xl items-center justify-center px-4 py-12">
         <div className="w-full rounded-[28px] border border-emerald-100 bg-white/95 p-10 text-center shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
           <CheckCircle2 className="mx-auto mb-5 h-16 w-16 text-emerald-500" />
-          <h1 className="text-3xl font-semibold text-slate-900">Đặt hàng thành công</h1>
+          <h1 className="text-3xl font-semibold text-slate-900">Äáº·t hÃ ng thÃ nh cÃ´ng</h1>
           <p className="mt-3 text-slate-500">{message}</p>
           <div className="mt-8 flex justify-center gap-3">
-            {rentalOrderId ? <Link to={`/rental/${rentalOrderId}`} className="rounded-full bg-sky-600 px-6 py-3 font-semibold text-white">Xem đơn thuê</Link> : null}
-            <Link to="/buy" className="rounded-full border border-slate-200 px-6 py-3 font-semibold text-slate-700">Tiếp tục mua sắm</Link>
+            {rentalOrderId ? <Link to={`/rental/${rentalOrderId}`} className="rounded-full bg-sky-600 px-6 py-3 font-semibold text-white">Xem Ä‘Æ¡n thuÃª</Link> : null}
+            <Link to="/buy" className="rounded-full border border-slate-200 px-6 py-3 font-semibold text-slate-700">Tiáº¿p tá»¥c mua sáº¯m</Link>
           </div>
         </div>
       </div>
@@ -168,7 +178,7 @@ function CartItemCard({ item, type, onRemove, onDecrease, onIncrease, subtotal }
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">{item.name}</h3>
-              <p className="mt-1 text-sm text-slate-500">Size {item.size} • Màu {item.color}</p>
+              <p className="mt-1 text-sm text-slate-500">Size {item.size} â€¢ MÃ u {item.color}</p>
             </div>
             <button type="button" onClick={() => onRemove(item.id)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-rose-500 transition hover:bg-rose-50">
               <Trash2 className="h-4 w-4" />
@@ -182,29 +192,29 @@ function CartItemCard({ item, type, onRemove, onDecrease, onIncrease, subtotal }
                 <button type="button" onClick={onIncrease} className="p-3 text-slate-600 transition hover:bg-slate-50"><Plus className="h-4 w-4" /></button>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3 text-right">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Đơn giá</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">ÄÆ¡n giÃ¡</p>
                 <p className="mt-1 text-sm font-medium text-slate-600">{formatCurrency(item.salePrice)}</p>
               </div>
             </div>
           ) : (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Lịch thuê</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Lá»‹ch thuÃª</p>
                 <p className="mt-1 text-sm font-medium text-slate-700">{new Date(item.rentStartDate).toLocaleDateString('vi-VN')} - {new Date(item.rentEndDate).toLocaleDateString('vi-VN')}</p>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Số ngày</p>
-                <p className="mt-1 text-sm font-medium text-slate-700">{item.days} ngày</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Sá»‘ ngÃ y</p>
+                <p className="mt-1 text-sm font-medium text-slate-700">{item.days} ngÃ y</p>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Đơn giá thuê</p>
-                <p className="mt-1 text-sm font-medium text-slate-700">{formatCurrency(item.rentPrice)}/ngày</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">ÄÆ¡n giÃ¡ thuÃª</p>
+                <p className="mt-1 text-sm font-medium text-slate-700">{formatCurrency(item.rentPrice)}/ngÃ y</p>
               </div>
             </div>
           )}
         </div>
         <div className="sm:w-40 sm:border-l sm:border-slate-100 sm:pl-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{type === 'buy' ? 'Thành tiền' : 'Tạm tính'}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{type === 'buy' ? 'ThÃ nh tiá»n' : 'Táº¡m tÃ­nh'}</p>
           <p className={`mt-2 text-xl font-semibold ${type === 'buy' ? 'text-rose-700' : 'text-sky-700'}`}>{formatCurrency(subtotal)}</p>
         </div>
       </div>
@@ -244,9 +254,9 @@ export default function CartPage() {
     name: '',
     phone: '',
     email: '',
-    province: 'Quảng Nam',
-    district: 'Thành phố Hội An',
-    ward: 'Cẩm Phô',
+    province: 'Quáº£ng Nam',
+    district: 'ThÃ nh phá»‘ Há»™i An',
+    ward: 'Cáº©m PhÃ´',
     detailedAddress: '',
     paymentMethod: 'COD',
     note: ''
@@ -377,6 +387,14 @@ export default function CartPage() {
 
   const handleBuyFieldChange = (field, value) => {
     setBuyForm((prev) => ({ ...prev, [field]: value }))
+
+    if (
+      field === 'email' &&
+      !isAuthenticated &&
+      guestVerificationSession?.verificationToken
+    ) {
+      setGuestVerificationSession(null)
+    }
     setBuyFieldErrors((prev) => {
       if (!prev[field]) return prev
       const next = { ...prev }
@@ -418,7 +436,7 @@ export default function CartPage() {
     if (!code) {
       clearAppliedVoucherState()
       setOrderVoucherMessage('')
-      setOrderVoucherError('Vui lòng nhập mã voucher.')
+      setOrderVoucherError('Vui lÃ²ng nháº­p mÃ£ voucher.')
       return
     }
 
@@ -449,12 +467,12 @@ export default function CartPage() {
 
       const [buyResult, rentalResult] = validations
       const candidates = [
-        buyResult?.valid ? { target: 'buy', result: buyResult, label: 'đơn mua' } : null,
-        rentalResult?.valid ? { target: 'rental', result: rentalResult, label: 'đơn thuê' } : null
+        buyResult?.valid ? { target: 'buy', result: buyResult, label: 'Ä‘Æ¡n mua' } : null,
+        rentalResult?.valid ? { target: 'rental', result: rentalResult, label: 'Ä‘Æ¡n thuÃª' } : null
       ].filter(Boolean)
 
       if (candidates.length === 0) {
-        setOrderVoucherError(buyResult?.message || rentalResult?.message || 'Voucher không hợp lệ.')
+        setOrderVoucherError(buyResult?.message || rentalResult?.message || 'Voucher khÃ´ng há»£p lá»‡.')
         return
       }
 
@@ -469,9 +487,9 @@ export default function CartPage() {
       }
 
       setOrderVoucherCode(selected.result.code || code)
-      setOrderVoucherMessage(`Đã áp voucher cho ${selected.label}.`)
+      setOrderVoucherMessage(`ÄÃ£ Ã¡p voucher cho ${selected.label}.`)
     } catch (error) {
-      setOrderVoucherError(error.response?.data?.message || 'Không thể kiểm tra voucher lúc này.')
+      setOrderVoucherError(error.response?.data?.message || 'KhÃ´ng thá»ƒ kiá»ƒm tra voucher lÃºc nÃ y.')
     } finally {
       setOrderVoucherLoading(false)
     }
@@ -510,12 +528,12 @@ export default function CartPage() {
 
       const [buyResult, rentalResult] = validations
       const candidates = [
-        buyResult?.valid ? { target: 'buy', result: buyResult, label: 'đơn mua' } : null,
-        rentalResult?.valid ? { target: 'rental', result: rentalResult, label: 'đơn thuê' } : null
+        buyResult?.valid ? { target: 'buy', result: buyResult, label: 'Ä‘Æ¡n mua' } : null,
+        rentalResult?.valid ? { target: 'rental', result: rentalResult, label: 'Ä‘Æ¡n thuÃª' } : null
       ].filter(Boolean)
 
       if (candidates.length === 0) {
-        setOrderVoucherError('Voucher này hiện chưa áp dụng được cho đơn hàng của bạn.')
+        setOrderVoucherError('Voucher nÃ y hiá»‡n chÆ°a Ã¡p dá»¥ng Ä‘Æ°á»£c cho Ä‘Æ¡n hÃ ng cá»§a báº¡n.')
         return
       }
 
@@ -530,9 +548,9 @@ export default function CartPage() {
       }
 
       setOrderVoucherCode(selected.result.code || code)
-      setOrderVoucherMessage(`Đã áp voucher cho ${selected.label}.`)
+      setOrderVoucherMessage(`ÄÃ£ Ã¡p voucher cho ${selected.label}.`)
     } catch (error) {
-      setOrderVoucherError(error.response?.data?.message || 'Không thể áp voucher lúc này.')
+      setOrderVoucherError(error.response?.data?.message || 'KhÃ´ng thá»ƒ Ã¡p voucher lÃºc nÃ y.')
     } finally {
       setOrderVoucherLoading(false)
     }
@@ -587,7 +605,7 @@ export default function CartPage() {
       return setGuestVerificationOpen(true)
     }
     if (rentalItems.length > 0 && rentalItems.some((item) => !item.rentStartDate || !item.rentEndDate)) {
-      return setRentalError('Vui lòng chọn ngày thuê cho tất cả sản phẩm.')
+      return setRentalError('Vui lÃ²ng chá»n ngÃ y thuÃª cho táº¥t cáº£ sáº£n pháº©m.')
     }
     const maxRentalDays = parseInt(import.meta.env.VITE_MAX_RENTAL_DAYS || '30', 10)
     const overLimitItem = rentalItems.find((item) => {
@@ -596,13 +614,17 @@ export default function CartPage() {
       return days > maxRentalDays
     })
     if (overLimitItem) {
-      return setRentalError(`Thời gian thuê tối đa là ${maxRentalDays} ngày cho mỗi sản phẩm.`)
+      return setRentalError(`Thá»i gian thuÃª tá»‘i Ä‘a lÃ  ${maxRentalDays} ngÃ y cho má»—i sáº£n pháº©m.`)
     }
 
-    const validationErrors = validateBuyForm(buyForm)
+    const verifiedEmailFromSession = String(session?.guestVerification?.email || '').trim().toLowerCase()
+    const validationErrors = validateBuyForm(buyForm, {
+      requireVerifiedEmail: buyItems.length > 0 && !isAuthenticated && Boolean(session?.verificationToken),
+      verifiedEmail: verifiedEmailFromSession,
+    })
     if (buyItems.length > 0 && Object.keys(validationErrors).length > 0) {
       setBuyFieldErrors(validationErrors)
-      return setBuyError('Vui lòng hoàn thiện đầy đủ thông tin giao hàng.')
+      return setBuyError('Vui lÃ²ng hoÃ n thiá»‡n Ä‘áº§y Ä‘á»§ thÃ´ng tin giao hÃ ng.')
     }
 
     setRentalLoading(rentalItems.length > 0)
@@ -620,11 +642,11 @@ export default function CartPage() {
         createdRentalOrderId = rentalResponse.data?._id || null
         if (createdRentalOrderId) {
           if (rentalPaymentMethod === 'PayOS') {
-            // Tạo link PayOS và redirect — không gọi payDepositApi
+            // Táº¡o link PayOS vÃ  redirect â€” khÃ´ng gá»i payDepositApi
             clearRentalCart()
             const linkData = await createDepositPaymentLinkApi(createdRentalOrderId)
             window.location.href = linkData.data.paymentUrl
-            return // dừng tại đây, trang sẽ redirect
+            return // dá»«ng táº¡i Ä‘Ã¢y, trang sáº½ redirect
           }
           await payDepositApi(createdRentalOrderId, { method: rentalPaymentMethod })
           clearRentalCart()
@@ -638,7 +660,7 @@ export default function CartPage() {
         saleOrderId = response.data?.orderId || null
         clearBuyCart()
 
-        // Nếu chọn PayOS cho đơn mua → tạo link và redirect (cả guest lẫn member)
+        // Náº¿u chá»n PayOS cho Ä‘Æ¡n mua â†’ táº¡o link vÃ  redirect (cáº£ guest láº«n member)
         if (buyForm.paymentMethod === 'PayOS' && saleOrderId) {
           const linkData = await createSalePaymentLinkApi(saleOrderId)
           window.location.href = linkData.data.paymentUrl
@@ -656,18 +678,18 @@ export default function CartPage() {
       }
 
       const messages = []
-      if (createdRentalOrderId) messages.push(`đơn thuê ${String(createdRentalOrderId).slice(-8)} đã được tạo và thanh toán cọc`)
-      if (saleOrderId) messages.push(`đơn mua ${String(saleOrderId).slice(-8)} đã được ghi nhận`)
+      if (createdRentalOrderId) messages.push(`Ä‘Æ¡n thuÃª ${String(createdRentalOrderId).slice(-8)} Ä‘Ã£ Ä‘Æ°á»£c táº¡o vÃ  thanh toÃ¡n cá»c`)
+      if (saleOrderId) messages.push(`Ä‘Æ¡n mua ${String(saleOrderId).slice(-8)} Ä‘Ã£ Ä‘Æ°á»£c ghi nháº­n`)
 
-      const successMessage = messages.length > 0 ? `Đã xử lý thành công ${messages.join(', ')}.` : 'Đơn hàng đã được ghi nhận.'
+      const successMessage = messages.length > 0 ? `ÄÃ£ xá»­ lÃ½ thÃ nh cÃ´ng ${messages.join(', ')}.` : 'ÄÆ¡n hÃ ng Ä‘Ã£ Ä‘Æ°á»£c ghi nháº­n.'
       setBuySuccess(successMessage)
       setCheckoutResult({ message: successMessage, rentalOrderId: createdRentalOrderId })
     } catch (err) {
       if (createdRentalOrderId) {
         clearRentalCart()
-        setBuyError(`Đơn thuê ${String(createdRentalOrderId).slice(-8)} đã tạo thành công nhưng phần đơn mua bị lỗi. ${err.response?.data?.message || 'Vui lòng thử lại phần mua.'}`)
+        setBuyError(`ÄÆ¡n thuÃª ${String(createdRentalOrderId).slice(-8)} Ä‘Ã£ táº¡o thÃ nh cÃ´ng nhÆ°ng pháº§n Ä‘Æ¡n mua bá»‹ lá»—i. ${err.response?.data?.message || 'Vui lÃ²ng thá»­ láº¡i pháº§n mua.'}`)
       } else {
-        setBuyError(err.response?.data?.message || 'Không thể xử lý checkout. Vui lòng thử lại.')
+        setBuyError(err.response?.data?.message || 'KhÃ´ng thá»ƒ xá»­ lÃ½ checkout. Vui lÃ²ng thá»­ láº¡i.')
       }
 
       if (!isAuthenticated && err.response?.status === 401) {
@@ -687,8 +709,6 @@ export default function CartPage() {
 
   if (combinedCount === 0) return <EmptyState />
 
-  const guestVerificationMethodLabel = guestVerificationSession?.guestVerification?.phoneVerified ? 'số điện thoại' : 'email'
-
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#f8fafc_18%,#f8fafc_100%)]">
       <div className="sticky top-0 z-30 border-b border-white/60 bg-[linear-gradient(135deg,rgba(255,247,237,0.94),rgba(255,255,255,0.96))] backdrop-blur">
@@ -696,22 +716,22 @@ export default function CartPage() {
           <div>
             <Link to="/buy" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-800">
               <ArrowLeft className="h-4 w-4" />
-              Quay lại mua sắm
+              Quay láº¡i mua sáº¯m
             </Link>
             <div className="mt-2 flex items-center gap-3">
               <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-sm">
                 <Lock className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">Secure checkout</p>
-                <h1 className="text-lg font-semibold text-slate-950 sm:text-xl">Hoàn tất đơn hàng INHERE</h1>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">Thanh toÃ¡n an toÃ n</p>
+                <h1 className="text-lg font-semibold text-slate-950 sm:text-xl">HoÃ n táº¥t Ä‘Æ¡n hÃ ng INHERE</h1>
               </div>
             </div>
           </div>
 
           <div className="hidden rounded-2xl border border-rose-100 bg-white/80 px-4 py-3 text-right shadow-sm sm:block">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Đơn hiện tại</p>
-            <p className="mt-1 text-sm font-medium text-slate-600">{combinedCount} sản phẩm</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">ÄÆ¡n hiá»‡n táº¡i</p>
+            <p className="mt-1 text-sm font-medium text-slate-600">{combinedCount} sáº£n pháº©m</p>
             <p className="mt-1 text-lg font-semibold text-slate-950">{formatCurrency(combinedTotal)}</p>
           </div>
         </div>
@@ -722,7 +742,7 @@ export default function CartPage() {
           <section className="space-y-8">
             {rentalItems.length > 0 ? (
               <div className="rounded-[28px] border border-sky-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.75),rgba(255,255,255,0.95))] p-5 lg:p-6">
-                <h2 className="mb-5 text-xl font-semibold text-slate-900">Giỏ thuê</h2>
+                <h2 className="mb-5 text-xl font-semibold text-slate-900">Giá» thuÃª</h2>
                 <div className="space-y-4">
                   {rentalItemsWithTotal.map((item) => (
                     <CartItemCard key={item.id} item={item} type="rental" onRemove={removeRentalItem} subtotal={item.subtotal} />
@@ -733,7 +753,7 @@ export default function CartPage() {
 
             {buyItems.length > 0 ? (
               <div className="rounded-[28px] border border-rose-100 bg-[linear-gradient(180deg,rgba(255,241,242,0.76),rgba(255,255,255,0.96))] p-5 lg:p-6">
-                <h2 className="mb-5 text-xl font-semibold text-slate-900">Giỏ mua</h2>
+                <h2 className="mb-5 text-xl font-semibold text-slate-900">Giá» mua</h2>
                 <div className="space-y-4">
                   {buyItems.map((item) => (
                     <CartItemCard
@@ -750,10 +770,10 @@ export default function CartPage() {
 
                 <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-5">
                   <div className="space-y-3">
-                    <SummaryRow label="Tạm tính" value={formatCurrency(buySubtotal)} />
+                    <SummaryRow label="Táº¡m tÃ­nh" value={formatCurrency(buySubtotal)} />
                     {buyVoucherResult ? <SummaryRow label={`Voucher (${buyVoucherResult.code})`} value={`-${formatCurrency(buyDiscountAmount)}`} /> : null}
                     <div className="border-t border-slate-200 pt-3">
-                      <SummaryRow label="Tổng thanh toán" value={formatCurrency(buyGrandTotal)} emphasized />
+                      <SummaryRow label="Tá»•ng thanh toÃ¡n" value={formatCurrency(buyGrandTotal)} emphasized />
                     </div>
                   </div>
                 </div>
@@ -764,31 +784,31 @@ export default function CartPage() {
           <aside className="xl:sticky xl:top-24 xl:self-start">
             <div className="space-y-5 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
               <div className="border-b border-slate-100 pb-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">Checkout</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-950">Thanh toán thuê và mua</h3>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">Thanh toÃ¡n</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-950">Thanh toÃ¡n thuÃª vÃ  mua</h3>
               </div>
 
               {combinedCount > 0 ? (
                 <div className="rounded-3xl border border-amber-100 bg-amber-50/70 p-5">
-                  <p className="text-sm font-semibold text-slate-900">Voucher đơn hàng</p>
-                  <p className="mt-1 text-sm text-slate-500">Hệ thống sẽ tự áp mã vào đơn mua hoặc đơn thuê phù hợp.</p>
+                  <p className="text-sm font-semibold text-slate-900">Voucher Ä‘Æ¡n hÃ ng</p>
+                  <p className="mt-1 text-sm text-slate-500">Há»‡ thá»‘ng sáº½ tá»± Ã¡p mÃ£ vÃ o Ä‘Æ¡n mua hoáº·c Ä‘Æ¡n thuÃª phÃ¹ há»£p.</p>
                   <div className="mt-4 flex gap-2">
                     <input
                       type="text"
                       value={orderVoucherCode}
                       onChange={(event) => setOrderVoucherCode(normalizeVoucherCode(event.target.value))}
-                      placeholder="Nhập mã voucher"
+                      placeholder="Nháº­p mÃ£ voucher"
                       className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-amber-300"
                     />
                     <button type="button" onClick={handleOrderVoucher} disabled={orderVoucherLoading} className="rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white">
-                      {orderVoucherLoading ? 'Đang áp dụng...' : 'Áp dụng'}
+                      {orderVoucherLoading ? 'Äang Ã¡p dá»¥ng...' : 'Ãp dá»¥ng'}
                     </button>
                   </div>
                   {isAuthenticated ? (
                     <div className="mt-4">
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Voucher gợi ý</p>
-                        {voucherSuggestionsLoading ? <span className="text-xs text-slate-400">Đang tải...</span> : null}
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Voucher gá»£i Ã½</p>
+                        {voucherSuggestionsLoading ? <span className="text-xs text-slate-400">Äang táº£i...</span> : null}
                       </div>
                       {eligibleVoucherSuggestions.length > 0 ? (
                         <div className="space-y-2">
@@ -816,11 +836,11 @@ export default function CartPage() {
                                     </div>
                                     <p className="mt-1 text-sm text-slate-600">{formatVoucherValue(voucher)}</p>
                                     <p className="mt-1 text-xs text-slate-400">
-                                      Đơn tối thiểu {formatCurrency(voucher.minOrderValue || 0)}
+                                      ÄÆ¡n tá»‘i thiá»ƒu {formatCurrency(voucher.minOrderValue || 0)}
                                     </p>
                                   </div>
                                   <span className="text-xs font-semibold text-amber-600">
-                                    {isSelected ? 'Đã chọn' : 'Chọn nhanh'}
+                                    {isSelected ? 'ÄÃ£ chá»n' : 'Chá»n nhanh'}
                                   </span>
                                 </div>
                               </button>
@@ -829,7 +849,7 @@ export default function CartPage() {
                         </div>
                       ) : !voucherSuggestionsLoading ? (
                         <p className="rounded-2xl bg-white/80 px-4 py-3 text-sm text-slate-500">
-                          Chưa có voucher phù hợp với giỏ hàng hiện tại.
+                          ChÆ°a cÃ³ voucher phÃ¹ há»£p vá»›i giá» hÃ ng hiá»‡n táº¡i.
                         </p>
                       ) : null}
                     </div>
@@ -842,28 +862,28 @@ export default function CartPage() {
               {rentalItems.length > 0 ? (
                 <div className="rounded-3xl border border-sky-100 bg-sky-50/40 p-5">
                   <div className="space-y-3">
-                    <SummaryRow label="Tạm tính thuê" value={formatCurrency(rentalTotalAmount)} />
+                    <SummaryRow label="Táº¡m tÃ­nh thuÃª" value={formatCurrency(rentalTotalAmount)} />
                     {rentalVoucherResult ? <SummaryRow label={`Voucher (${rentalVoucherResult.code})`} value={`-${formatCurrency(rentalDiscountAmount)}`} /> : null}
-                    <SummaryRow label="Còn lại tại cửa hàng" value={formatCurrency(rentalRemainingAmount)} />
+                    <SummaryRow label="CÃ²n láº¡i táº¡i cá»­a hÃ ng" value={formatCurrency(rentalRemainingAmount)} />
                     <div className="border-t border-slate-200 pt-3">
-                      <SummaryRow label="Đặt cọc 50%" value={formatCurrency(rentalDepositAmount)} emphasized />
+                      <SummaryRow label="Äáº·t cá»c 50%" value={formatCurrency(rentalDepositAmount)} emphasized />
                     </div>
                   </div>
 
                   <div className="mt-5 space-y-2">
                     <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'Cash' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
                       <input type="radio" name="rentalPaymentMethod" value="Cash" checked={rentalPaymentMethod === 'Cash'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
-                      <span className="text-slate-700">💵 Tiền mặt tại cửa hàng</span>
+                      <span className="text-slate-700">ðŸ’µ Tiá»n máº·t táº¡i cá»­a hÃ ng</span>
                     </label>
                     <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'PayOS' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
                       <input type="radio" name="rentalPaymentMethod" value="PayOS" checked={rentalPaymentMethod === 'PayOS'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
-                      <span className="text-slate-700">📱 Thanh toán bằng QR</span>
-                      <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-600">Nhanh hơn</span>
+                      <span className="text-slate-700">ðŸ“± Thanh toÃ¡n báº±ng QR</span>
+                      <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-600">Nhanh hÆ¡n</span>
                     </label>
                   </div>
                   {rentalPaymentMethod === 'PayOS' && (
                     <p className="mt-2 text-xs text-indigo-600 bg-indigo-50 rounded-xl px-3 py-2">
-                      Bạn sẽ được chuyển đến trang thanh toán QR để quét mã hoặc chuyển khoản. Đơn thuê sẽ được xác nhận ngay sau khi thanh toán.
+                      Báº¡n sáº½ Ä‘Æ°á»£c chuyá»ƒn Ä‘áº¿n trang thanh toÃ¡n QR Ä‘á»ƒ quÃ©t mÃ£ hoáº·c chuyá»ƒn khoáº£n. ÄÆ¡n thuÃª sáº½ Ä‘Æ°á»£c xÃ¡c nháº­n ngay sau khi thanh toÃ¡n.
                     </p>
                   )}
 
@@ -871,7 +891,7 @@ export default function CartPage() {
 
                   {buyItems.length === 0 ? (
                     <button type="button" onClick={handleCheckout} disabled={rentalLoading} className="mt-5 w-full rounded-full bg-sky-600 px-5 py-3 font-semibold text-white">
-                      {rentalLoading ? 'Đang xử lý...' : `Đặt cọc ${formatCurrency(rentalDepositAmount)}`}
+                      {rentalLoading ? 'Äang xá»­ lÃ½...' : `Äáº·t cá»c ${formatCurrency(rentalDepositAmount)}`}
                     </button>
                   ) : null}
                 </div>
@@ -884,18 +904,18 @@ export default function CartPage() {
                   ) : (
                     <>
                       <div className={`${!isAuthenticated ? 'mb-5' : 'hidden'} rounded-2xl border px-4 py-3 text-sm ${guestVerificationSession?.verificationToken ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                        {guestVerificationSession?.verificationToken ? `Đã xác minh guest bằng ${guestVerificationMethodLabel}.` : 'Bạn cần xác minh bằng số điện thoại hoặc email trước khi thanh toán.'}
+                        {guestVerificationSession?.verificationToken ? 'ÄÃ£ xÃ¡c minh guest báº±ng email.' : 'Báº¡n cáº§n xÃ¡c minh email trÆ°á»›c khi thanh toÃ¡n.'}
                       </div>
 
-                      <CheckoutSection icon={User} title="Thông tin khách hàng" subtitle="Thông tin liên hệ để xác nhận đơn và cập nhật giao hàng.">
+                      <CheckoutSection icon={User} title="ThÃ´ng tin khÃ¡ch hÃ ng" subtitle="ThÃ´ng tin liÃªn há»‡ Ä‘á»ƒ xÃ¡c nháº­n Ä‘Æ¡n vÃ  cáº­p nháº­t giao hÃ ng.">
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div className="sm:col-span-2">
-                            <label className="mb-2 block text-sm font-medium text-slate-700">Họ và tên</label>
+                            <label className="mb-2 block text-sm font-medium text-slate-700">Há» vÃ  tÃªn</label>
                             <input type="text" value={buyForm.name} onChange={(event) => handleBuyFieldChange('name', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300" />
                             <FieldError message={buyFieldErrors.name} />
                           </div>
                           <div>
-                            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700"><Phone className="h-4 w-4 text-slate-400" />Số điện thoại</label>
+                            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700"><Phone className="h-4 w-4 text-slate-400" />Sá»‘ Ä‘iá»‡n thoáº¡i</label>
                             <input type="tel" value={buyForm.phone} onChange={(event) => handleBuyFieldChange('phone', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300" />
                             <FieldError message={buyFieldErrors.phone} />
                           </div>
@@ -907,31 +927,31 @@ export default function CartPage() {
                         </div>
                       </CheckoutSection>
 
-                      <CheckoutSection icon={MapPin} title="Địa chỉ giao hàng" subtitle="Chọn khu vực giao hàng.">
+                      <CheckoutSection icon={MapPin} title="Äá»‹a chá»‰ giao hÃ ng" subtitle="Chá»n khu vá»±c giao hÃ ng.">
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
-                            <label className="mb-2 block text-sm font-medium text-slate-700">Tỉnh / Thành phố</label>
+                            <label className="mb-2 block text-sm font-medium text-slate-700">Tá»‰nh / ThÃ nh phá»‘</label>
                             <select value={buyForm.province} onChange={(event) => handleBuyFieldChange('province', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300">
                               {ADDRESS_DATA.map((item) => <option key={item.province} value={item.province}>{item.province}</option>)}
                             </select>
                             <FieldError message={buyFieldErrors.province} />
                           </div>
                           <div>
-                            <label className="mb-2 block text-sm font-medium text-slate-700">Quận / Huyện</label>
+                            <label className="mb-2 block text-sm font-medium text-slate-700">Quáº­n / Huyá»‡n</label>
                             <select value={buyForm.district} onChange={(event) => handleBuyFieldChange('district', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300">
                               {districtOptions.map((item) => <option key={item.district} value={item.district}>{item.district}</option>)}
                             </select>
                             <FieldError message={buyFieldErrors.district} />
                           </div>
                           <div className="sm:col-span-2">
-                            <label className="mb-2 block text-sm font-medium text-slate-700">Phường / Xã</label>
+                            <label className="mb-2 block text-sm font-medium text-slate-700">PhÆ°á»ng / XÃ£</label>
                             <select value={buyForm.ward} onChange={(event) => handleBuyFieldChange('ward', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300">
                               {wardOptions.map((ward) => <option key={ward} value={ward}>{ward}</option>)}
                             </select>
                             <FieldError message={buyFieldErrors.ward} />
                           </div>
                           <div className="sm:col-span-2">
-                            <label className="mb-2 block text-sm font-medium text-slate-700">Địa chỉ chi tiết</label>
+                            <label className="mb-2 block text-sm font-medium text-slate-700">Äá»‹a chá»‰ chi tiáº¿t</label>
                             <input type="text" value={buyForm.detailedAddress} onChange={(event) => handleBuyFieldChange('detailedAddress', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300" />
                             <FieldError message={buyFieldErrors.detailedAddress} />
                           </div>
@@ -940,12 +960,12 @@ export default function CartPage() {
                         {addressSuggestions.length > 0 ? <div className="rounded-2xl bg-white px-4 py-4 text-sm text-slate-500">{addressSuggestions[0].detailedAddress}</div> : null}
 
                         <div className="rounded-2xl bg-white px-4 py-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Địa chỉ giao hàng</p>
-                          <p className="mt-2 text-sm leading-6 text-slate-700">{addressPreview || 'Địa chỉ sẽ hiển thị ở đây sau khi bạn nhập đầy đủ thông tin.'}</p>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Äá»‹a chá»‰ giao hÃ ng</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-700">{addressPreview || 'Äá»‹a chá»‰ sáº½ hiá»ƒn thá»‹ á»Ÿ Ä‘Ã¢y sau khi báº¡n nháº­p Ä‘áº§y Ä‘á»§ thÃ´ng tin.'}</p>
                         </div>
                       </CheckoutSection>
 
-                      <CheckoutSection icon={CreditCard} title="Phương thức thanh toán" subtitle="Chọn phương thức thanh toán.">
+                      <CheckoutSection icon={CreditCard} title="PhÆ°Æ¡ng thá»©c thanh toÃ¡n" subtitle="Chá»n phÆ°Æ¡ng thá»©c thanh toÃ¡n.">
                         <div className="grid gap-3">
                           {PAYMENT_OPTIONS.map((option) => {
                             const checked = buyForm.paymentMethod === option.value
@@ -970,7 +990,7 @@ export default function CartPage() {
                       {buyError ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{buyError}</p> : null}
 
                       <button type="button" onClick={handleCheckout} disabled={buyLoading || rentalLoading} className="mt-5 w-full rounded-[22px] bg-[linear-gradient(135deg,#e11d48,#f97316)] px-5 py-4 text-base font-semibold text-white">
-                        {buyLoading || rentalLoading ? 'Đang xử lý...' : rentalItems.length > 0 ? `Checkout ${formatCurrency(combinedTotal)}` : `Xác nhận mua ${formatCurrency(buyGrandTotal)}`}
+                        {buyLoading || rentalLoading ? 'Äang xá»­ lÃ½...' : rentalItems.length > 0 ? `XÃ¡c nháº­n thanh toÃ¡n ${formatCurrency(combinedTotal)}` : `XÃ¡c nháº­n mua ${formatCurrency(buyGrandTotal)}`}
                       </button>
                     </>
                   )}
@@ -1004,3 +1024,4 @@ export default function CartPage() {
     </div>
   )
 }
+

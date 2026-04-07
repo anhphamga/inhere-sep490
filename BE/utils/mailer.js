@@ -6,14 +6,11 @@ const getSmtpConfig = () => ({
   secure: String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true',
   auth: {
     user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  }
+    pass: process.env.SMTP_PASS,
+  },
 });
 
-const hasSmtpConfig = () => Boolean(
-  process.env.SMTP_USER &&
-  process.env.SMTP_PASS
-);
+const hasSmtpConfig = () => Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
 
 const createTransporter = () => nodemailer.createTransport(getSmtpConfig());
 
@@ -30,7 +27,7 @@ const sendResetPasswordEmail = async ({ to, name, resetLink, expiresInMinutes })
     `Mở link sau để đặt lại mật khẩu (hết hạn sau ${expiresInMinutes} phút):`,
     resetLink,
     '',
-    'Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email này.'
+    'Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email này.',
   ].join('\n');
 
   const html = `
@@ -52,30 +49,30 @@ const sendResetPasswordEmail = async ({ to, name, resetLink, expiresInMinutes })
     to,
     subject,
     text,
-    html
+    html,
   });
 };
 
 const sendGuestVerificationEmail = async ({ to, code, expiresInMinutes }) => {
   const transporter = createTransporter();
   const from = process.env.SMTP_FROM || `INHERE <${process.env.SMTP_USER}>`;
-  const subject = 'Ma xac minh thanh toan INHERE';
+  const subject = 'Mã xác minh thanh toán INHERE';
   const text = [
-    'Xin chao,',
+    'Xin chào,',
     '',
-    `Ma xac minh cua ban la: ${code}`,
-    `Ma se het han sau ${expiresInMinutes} phut.`,
+    `Mã xác minh của bạn là: ${code}`,
+    `Mã sẽ hết hạn sau ${expiresInMinutes} phút.`,
     '',
-    'Neu ban khong thuc hien yeu cau nay, hay bo qua email nay.',
+    'Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email này.',
   ].join('\n');
 
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
-      <h2>Xac minh thong tin truoc khi thanh toan</h2>
-      <p>Ma xac minh cua ban:</p>
+      <h2>Xác minh thông tin trước khi thanh toán</h2>
+      <p>Mã xác minh của bạn:</p>
       <p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p>
-      <p>Ma se het han sau <strong>${expiresInMinutes} phut</strong>.</p>
-      <p>Neu ban khong thuc hien yeu cau nay, hay bo qua email nay.</p>
+      <p>Mã sẽ hết hạn sau <strong>${expiresInMinutes} phút</strong>.</p>
+      <p>Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email này.</p>
     </div>
   `;
 
@@ -91,5 +88,5 @@ const sendGuestVerificationEmail = async ({ to, code, expiresInMinutes }) => {
 module.exports = {
   hasSmtpConfig,
   sendGuestVerificationEmail,
-  sendResetPasswordEmail
+  sendResetPasswordEmail,
 };

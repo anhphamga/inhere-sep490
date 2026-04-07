@@ -124,7 +124,7 @@ function getStatusMeta(status) {
   return STATUS_META[status] || STATUS_META.pending_confirmation
 }
 
-function getActionConfig(action) {
+function getActionConfig(action, orderType = 'rent') {
   const actionMap = {
     view: {
       label: 'Xem chi tiết',
@@ -157,7 +157,7 @@ function getActionConfig(action) {
       icon: XCircle,
     },
     reorder: {
-      label: 'Thuê lại',
+      label: orderType === 'buy' ? 'Mua lại' : 'Thuê lại',
       className: 'border-slate-200 text-slate-700 hover:bg-slate-50',
       icon: ArrowRight,
     },
@@ -574,7 +574,7 @@ function RentalProgress({ currentStep }) {
 }
 
 function ActionButton({ actionKey, order }) {
-  const action = getActionConfig(actionKey)
+  const action = getActionConfig(actionKey, order?.type)
   const Icon = action.icon
   const className = `inline-flex min-h-[44px] items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition ${action.className}`
 

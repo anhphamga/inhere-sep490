@@ -560,7 +560,7 @@ exports.guestCheckout = async (req, res) => {
     idempotencyKey = normalizeIdempotencyKey(req);
 
     if (!verificationToken) {
-      return res.status(400).json({ success: false, message: 'Thieu token xac minh guest.' });
+      return res.status(400).json({ success: false, message: 'Thiếu token xác minh guest.' });
     }
 
     const existingOrder = await findSaleOrderByIdempotencyKey(idempotencyKey);
@@ -578,7 +578,7 @@ exports.guestCheckout = async (req, res) => {
     try {
       tokenPayload = verifyGuestVerificationToken(verificationToken);
     } catch {
-      return res.status(401).json({ success: false, message: 'Token xac minh guest khong hop le hoac da het han.' });
+      return res.status(401).json({ success: false, message: 'Token xác minh guest không hợp lệ hoặc đã hết hạn.' });
     }
 
     const verification = await GuestVerification.findById(tokenPayload.verificationId);
@@ -588,15 +588,22 @@ exports.guestCheckout = async (req, res) => {
       verification.consumedAt ||
       verification.method !== tokenPayload.method
     ) {
-      return res.status(401).json({ success: false, message: 'Phien xac minh guest khong hop le.' });
+      return res.status(401).json({ success: false, message: 'Phiên xác minh guest không hợp lệ.' });
     }
 
     if (!verification.expiresAt || new Date(verification.expiresAt) <= new Date()) {
-      return res.status(401).json({ success: false, message: 'Phien xac minh guest da het han.' });
+      return res.status(401).json({ success: false, message: 'Phiên xác minh guest đã hết hạn.' });
+    }
+
+    if (verification.method !== 'email') {
+      return res.status(400).json({
+        success: false,
+        message: 'Đơn mua chưa đăng nhập chỉ hỗ trợ xác minh bằng email.',
+      });
     }
 
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, message: 'Gio hang mua dang trong.' });
+      return res.status(400).json({ success: false, message: 'Giỏ hàng mua đang trống.' });
     }
 
     const normalizedName = String(name || '').trim();
@@ -605,19 +612,27 @@ exports.guestCheckout = async (req, res) => {
     const normalizedAddress = String(address || '').trim();
 
     if (!normalizedName || !normalizedAddress || !normalizedEmail) {
-      return res.status(400).json({ success: false, message: 'Vui long nhap day du ten, email va dia chi nhan hang.' });
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ tên, email và địa chỉ nhận hàng.' });
     }
 
     if (!isValidPhone(normalizedPhone)) {
-      return res.status(400).json({ success: false, message: 'So dien thoai nhan hang khong hop le.' });
+      return res.status(400).json({ success: false, message: 'Số điện thoại nhận hàng không hợp lệ.' });
     }
 
-    if (!isValidEmail(verification.method === 'email' ? (verification.email || normalizedEmail) : normalizedEmail)) {
-      return res.status(400).json({ success: false, message: 'Email nhan hang khong hop le.' });
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Email nhận hàng không hợp lệ.' });
     }
 
-    if (verification.method === 'email' && !isValidEmail(verification.email || normalizedEmail)) {
-      return res.status(400).json({ success: false, message: 'Email xac minh khong hop le.' });
+    const verifiedEmail = normalizeEmail(verification.email || normalizedEmail);
+    if (!isValidEmail(verifiedEmail)) {
+      return res.status(400).json({ success: false, message: 'Email xác minh không hợp lệ.' });
+    }
+
+    if (verifiedEmail !== normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email thanh toán phải trùng với email đã xác minh.',
+      });
     }
 
     const productIds = items.map((item) => item.productId).filter(Boolean);
@@ -625,7 +640,7 @@ exports.guestCheckout = async (req, res) => {
     const productMap = new Map(products.map((product) => [String(product._id), product]));
 
     if (productMap.size !== productIds.length) {
-      return res.status(400).json({ success: false, message: 'Co san pham khong hop le hoac da ngung ban.' });
+      return res.status(400).json({ success: false, message: 'Có sản phẩm không hợp lệ hoặc đã ngừng bán.' });
     }
 
     const normalizedItems = buildNormalizedSaleItems(items, productMap);
@@ -654,7 +669,7 @@ exports.guestCheckout = async (req, res) => {
       shippingAddress: normalizedAddress,
       shippingPhone: normalizedPhone,
       guestName: normalizedName,
-      guestEmail: verification.method === 'email' ? (verification.email || normalizedEmail) : normalizedEmail,
+      guestEmail: verifiedEmail,
       guestVerificationMethod: verification.method,
       guestVerificationId: verification._id,
       note,
@@ -675,7 +690,7 @@ exports.guestCheckout = async (req, res) => {
       saleOrder,
       customer: {
         name: normalizedName,
-        email: verification.method === 'email' ? (verification.email || normalizedEmail) : normalizedEmail,
+        email: verifiedEmail,
         phone: normalizedPhone,
         address: normalizedAddress,
       },
@@ -698,10 +713,10 @@ exports.guestCheckout = async (req, res) => {
 
     console.error('Guest checkout error:', error);
     const message = error.message === 'INVALID_PRODUCT_DATA'
-      ? 'Khong the xac thuc du lieu san pham trong gio hang.'
+      ? 'Không thể xác thực dữ liệu sản phẩm trong giỏ hàng.'
       : error.message === 'OUT_OF_STOCK'
-        ? 'Co san pham da het hang hoac khong du so luong de mua.'
-        : 'Khong the tao don mua guest luc nay.';
+        ? 'Có sản phẩm đã hết hàng hoặc không đủ số lượng để mua.'
+        : 'Không thể tạo đơn mua guest lúc này.';
 
     const statusCode = (error.message === 'INVALID_PRODUCT_DATA' || error.message === 'OUT_OF_STOCK') ? 400 : 500;
 
