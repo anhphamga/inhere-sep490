@@ -358,7 +358,6 @@ export default function StaffRentOrders() {
       await confirmReturnApi(returnOrderId, {
         returnedItems: mapped.map((i) => i.apiItem),
         note: finalNote,
-        washingFee: 0,
         returnDate: returnDate || undefined,
       })
       showSuccess('Xác nhận trả đồ thành công!')

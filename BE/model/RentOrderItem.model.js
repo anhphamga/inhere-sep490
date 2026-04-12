@@ -30,15 +30,6 @@ const rentOrderItemSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  appliedRuleIds: {
-    type: [mongoose.Schema.Types.ObjectId],
-    ref: 'PricingRule',
-    default: []
-  },
-  selectLevel: {
-    type: String,
-    default: ''
-  },
   size: {
     type: String,
     default: ''
