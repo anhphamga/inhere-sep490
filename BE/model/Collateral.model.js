@@ -26,6 +26,10 @@ const collateralSchema = new mongoose.Schema({
       return this.type === 'CASH';
     }
   },
+  documentImageUrl: {
+    type: String,
+    default: ''
+  },
   receiveAt: {
     type: Date,
     default: Date.now

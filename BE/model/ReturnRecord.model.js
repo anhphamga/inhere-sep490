@@ -16,6 +16,10 @@ const returnRecordSchema = new mongoose.Schema({
     enum: ['Normal', 'Dirty', 'Damaged', 'Lost'],
     default: 'Normal'
   },
+  washingFee: {
+    type: Number,
+    default: 0
+  },
   damageFee: {
     type: Number,
     default: 0

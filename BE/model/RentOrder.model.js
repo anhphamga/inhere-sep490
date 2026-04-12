@@ -18,6 +18,7 @@ const rentOrderSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: [
+      'Draft',
       'PendingDeposit',
       'Deposited',
       'Confirmed',
@@ -48,6 +49,10 @@ const rentOrderSchema = new mongoose.Schema({
   remainingAmount: {
     type: Number,
     required: true
+  },
+  washingFee: {
+    type: Number,
+    default: 0
   },
   damageFee: {
     type: Number,
