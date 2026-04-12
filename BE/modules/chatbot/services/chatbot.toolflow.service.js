@@ -315,6 +315,52 @@ const isProductCatalogOverviewIntent = (message) => {
 const getRentalPolicyKnowledgeAnswer = (message) => {
   const normalized = normalizeForMatch(message);
 
+  const asksLostItem = normalized.includes('lam mat')
+    || normalized.includes('mat do')
+    || normalized.includes('mat ao')
+    || normalized.includes('that lac');
+  const asksDamagedItem = normalized.includes('lam hong')
+    || normalized.includes('hu hong')
+    || normalized.includes('rach')
+    || normalized.includes('bung nut');
+  const asksLatePickup = normalized.includes('den lay muon')
+    || normalized.includes('lay muon')
+    || normalized.includes('tre gio lay');
+  const asksNoShow = normalized.includes('khong den nhan')
+    || normalized.includes('no show')
+    || normalized.includes('noshow');
+  const asksDepositPolicy = normalized.includes('dat coc')
+    || normalized.includes('tien coc')
+    || normalized.includes('coc bao nhieu')
+    || normalized.includes('hoan coc');
+  const asksLateReturn = normalized.includes('tra tre')
+    || normalized.includes('tre han')
+    || normalized.includes('muon han tra');
+
+  if (asksLostItem) {
+    return 'Nếu bạn làm mất đồ thuê, bạn hãy báo shop ngay để khóa xử lý đơn và đối soát. Tiền cọc sẽ được dùng để bù trừ trước, nếu còn thiếu thì bổ sung theo giá trị bồi thường của sản phẩm. Shop sẽ thông báo rõ từng khoản trước khi chốt.';
+  }
+
+  if (asksDamagedItem) {
+    return 'Nếu đồ bị hỏng trong thời gian thuê, bạn hãy báo sớm để shop hướng dẫn cách xử lý phù hợp. Phí bồi thường được tính theo mức độ hư hỏng thực tế và kết quả kiểm tra lúc trả đồ. Shop ưu tiên đối soát minh bạch để bạn nắm rõ.';
+  }
+
+  if (asksLatePickup) {
+    return 'Bạn đến lấy đồ muộn vẫn có thể được hỗ trợ nếu shop còn giữ được lịch đơn. Bạn nên nhắn tin sớm để shop cập nhật khung giờ nhận. Nếu quá mốc giữ chỗ của đơn, đơn có thể bị xử lý theo chính sách no-show.';
+  }
+
+  if (asksNoShow) {
+    return 'No-show là trường hợp đặt đơn nhưng không đến nhận đồ đúng hẹn và không thông báo trước. Khi đó, đơn có thể bị đóng và tiền cọc có thể bị xử lý theo quy định của shop. Để tránh mất quyền lợi, bạn vui lòng báo sớm nếu cần đổi lịch.';
+  }
+
+  if (asksDepositPolicy) {
+    return 'Đơn thuê thường cần đặt cọc để giữ lịch và giữ sản phẩm, mức cọc phổ biến khoảng 50% tổng tiền thuê. Sau khi trả đồ, hệ thống đối soát cọc với các phí phát sinh (nếu có): cọc dư thì hoàn, cọc thiếu thì bổ sung. Mọi khoản đều được thông báo rõ trước khi kết đơn.';
+  }
+
+  if (asksLateReturn) {
+    return 'Khi trả đồ trễ, hệ thống ghi nhận số ngày trễ và áp dụng phí theo quy định nếu vượt ngưỡng tính phí. Bạn nên báo trước cho shop nếu có nguy cơ trễ hẹn để được hướng dẫn sớm và giảm phát sinh không cần thiết.';
+  }
+
   const voucherUsageSignal = (
     (normalized.includes('voucher') || normalized.includes('ma giam') || normalized.includes('giam gia') || normalized.includes('uu dai'))
     && (normalized.includes('cach')
@@ -326,7 +372,7 @@ const getRentalPolicyKnowledgeAnswer = (message) => {
   );
 
   if (voucherUsageSignal) {
-    return 'De dung voucher: (1) Chon san pham va vao buoc thanh toan. (2) Nhap ma voucher vao o ma giam gia. (3) He thong se tu kiem tra dieu kien (han su dung, don toi thieu, so lan dung, loai don mua/thue) va tru gia neu hop le. (4) Neu khong ap dung duoc, ban se thay thong bao ly do de doi ma khac.';
+    return 'Để dùng voucher: (1) Chọn sản phẩm và vào bước thanh toán. (2) Nhập mã voucher vào ô mã giảm giá. (3) Hệ thống sẽ tự kiểm tra điều kiện (hạn sử dụng, đơn tối thiểu, số lần dùng, loại đơn mua/thuê) và trừ giá nếu hợp lệ. (4) Nếu không áp dụng được, bạn sẽ thấy thông báo lý do để đổi mã khác.';
   }
 
   const fittingGuideSignal = (
@@ -338,27 +384,27 @@ const getRentalPolicyKnowledgeAnswer = (message) => {
   );
 
   if (fittingGuideSignal) {
-    return 'De dat lich thu do: (1) Dang nhap tai khoan customer. (2) Chon ngay thu (`date`) va khung gio (`timeSlot`). (3) Gui yeu cau dat lich thu do. He thong tao lich voi trang thai Pending, shop se xac nhan sau. Ban co the ghi chu them neu can tu van size/mau.';
+    return 'Để đặt lịch thử đồ: (1) Đăng nhập tài khoản khách hàng. (2) Chọn ngày thử và khung giờ phù hợp. (3) Gửi yêu cầu đặt lịch thử đồ. Hệ thống tạo lịch ở trạng thái chờ xác nhận, shop sẽ phản hồi sau. Bạn có thể ghi chú thêm nếu cần tư vấn size hoặc màu.';
   }
 
   if (normalized.includes('huy don thue') || (normalized.includes('huy don') && normalized.includes('thue'))) {
-    return 'Ban co the huy don thue theo moc thoi gian va dieu kien cua shop. Thong thuong, huy cang som thi phi cang thap; neu da sat lich hoac da nhan do, co the ap dung phi huy/khong hoan coc theo quy dinh don.';
+    return 'Bạn có thể hủy đơn thuê theo mốc thời gian và điều kiện của shop. Thông thường, hủy càng sớm thì phí càng thấp; nếu đã sát lịch hoặc đã nhận đồ, có thể áp dụng phí hủy hoặc không hoàn cọc theo quy định của đơn.';
   }
 
   if (normalized.includes('khac nhau giua thue va mua')) {
-    return 'Thue phu hop khi ban can su dung ngan han, chi tra phi thue va hoan tra do sau khi dung. Mua phu hop khi ban muon so huu lau dai, thanh toan toan bo gia tri san pham va khong can tra lai.';
+    return 'Thuê phù hợp khi bạn cần sử dụng ngắn hạn, chỉ trả phí thuê và hoàn trả đồ sau khi dùng. Mua phù hợp khi bạn muốn sở hữu lâu dài, thanh toán toàn bộ giá trị sản phẩm và không cần trả lại.';
   }
 
   if (normalized.includes('muon thue can') || normalized.includes('can gi de thue')) {
-    return 'De thue do, ban can co tai khoan, chon san pham va lich thue, dat coc theo huong dan, sau do den lay do dung hen. Khi tra do, he thong doi soat tinh trang de chot don.';
+    return 'Để thuê đồ, bạn cần có tài khoản, chọn sản phẩm và lịch thuê, đặt cọc theo hướng dẫn, sau đó đến lấy đồ đúng hẹn. Khi trả đồ, hệ thống sẽ đối soát tình trạng để chốt đơn.';
   }
 
   if (normalized.includes('quy tac thue') || normalized.includes('quy dinh thue') || normalized.includes('dieu kien thue') || normalized.includes('chinh sach thue')) {
-    return 'Quy tac thue co 4 diem chinh: dat coc theo quy dinh, su dung va bao quan do dung cach, tra do dung lich, va phat sinh phi neu hong mat hoac tre hen theo muc do. Ban co the xem chi tiet tai trang chinh sach thue cua shop.';
+    return 'Quy tắc thuê có 4 điểm chính: đặt cọc theo quy định, sử dụng và bảo quản đồ đúng cách, trả đồ đúng lịch, và phát sinh phí nếu hỏng mất hoặc trễ hẹn theo mức độ. Bạn có thể xem chi tiết tại trang chính sách thuê của shop.';
   }
 
   if (normalized.includes('luong thue') || normalized.includes('quy trinh thue') || normalized.includes('thu tuc thue')) {
-    return 'Luong thue gom: chon san pham -> chon thoi gian thue -> xac nhan don va dat coc -> lay do -> su dung -> tra do -> doi soat va hoan tat don.';
+    return 'Luồng thuê gồm: chọn sản phẩm -> chọn thời gian thuê -> xác nhận đơn và đặt cọc -> lấy đồ -> sử dụng -> trả đồ -> đối soát và hoàn tất đơn.';
   }
 
   return null;
@@ -368,7 +414,7 @@ const buildVoucherAnswer = async ({ actor }) => {
   if (!actor?.id) {
     return {
       type: 'TEXT',
-      answer: 'Ban can dang nhap de xem danh sach voucher cua minh.',
+      answer: 'Bạn cần đăng nhập để xem danh sách voucher của mình.',
       usage: null,
       model: null,
       intent: 'VOUCHER',
@@ -386,7 +432,7 @@ const buildVoucherAnswer = async ({ actor }) => {
   if (!vouchers.length) {
     return {
       type: 'TEXT',
-      answer: 'Hien tai ban khong co voucher kha dung nao.',
+      answer: 'Hiện tại bạn không có voucher khả dụng nào.',
       usage: null,
       model: null,
       intent: 'VOUCHER',
@@ -400,12 +446,12 @@ const buildVoucherAnswer = async ({ actor }) => {
     const value = item?.voucherType === 'percent'
       ? `${Number(item.value || 0)}%`
       : `${Number(item.value || 0).toLocaleString('vi-VN')} VND`;
-    return `${index + 1}. ${item.code || '-'} - ${item.name || 'Voucher'} - Gia tri: ${value} - Han: ${endDate}`;
+    return `${index + 1}. ${item.code || '-'} - ${item.name || 'Voucher'} - Giá trị: ${value} - Hạn: ${endDate}`;
   });
 
   return {
     type: 'TEXT',
-    answer: `Ban dang co ${vouchers.length} voucher kha dung:\n${lines.join('\n')}`,
+    answer: `Bạn đang có ${vouchers.length} voucher khả dụng:\n${lines.join('\n')}`,
     usage: null,
     model: null,
     intent: 'VOUCHER',
@@ -488,32 +534,69 @@ const formatDate = (value) => {
   return `${day}/${month}/${year}`;
 };
 
+const USER_ROLE_LABEL = {
+  customer: 'Khách hàng',
+  staff: 'Nhân viên',
+  owner: 'Chủ cửa hàng',
+};
+
+const USER_STATUS_LABEL = {
+  active: 'Đang hoạt động',
+  locked: 'Đã khóa',
+  inactive: 'Ngừng hoạt động',
+};
+
+const ORDER_STATUS_LABEL = {
+  Draft: 'Nháp',
+  PendingDeposit: 'Chờ đặt cọc',
+  Deposited: 'Đã đặt cọc',
+  Confirmed: 'Đã xác nhận',
+  WaitingPickup: 'Chờ nhận đồ',
+  Renting: 'Đang thuê',
+  WaitingReturn: 'Chờ trả đồ',
+  Returned: 'Đã trả đồ',
+  Completed: 'Hoàn tất',
+  NoShow: 'Không đến nhận',
+  Late: 'Trễ hạn',
+  Compensation: 'Bồi thường',
+  Cancelled: 'Đã hủy',
+  PendingPayment: 'Chờ thanh toán',
+  PendingConfirmation: 'Chờ xác nhận',
+  Paid: 'Đã thanh toán',
+  Shipping: 'Đang giao hàng',
+  Refunded: 'Đã hoàn tiền',
+};
+
+const toUserRoleLabel = (role) => USER_ROLE_LABEL[String(role || '').toLowerCase()] || role || '-';
+const toUserStatusLabel = (status) => USER_STATUS_LABEL[String(status || '').toLowerCase()] || status || '-';
+const toOrderStatusLabel = (status) => ORDER_STATUS_LABEL[String(status || '')] || status || '-';
+
 const buildUserAnswer = ({ records }) => {
   if (!records.length) {
-    return 'Khong tim thay thong tin phu hop.';
+    return 'Không tìm thấy thông tin phù hợp.';
   }
 
   const user = records[0];
   return [
-    `Ten: ${user.name || '-'}.`,
+    `Tên: ${user.name || '-'}.`,
     `Email: ${user.email || '-'}.`,
-    `So dien thoai: ${user.phone || '-'}, Vai tro: ${user.role || '-'}, Trang thai: ${user.status || '-'}.`,
+    `Số điện thoại: ${user.phone || '-'}, Vai trò: ${toUserRoleLabel(user.role)}, Trạng thái: ${toUserStatusLabel(user.status)}.`,
   ].join(' ');
 };
 
 const buildOrderAnswer = ({ records, message }) => {
   if (!records.length) {
-    return 'Khong tim thay thong tin phu hop.';
+    return 'Không tìm thấy thông tin phù hợp.';
   }
 
   const source = isLatestQuery(message) ? [records[0]] : records;
   const first = source[0];
-  const orderLabel = first.orderType === 'rent' ? 'don thue' : 'don mua';
+  const orderLabel = first.orderType === 'rent' ? 'đơn thuê' : 'đơn mua';
 
   return [
     `${orderLabel.charAt(0).toUpperCase() + orderLabel.slice(1)}: ${first.id}.`,
-    `Trang thai: ${first.status || '-'}, Tong tien: ${Number(first.totalAmount || 0)}.`,
-    `Ngay tao: ${formatDate(first.createdAt) || '-'}.`,
+    `Trạng thái: ${toOrderStatusLabel(first.status)}, Tổng tiền: ${Number(first.totalAmount || 0)}.`,
+    `Ngày tạo: ${formatDate(first.createdAt) || '-'}.`,
   ].join(' ');
 };
 
@@ -541,12 +624,12 @@ const buildOrderContext = (records) => {
 const summarizeOrderByGroq = async ({ message, records, intent }) => {
   const llmResult = await generateResponse({
     question: [
-      `Intent: ${intent}`,
-      `User question: ${message}`,
-      'Hay tra loi ngan gon bang tieng Viet, toi da 4 cau.',
-      'Chi tom tat thong tin don hang tu context.',
-      'Neu context la danh sach san pham trong don thi liet ke gon theo tung don.',
-      'Tuyet doi khong noi ve API, backend, database.',
+      `Ý định: ${intent}`,
+      `Câu hỏi người dùng: ${message}`,
+      'Hãy trả lời ngắn gọn bằng tiếng Việt có dấu, tối đa 4 câu.',
+      'Chỉ tóm tắt thông tin đơn hàng từ context.',
+      'Nếu context là danh sách sản phẩm trong đơn thì liệt kê gọn theo từng đơn.',
+      'Tuyệt đối không nói về API, backend, database.',
     ].join('\n'),
     contextBlocks: [buildOrderContext(records)],
   });
@@ -561,23 +644,23 @@ const buildOrderListMessage = ({ records, message }) => {
   const normalized = normalizeForMatch(message);
   const asksPolicyInSameQuery = normalized.includes('chinh sach') || normalized.includes('tra tre') || normalized.includes('huy don');
   const policyHint = asksPolicyInSameQuery
-    ? ' Neu ban muon, toi co the giai thich nhanh chinh sach tra tre/huy don o tin nhan tiep theo.'
+    ? ' Nếu bạn muốn, tôi có thể giải thích nhanh chính sách trả trễ/hủy đơn ở tin nhắn tiếp theo.'
     : '';
 
   if (orderType === 'rent') {
-    return `Tim thay ${rentCount} don thue gan day. Bam "Xem chi tiet" de mo trang don.${policyHint}`;
+    return `Tìm thấy ${rentCount} đơn thuê gần đây. Bấm "Xem chi tiết" để mở trang đơn.${policyHint}`;
   }
 
   if (orderType === 'sale') {
-    return `Tim thay ${saleCount} don mua gan day. Bam "Xem chi tiet" o don ho tro de mo trang don.${policyHint}`;
+    return `Tìm thấy ${saleCount} đơn mua gần đây. Bấm "Xem chi tiết" ở đơn hỗ trợ để mở trang đơn.${policyHint}`;
   }
 
-  return `Tim thay ${records.length} don gan day. Bam "Xem chi tiet" de mo trang don.${policyHint}`;
+  return `Tìm thấy ${records.length} đơn gần đây. Bấm "Xem chi tiết" để mở trang đơn.${policyHint}`;
 };
 
 const buildProductListMessage = ({ records, message }) => {
   if (!records.length) {
-    return 'Khong tim thay san pham phu hop.';
+    return 'Không tìm thấy sản phẩm phù hợp.';
   }
 
   const normalized = normalizeForMatch(message);
@@ -589,7 +672,7 @@ const buildProductListMessage = ({ records, message }) => {
     )];
 
     if (categories.length > 0) {
-      return `Shop hien co cac nhom trang phuc: ${categories.slice(0, 8).join(', ')}.`;
+      return `Shop hiện có các nhóm trang phục: ${categories.slice(0, 8).join(', ')}.`;
     }
   }
 
@@ -602,53 +685,19 @@ const buildProductListMessage = ({ records, message }) => {
     )];
 
     if (sizes.length > 0) {
-      return `Co ${sizes.length} size phu hop: ${sizes.join(', ')}.`;
+      return `Có ${sizes.length} size phù hợp: ${sizes.join(', ')}.`;
     }
   }
 
   if (normalized.includes('dat den re') || normalized.includes('giam dan') || normalized.includes('cao den thap')) {
-    return `Tim thay ${records.length} san pham (sap xep gia tu cao den thap).`;
+    return `Tìm thấy ${records.length} sản phẩm (sắp xếp giá từ cao đến thấp).`;
   }
 
   if (normalized.includes('re den dat') || normalized.includes('tang dan') || normalized.includes('thap den cao')) {
-    return `Tim thay ${records.length} san pham (sap xep gia tu thap den cao).`;
+    return `Tìm thấy ${records.length} sản phẩm (sắp xếp giá từ thấp đến cao).`;
   }
 
-  return `Tim thay ${records.length} san pham phu hop.`;
-};
-
-const formatAppliedProductFilters = (filters = {}) => {
-  const lines = [];
-
-  if (filters.category) {
-    lines.push(`Danh muc: ${filters.category}`);
-  }
-
-  if (filters.size) {
-    lines.push(`Size: ${filters.size}`);
-  }
-
-  if (filters.color) {
-    lines.push(`Mau: ${filters.color}`);
-  }
-
-  if (typeof filters.inStock === 'boolean') {
-    lines.push(`Tinh trang: ${filters.inStock ? 'Con hang' : 'Het hang'}`);
-  }
-
-  if (Number.isFinite(filters.priceMin) || Number.isFinite(filters.priceMax)) {
-    const min = Number.isFinite(filters.priceMin) ? Number(filters.priceMin).toLocaleString('vi-VN') : null;
-    const max = Number.isFinite(filters.priceMax) ? Number(filters.priceMax).toLocaleString('vi-VN') : null;
-    if (min && max) {
-      lines.push(`Gia: ${min} - ${max} VND`);
-    } else if (min) {
-      lines.push(`Gia tu: ${min} VND`);
-    } else if (max) {
-      lines.push(`Gia den: ${max} VND`);
-    }
-  }
-
-  return lines;
+  return `Tìm thấy ${records.length} sản phẩm phù hợp.`;
 };
 
 const getOrdersByType = async ({ actorId, orderType, topK }) => {
@@ -899,8 +948,8 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
     if (!Array.isArray(orderData) || orderData.length === 0) {
       return {
         type: 'ORDER',
-        message: 'Khong tim thay thong tin phu hop.',
-        answer: 'Khong tim thay thong tin phu hop.',
+        message: 'Không tìm thấy thông tin phù hợp.',
+        answer: 'Không tìm thấy thông tin phù hợp.',
         data: [],
         usage: null,
         model: null,
@@ -972,7 +1021,6 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
     const appliedFilters = toolData?.appliedFilters && typeof toolData.appliedFilters === 'object'
       ? toolData.appliedFilters
       : {};
-    const summaryLines = formatAppliedProductFilters(appliedFilters);
 
     saveChatSession({
       actor,
@@ -986,22 +1034,56 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
       },
     });
 
+    if (!records.length) {
+      const rentalPolicyAnswer = getRentalPolicyKnowledgeAnswer(message);
+      if (rentalPolicyAnswer) {
+        return {
+          type: 'TEXT',
+          answer: rentalPolicyAnswer,
+          usage: null,
+          model: 'policy-direct',
+          intent: 'KNOWLEDGE',
+          toolData,
+          contexts: [],
+        };
+      }
+
+      const faq = findFaqAnswer(message);
+      if (faq) {
+        return {
+          type: 'TEXT',
+          answer: faq.answer,
+          usage: null,
+          model: 'faq-direct',
+          intent: 'FAQ',
+          toolData,
+          contexts: [
+            {
+              id: 'faq-direct',
+              score: faq.score,
+              metadata: {
+                source: 'customer-faq-50-qa.md',
+                matchedQuestion: faq.question,
+              },
+              preview: faq.question,
+            },
+          ],
+        };
+      }
+    }
+
     const baseMessage = buildProductListMessage({ records, message });
-    const messageWithFilter = summaryLines.length > 0
-      ? `${baseMessage}\nBo loc dang ap dung: ${summaryLines.join(' | ')}`
-      : baseMessage;
 
     return {
       type: 'PRODUCT_LIST',
-      message: messageWithFilter,
+      message: baseMessage,
       data: records,
       meta: {
         page,
         limit,
         total,
         canLoadMore,
-        appliedFilters,
-        loadMorePrompt: 'xem them san pham',
+        loadMorePrompt: 'xem thêm sản phẩm',
       },
       usage: null,
       model: null,
@@ -1014,7 +1096,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
   if (intentInfo.entity && toolData && Array.isArray(toolData.records) && toolData.records.length === 0) {
     return {
       type: 'TEXT',
-      answer: 'Khong tim thay thong tin phu hop.',
+      answer: 'Không tìm thấy thông tin phù hợp.',
       usage: null,
       model: null,
       intent: intentInfo.intent,
@@ -1033,7 +1115,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
         intent: intentInfo.intent,
         toolData,
         message,
-      }) || 'Khong tim thay thong tin phu hop.',
+      }) || 'Không tìm thấy thông tin phù hợp.',
       usage: null,
       model: null,
       intent: intentInfo.intent,
@@ -1062,7 +1144,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
 
       return {
         type: 'TEXT',
-        answer: fallbackKnowledge || 'Tinh nang tri thuc nang cao dang tam tat do thieu cau hinh LLM. Ban co the hoi ve don hang, voucher, hoac tim san pham de chatbot xu ly truc tiep.',
+        answer: fallbackKnowledge || 'Tính năng tri thức nâng cao đang tạm tắt do thiếu cấu hình LLM. Bạn có thể hỏi về đơn hàng, voucher, hoặc tìm sản phẩm để chatbot xử lý trực tiếp.',
         usage: null,
         model: null,
         intent: intentInfo.intent,

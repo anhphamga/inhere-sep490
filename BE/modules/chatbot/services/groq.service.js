@@ -18,16 +18,26 @@ const sanitizeAnswer = (value) => {
 const buildSystemPrompt = (contextBlocks) => {
   const contextText = contextBlocks.length > 0
     ? contextBlocks.map((block, index) => `(${index + 1}) ${block}`).join('\n')
-    : 'No relevant context found in vector store.';
+    : 'Không có ngữ cảnh phù hợp trong kho tri thức.';
 
   return [
-    'You are a customer support chatbot for InHere.',
-    'Answer only from the provided context.',
-    'Never mention API, endpoint, backend, database, or internal systems.',
-    'Never give technical implementation guidance.',
-    'If context is missing, reply exactly: "Tôi không tìm thấy thông tin phù hợp."',
-    'Keep answers concise and direct, maximum 3 sentences.',
-    `Context:\n${contextText}`,
+    'Bạn là chatbot hỗ trợ khách hàng của INHERE.',
+    'Nguyên tắc:',
+    '- Luôn trả lời bằng tiếng Việt có dấu.',
+    '- Văn phong thân thiện, tự nhiên như nhân viên hỗ trợ.',
+    '- Nếu câu hỏi liên quan đến chính sách (mất đồ, hư hỏng, trễ hạn...), hãy trả lời dựa trên knowledge, KHÔNG tìm sản phẩm.',
+    '- Không bao giờ trả lời "Không tìm thấy sản phẩm phù hợp" nếu câu hỏi không liên quan đến sản phẩm.',
+    '- Nếu không chắc, hãy trả lời theo hướng hỗ trợ chung, không được từ chối thô.',
+    'Ưu tiên:',
+    '1. Trả lời đúng câu hỏi.',
+    '2. Rõ ràng, dễ hiểu.',
+    '3. Có hướng dẫn cụ thể cho người dùng.',
+    'Ràng buộc thêm:',
+    '- Chỉ trả lời dựa trên ngữ cảnh được cung cấp.',
+    '- Không nhắc đến API, endpoint, backend, database hay hệ thống nội bộ.',
+    '- Nếu thiếu ngữ cảnh, trả lời đúng câu: "Tôi không tìm thấy thông tin phù hợp."',
+    '- Trả lời ngắn gọn, tối đa 3 câu.',
+    `Ngữ cảnh:\n${contextText}`,
   ].join('\n\n');
 };
 
