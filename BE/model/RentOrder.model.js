@@ -50,10 +50,6 @@ const rentOrderSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  washingFee: {
-    type: Number,
-    default: 0
-  },
   damageFee: {
     type: Number,
     default: 0

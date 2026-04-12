@@ -256,7 +256,6 @@ const snapshotOrderForAudit = (order) => ({
     totalAmount: Number(order?.totalAmount || 0),
     lateDays: Number(order?.lateDays || 0),
     lateFee: Number(order?.lateFee || 0),
-    washingFee: Number(order?.washingFee || 0),
     damageFee: Number(order?.damageFee || 0),
     compensationFee: Number(order?.compensationFee || 0),
     depositForfeited: Boolean(order?.depositForfeited),
@@ -317,8 +316,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const lateFee       = Number(order.lateFee       || 0);
     const damageFee     = Number(order.damageFee     || 0);
     const compensationFee = Number(order.compensationFee || 0);
-    const washingFee    = Number(order.washingFee    || 0);
-    const totalFees     = lateFee + damageFee + compensationFee + washingFee;
+    const totalFees     = lateFee + damageFee + compensationFee;
 
     // Khi khách thanh toán QR ExtraDue, toàn bộ khoản (remaining + fees) được ghi là purpose='Remaining'.
     // Phần dư vượt quá remainingAmount đã thực sự phủ phí → tránh thu/tạo bản ghi trùng.
@@ -586,12 +584,11 @@ exports.createRentOrder = async (req, res) => {
             discountAmount: voucherApplication.discountAmount,
             depositAmount,
             remainingAmount,
-            washingFee: 0,
             damageFee: 0,
             lateDays: 0,
             lateFee: 0,
             compensationFee: 0,
-            totalAmount: orderTotalAmount
+            totalAmount: orderTotalAmount,
         }], { session });
 
         // Gán mã đơn sau khi có _id
@@ -1309,7 +1306,7 @@ exports.confirmReturn = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { returnedItems = [], note = '', washingFee = 0, returnDate: returnDateRaw } = req.body;
+        const { returnedItems = [], note = '', returnDate: returnDateRaw } = req.body;
 
         // Ngày thực tế trả — staff có thể chỉ định; mặc định là hôm nay
         const actualReturnDate = returnDateRaw ? new Date(returnDateRaw) : new Date();
@@ -1384,7 +1381,6 @@ exports.confirmReturn = async (req, res) => {
         const lateDays = Number(order.lateDays || 0);
         const lateFee = Number(order.lateFee || 0);
         const totalDamageFee = returnedItems.reduce((sum, item) => sum + Number(item.damageFee || 0), 0);
-        const totalWashingFee = Number(washingFee || 0);
         const conditions = new Set(returnedItems.map((item) => item.condition));
         const returnCondition = conditions.has('Damaged')
             ? 'Damaged'
@@ -1398,7 +1394,6 @@ exports.confirmReturn = async (req, res) => {
                     orderId: id,
                     returnDate: actualReturnDate,
                     condition: returnCondition,
-                    washingFee: totalWashingFee,
                     damageFee: totalDamageFee,
                     lateDays,
                     lateFee,
@@ -1462,7 +1457,6 @@ exports.confirmReturn = async (req, res) => {
 
         order.lateDays = lateDays;
         order.lateFee = lateFee;
-        order.washingFee = totalWashingFee;
         order.damageFee = totalDamageFee;
         order.actualReturnDate = actualReturnDate;
         order.returnedAt = new Date();
@@ -1484,7 +1478,6 @@ exports.confirmReturn = async (req, res) => {
                 condition: returnRecord.condition,
                 lateDays: returnRecord.lateDays,
                 lateFee: returnRecord.lateFee,
-                washingFee: returnRecord.washingFee,
                 damageFee: returnRecord.damageFee,
             },
         });
@@ -1781,7 +1774,6 @@ exports.createWalkInOrder = async (req, res) => {
             depositAmount,
             remainingAmount,
             totalAmount: computedTotalAmount,
-            washingFee: 0,
             damageFee: 0,
             lateDays: 0,
             lateFee: 0,

@@ -688,7 +688,8 @@ export default function StaffRentOrders() {
                     const totalFees = (selectedOrder.lateFee || 0) + (selectedOrder.damageFee || 0) + (selectedOrder.compensationFee || 0)
                     const grandTotal = (selectedOrder.totalAmount || 0) + totalFees
                     const refundPayment = (selectedOrder.payments || []).filter(p => p.purpose === 'Refund' && p.status === 'Paid').reduce((s, p) => s + (p.amount || 0), 0)
-                    const extraPayment = (selectedOrder.payments || []).filter(p => ['LateFee','DamageFee','WashingFee','Compensation','ExtraFee'].includes(p.purpose) && p.status === 'Paid').reduce((s, p) => s + (p.amount || 0), 0)
+                    const paidRemainingTotal = (selectedOrder.payments || []).filter((p) => p.purpose === 'Remaining' && p.status === 'Paid').reduce((s, p) => s + Number(p.amount || 0), 0)
+                    const extraPayment = Math.max(0, paidRemainingTotal - Number(selectedOrder.remainingAmount || 0))
                     const cashCollateralTotal = (selectedOrder.collaterals || []).filter(c => c.type === 'CASH').reduce((s, c) => s + Number(c.cashAmount || 0), 0)
                     return (
                       <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4 space-y-2">
