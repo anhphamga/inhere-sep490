@@ -32,7 +32,7 @@ const rentOrderSchema = new mongoose.Schema({
       'Compensation',
       'Cancelled'
     ],
-    default: 'Draft'
+    default: 'PendingDeposit'
   },
   rentStartDate: {
     type: Date,
@@ -49,10 +49,6 @@ const rentOrderSchema = new mongoose.Schema({
   remainingAmount: {
     type: Number,
     required: true
-  },
-  washingFee: {
-    type: Number,
-    default: 0
   },
   damageFee: {
     type: Number,

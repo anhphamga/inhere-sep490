@@ -138,49 +138,49 @@ const buildNormalizedSaleItems = (items = [], productMap = new Map()) => {
       color: String(item.color || 'Default').trim() || 'Default',
       note: String(item.note || '').trim(),
       unitPrice,
+      conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
     };
   });
 };
 
 const ensureSaleStockAvailable = async (normalizedItems = []) => {
-  const requestedByProduct = normalizedItems.reduce((acc, item) => {
-    const key = String(item.productId);
-    acc[key] = (acc[key] || 0) + Number(item.quantity || 0);
-    return acc;
-  }, {});
+  // Group by productId + conditionLevel to check per-condition stock
+  const requestedByKey = {};
+  for (const item of normalizedItems) {
+    const conditionLevel = item.conditionLevel === 'Used' ? 'Used' : 'New';
+    const key = `${String(item.productId)}::${conditionLevel}`;
+    if (!requestedByKey[key]) {
+      requestedByKey[key] = { productId: item.productId, conditionLevel, count: 0 };
+    }
+    requestedByKey[key].count += Number(item.quantity || 0);
+  }
 
-  const productIds = Object.keys(requestedByProduct);
-  if (productIds.length === 0) return;
+  for (const { productId, conditionLevel, count } of Object.values(requestedByKey)) {
+    const available = await ProductInstance.countDocuments({
+      productId: new mongoose.Types.ObjectId(String(productId)),
+      lifecycleStatus: 'Available',
+      conditionLevel,
+    });
 
-  const availableRows = await ProductInstance.aggregate([
-    {
-      $match: {
-        productId: { $in: productIds.map((id) => new mongoose.Types.ObjectId(id)) },
-        lifecycleStatus: 'Available',
-        conditionScore: 100,
-      },
-    },
-    {
-      $group: {
-        _id: '$productId',
-        count: { $sum: 1 },
-      },
-    },
-  ]);
+    if (available < count) {
+      throw new Error('OUT_OF_STOCK');
+    }
+  }
+};
 
-  const availableByProduct = availableRows.reduce((acc, row) => {
-    acc[String(row._id)] = Number(row.count || 0);
-    return acc;
-  }, {});
-
-  const outOfStockProductId = productIds.find((productId) => {
-    const requested = Number(requestedByProduct[productId] || 0);
-    const available = Number(availableByProduct[productId] || 0);
-    return requested > available;
-  });
-
-  if (outOfStockProductId) {
-    throw new Error('OUT_OF_STOCK');
+const assignSaleInstances = async (normalizedItems = [], session = null) => {
+  const txOptions = session ? { session } : {};
+  for (const item of normalizedItems) {
+    const qty = Number(item.quantity || 1);
+    const conditionLevel = item.conditionLevel === 'Used' ? 'Used' : 'New';
+    for (let i = 0; i < qty; i++) {
+      const instance = await ProductInstance.findOneAndUpdate(
+        { productId: item.productId, lifecycleStatus: 'Available', conditionLevel },
+        { lifecycleStatus: 'Sold' },
+        { new: true, sort: { conditionScore: -1 }, ...txOptions }
+      );
+      if (!instance) throw new Error('OUT_OF_STOCK');
+    }
   }
 };
 
@@ -278,8 +278,11 @@ const runSaleCheckoutTransaction = async ({
   createOrderPayload,
   voucherId = null,
 }) => {
+  const normalizedItems = createOrderPayload.items || [];
+
   const runWithoutTransaction = async () => {
     const saleOrder = await createSaleOrderWithItems(createOrderPayload);
+    await assignSaleInstances(normalizedItems);
 
     if (voucherId) {
       await Voucher.findByIdAndUpdate(voucherId, {
@@ -295,12 +298,12 @@ const runSaleCheckoutTransaction = async ({
   try {
     session.startTransaction();
 
-    // Keep order creation, order items, and voucher usage update in one transaction
-    // so either all of them succeed or all of them roll back together.
     const saleOrder = await createSaleOrderWithItems({
       ...createOrderPayload,
       session,
     });
+
+    await assignSaleInstances(normalizedItems, session);
 
     if (voucherId) {
       await Voucher.findByIdAndUpdate(

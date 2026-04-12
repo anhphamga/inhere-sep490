@@ -13,7 +13,6 @@ const User = require('../model/User.model');
 const bcrypt = require('bcryptjs');
 const { writeAuditLog } = require('../services/auditLog.service');
 const {
-    applyLatePenalty,
     computeExpectedDeposit,
     handleNoShow,
     validateDeposit,
@@ -28,7 +27,6 @@ const {
     buildVoucherSnapshot,
     repairVoucherUsageCounterIfNeeded,
 } = require('../services/voucher.service');
-const { pendingDepositHoldMinutes } = require('../config/app.config');
 const { ORDER_TYPE } = require('../constants/order.constants');
 
 /**
@@ -104,80 +102,80 @@ const applyVoucherForRentOrder = async ({
 /**
  * Checks whether a specific product instance is free for a given rental window.
  *
- * The availability is determined by checking for overlapping RentOrderItem records
- * (excluding cancelled orders). This avoids relying on lifecycleStatus for future
- * bookings.
+ * Blocks instances in non-rentable lifecycle states, then checks overlapping
+ * RentOrderItem records (chỉ bỏ qua đơn terminal). PendingDeposit vẫn chặn chồng lấp
+ * cho đến khi đơn bị hủy (user / auto-cancel) — tránh lỗ hổng giữa hết “soft hold” và cron hủy.
  */
 // Các trạng thái đã kết thúc vòng đời — đồ đã trả hoặc huỷ
 const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow'];
 
-// Đơn PendingDeposit hết hạn sau N phút — sau thời gian này không còn giữ chỗ
-// Đồng nhất với thời gian auto-cancel (env PENDING_DEPOSIT_HOLD_MINUTES, mặc định 5 phút để test)
-const PENDING_DEPOSIT_HOLD_MINUTES = pendingDepositHoldMinutes;
-
 // Số ngày thuê tối đa cho 1 đơn
 const MAX_RENTAL_DAYS = parseInt(process.env.MAX_RENTAL_DAYS || '30', 10);
 
-const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDate, session) => {
-    const pendingDepositExpiry = new Date(Date.now() - PENDING_DEPOSIT_HOLD_MINUTES * 60 * 1000);
+/** Trạng thái instance không được cho thuê (kể cả khi không có overlap trong DB). */
+const INSTANCE_STATUSES_BLOCKING_RENT = ['Washing', 'Repair', 'Lost', 'Sold'];
+
+/**
+ * @param {*} instanceId
+ * @param {*} rentStartDate
+ * @param {*} rentEndDate
+ * @param {*} session
+ * @param {string|null} excludeOrderId - bỏ qua đơn này khi check (dùng trong payDeposit để không tự block chính mình)
+ */
+const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDate, session, excludeOrderId = null) => {
+    if (!instanceId) return false;
+
+    const instQuery = ProductInstance.findById(instanceId).select('lifecycleStatus');
+    if (session) instQuery.session(session);
+    const inst = await instQuery.lean();
+    if (!inst) return false;
+    if (INSTANCE_STATUSES_BLOCKING_RENT.includes(inst.lifecycleStatus)) {
+        return false;
+    }
+
+    const buildItemFilter = (extra = {}) => ({
+        productInstanceId: instanceId,
+        ...(excludeOrderId ? { orderId: { $ne: excludeOrderId } } : {}),
+        ...extra,
+    });
 
     // Kiểm tra 1: chồng lấp ngày hợp đồng với đơn chưa kết thúc
-    // Dùng strict inequality ($lt/$gt): nếu đơn cũ kết thúc đúng lúc đơn mới bắt đầu → KHÔNG coi là conflict
-    const overlapQuery = RentOrderItem.find({
-        productInstanceId: instanceId,
+    const overlapQuery = RentOrderItem.find(buildItemFilter({
         rentStartDate: { $lt: rentEndDate },
-        rentEndDate: { $gt: rentStartDate }
-    }).populate({ path: 'orderId', select: 'status createdAt' });
+        rentEndDate: { $gt: rentStartDate },
+    })).populate({ path: 'orderId', select: 'status' });
 
     if (session) overlapQuery.session(session);
     const overlaps = await overlapQuery.lean();
 
     const conflictingOverlaps = overlaps.filter((item) => {
-        // Orphaned item (order bị xoá hoặc populate thất bại) → không chặn
         if (!item.orderId) return false;
         const status = String(item.orderId.status || '').toLowerCase();
         if (TERMINAL_ORDER_STATUSES.includes(status)) return false;
-        // Đơn PendingDeposit quá hạn giữ chỗ không còn chặn inventory
-        if (status === 'pendingdeposit' && item.orderId.createdAt && new Date(item.orderId.createdAt) < pendingDepositExpiry) {
-            return false;
-        }
         return true;
     });
     if (conflictingOverlaps.length > 0) {
-        console.log(`[Availability] Instance ${instanceId} BLOCKED by Check1:`,
-            conflictingOverlaps.map((i) => ({ orderId: i.orderId?._id, status: i.orderId?.status, start: i.rentStartDate, end: i.rentEndDate }))
-        );
         return false;
     }
 
-    // Kiểm tra 2: đơn trễ hạn vẫn còn active (đồ chưa được trả dù đã quá ngày hợp đồng)
-    // Kịch bản: Khách A trễ hạn, Khách B đặt kỳ bắt đầu SAU ngày hết hạn của A
-    // → hệ thống phải chặn vì đồ vẫn đang ở tay Khách A
+    // Kiểm tra 2: đơn trễ hạn vẫn còn active
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0); // dùng UTC để nhất quán timezone
+    today.setUTCHours(0, 0, 0, 0);
 
-    const lateQuery = RentOrderItem.find({
-        productInstanceId: instanceId,
-        rentEndDate: { $lt: today }
-    }).populate({ path: 'orderId', select: 'status createdAt' });
+    const lateQuery = RentOrderItem.find(buildItemFilter({
+        rentEndDate: { $lt: today },
+    })).populate({ path: 'orderId', select: 'status' });
 
     if (session) lateQuery.session(session);
     const pastDueItems = await lateQuery.lean();
 
     const activeLateOrders = pastDueItems.filter((item) => {
-        // Orphaned item → không chặn
         if (!item.orderId) return false;
         const status = String(item.orderId.status || '').toLowerCase();
         if (TERMINAL_ORDER_STATUSES.includes(status)) return false;
-        if (status === 'pendingdeposit' && item.orderId.createdAt && new Date(item.orderId.createdAt) < pendingDepositExpiry) {
-            return false;
-        }
         return true;
     });
     if (activeLateOrders.length > 0) {
-        console.log(`[Availability] Instance ${instanceId} BLOCKED by Check2 (late):`,
-            activeLateOrders.map((i) => ({ orderId: i.orderId?._id, status: i.orderId?.status, end: i.rentEndDate }))
-        );
         return false;
     }
 
@@ -258,7 +256,6 @@ const snapshotOrderForAudit = (order) => ({
     totalAmount: Number(order?.totalAmount || 0),
     lateDays: Number(order?.lateDays || 0),
     lateFee: Number(order?.lateFee || 0),
-    washingFee: Number(order?.washingFee || 0),
     damageFee: Number(order?.damageFee || 0),
     compensationFee: Number(order?.compensationFee || 0),
     depositForfeited: Boolean(order?.depositForfeited),
@@ -319,7 +316,6 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const lateFee       = Number(order.lateFee       || 0);
     const damageFee     = Number(order.damageFee     || 0);
     const compensationFee = Number(order.compensationFee || 0);
-    // washingFee luôn = 0 (phí giặt đã tính vào giá thuê), không cộng vào tổng phí
     const totalFees     = lateFee + damageFee + compensationFee;
 
     // Khi khách thanh toán QR ExtraDue, toàn bộ khoản (remaining + fees) được ghi là purpose='Remaining'.
@@ -327,17 +323,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const feesCoveredByRemaining = Math.max(0, paidRemainingTotal - Number(order.remainingAmount || 0));
     const unpaidFees = Math.max(0, totalFees - feesCoveredByRemaining);
 
-    // Cũng kiểm tra các bản ghi phí đã thu riêng lẻ
-    const paidFeePayments = await Payment.find({
-        orderId,
-        orderType: ORDER_TYPE.RENT,
-        purpose: { $in: ['LateFee', 'DamageFee', 'WashingFee', 'Compensation', 'ExtraFee'] },
-        status: 'Paid',
-    }).lean();
-    const paidFeesTotal = paidFeePayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-    const netUnpaidFees = Math.max(0, unpaidFees - paidFeesTotal);
-
-    const totalOutstanding = outstandingRemaining + netUnpaidFees;
+    const totalOutstanding = outstandingRemaining + unpaidFees;
 
     // Thế chấp tiền mặt
     const heldCashCollaterals = await Collateral.find({ orderId, type: 'CASH', status: 'Held' });
@@ -377,19 +363,14 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
         });
     }
 
-    // Thu thêm nếu thế chấp không đủ
     if (extraDue > 0) {
-        const purpose = lateFee > 0 ? 'LateFee'
-            : compensationFee > 0 ? 'Compensation'
-            : damageFee > 0 ? 'DamageFee'
-            : 'Remaining';
         await Payment.create({
             orderType: ORDER_TYPE.RENT,
             orderId,
             amount: extraDue,
             method,
             status: 'Paid',
-            purpose,
+            purpose: 'Remaining',
             transactionCode: `PAY_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             paidAt: new Date(),
         });
@@ -410,6 +391,10 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
 
 exports.settleDepositAndCollateral = settleDepositAndCollateral;
 
+// Export helper để payment.controller dùng kiểm tra double-booking (tránh circular dep)
+exports.isInstanceAvailableForPeriodExcluding = (instanceId, rentStartDate, rentEndDate, excludeOrderId) =>
+    isInstanceAvailableForPeriod(instanceId, rentStartDate, rentEndDate, null, excludeOrderId);
+
 const auditOrderChange = async (req, action, orderId, before, after) => (
     writeAuditLog({
         req,
@@ -422,33 +407,94 @@ const auditOrderChange = async (req, action, orderId, before, after) => (
     })
 );
 
+/**
+ * Resolve product instances cho danh sách items trong đơn thuê.
+ * Tìm instance khả dụng theo productInstanceId hoặc productId, check availability theo khoảng ngày.
+ * Dùng chung cho createRentOrder và createWalkInOrder.
+ */
+const resolveRentInstances = async (items, defaultStart, defaultEnd, session, useTransaction) => {
+    const resolvedItems = [];
+    const lockedInstanceIds = new Set();
+
+    for (const item of items) {
+        let instance = null;
+        const itemRentStart = new Date(item.rentStartDate || defaultStart);
+        const itemRentEnd = new Date(item.rentEndDate || defaultEnd);
+
+        if (Number.isNaN(itemRentStart.getTime()) || Number.isNaN(itemRentEnd.getTime()) || itemRentStart > itemRentEnd) {
+            throw new Error('Ngày thuê không hợp lệ');
+        }
+
+        const isInstanceRentable = async (inst) => {
+            if (!inst) return false;
+            if (['Washing', 'Repair', 'Lost'].includes(inst.lifecycleStatus)) return false;
+            return isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
+        };
+
+        if (item.productInstanceId) {
+            const inst = useTransaction
+                ? await ProductInstance.findById(item.productInstanceId).session(session)
+                : await ProductInstance.findById(item.productInstanceId);
+            if (!(await isInstanceRentable(inst))) {
+                throw new Error('Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.');
+            }
+            instance = inst;
+        } else if (item.productId) {
+            // Ưu tiên Used (conditionScore thấp) trước, nếu không đủ mới lấy New
+        const candidatesQuery = ProductInstance.find({
+                productId: item.productId,
+                _id: { $nin: Array.from(lockedInstanceIds) },
+                lifecycleStatus: { $nin: ['Washing', 'Repair', 'Lost', 'Sold'] }
+            }).sort({ conditionScore: 1 });
+            const candidates = useTransaction ? await candidatesQuery.session(session) : await candidatesQuery;
+            for (const cand of candidates) {
+                if (await isInstanceRentable(cand)) {
+                    instance = cand;
+                    break;
+                }
+            }
+        }
+
+        if (!instance) throw new Error('Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.');
+        lockedInstanceIds.add(instance._id.toString());
+        resolvedItems.push({ source: item, instance, rentStartDate: itemRentStart, rentEndDate: itemRentEnd });
+    }
+
+    return resolvedItems;
+};
+
+/**
+ * Đánh dấu Reserved cho các instance thuộc đơn nếu ngày thuê nằm trong ngưỡng HOURS_BEFORE_RESERVED.
+ * Dùng chung cho payDeposit, staffCollectDeposit, confirmRentOrder.
+ */
+const reserveInstancesIfDueSoon = async (orderId, rentStartDate, txOptions = {}) => {
+    const items = await RentOrderItem.find({ orderId }).lean();
+    const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+    if (instanceIds.length === 0) return;
+
+    const now = new Date();
+    const orderStart = new Date(rentStartDate);
+    const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
+    const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
+
+    if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
+        await ProductInstance.updateMany(
+            { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
+            { lifecycleStatus: 'Reserved' },
+            txOptions
+        );
+    }
+};
+
 const findRentOrderByIdempotencyKey = async (idempotencyKey) => {
     if (!idempotencyKey) return null;
     return RentOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
 };
 
 exports.createRentOrder = async (req, res) => {
-    // 1. Khởi tạo Transaction (nếu MongoDB hỗ trợ replica set)
-    let session = null;
-    let useTransaction = false;
-    let idempotencyKey = null;
-
-    try {
-        const isMaster = await mongoose.connection.db.admin().command({ ismaster: 1 });
-        if (isMaster && isMaster.setName) {
-            session = await mongoose.startSession();
-            try {
-                session.startTransaction();
-                useTransaction = true;
-            } catch (err) {
-                console.warn('MongoDB transaction not supported in current deployment; proceeding without transaction.', err.message);
-            }
-        }
-    } catch (err) {
-        console.warn('Unable to check MongoDB replica set status; proceeding without transaction.', err.message);
-    }
-
+    const { session, useTransaction } = await startTransactionIfAvailable();
     const txOptions = useTransaction ? { session } : {};
+    let idempotencyKey = null;
 
     try {
         const userId = req.user?.id;
@@ -494,78 +540,15 @@ exports.createRentOrder = async (req, res) => {
             return res.status(200).json(buildRentOrderSuccessResponse(detail));
         }
 
-        const resolvedItems = [];
-        // Dùng Set để lưu tạm các ID đồ đã được chọn trong CÙNG 1 đơn này (chống trùng)
-        const lockedInstanceIds = new Set(); 
-
-        // 2. Kiểm tra và Khóa đồ (dựa trên khoảng thời gian thuê, không dựa vào lifecycleStatus cho booking tương lai)
-        for (const item of items) {
-            let instance = null;
-            const itemRentStart = new Date(item.rentStartDate || rentStartDate);
-            const itemRentEnd = new Date(item.rentEndDate || rentEndDate);
-
-            if (Number.isNaN(itemRentStart.getTime()) || Number.isNaN(itemRentEnd.getTime()) || itemRentStart > itemRentEnd) {
-                throw new Error('Ngày thuê không hợp lệ');
-            }
-
-            const isInstanceRentable = async (inst) => {
-                if (!inst) return false;
-                if (['Washing', 'Repair', 'Lost'].includes(inst.lifecycleStatus)) return false;
-                return isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
-            };
-
-            if (item.productInstanceId) {
-                const inst = useTransaction
-                    ? await ProductInstance.findById(item.productInstanceId).session(session)
-                    : await ProductInstance.findById(item.productInstanceId);
-
-                if (!(await isInstanceRentable(inst))) {
-                    throw new Error(`Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.`);
-                }
-                instance = inst;
-            } else if (item.productId) {
-                const candidatesQuery = ProductInstance.find({
-                    productId: item.productId,
-                    _id: { $nin: Array.from(lockedInstanceIds) },
-                    lifecycleStatus: { $nin: ['Washing', 'Repair', 'Lost'] }
-                }).sort({ conditionScore: -1 });
-
-                const candidates = useTransaction
-                    ? await candidatesQuery.session(session)
-                    : await candidatesQuery;
-
-                for (const cand of candidates) {
-                    if (await isInstanceRentable(cand)) {
-                        instance = cand;
-                        break;
-                    }
-                }
-            }
-
-            if (!instance) {
-                // Nếu lỗi, throw error để rớt xuống catch và Rollback toàn bộ
-                throw new Error(`Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.`);
-            }
-
-            // Ghi nhận là đồ này đã bị pick
-            lockedInstanceIds.add(instance._id.toString());
-            resolvedItems.push({
-                source: item,
-                instance,
-                rentStartDate: itemRentStart,
-                rentEndDate: itemRentEnd
-            });
-
-            // Chỉ set trạng thái Reserved nếu đơn thuê đang diễn ra (hoặc đã bắt đầu)
-            const now = new Date();
-            if (itemRentStart <= now && now <= itemRentEnd) {
-                await ProductInstance.findByIdAndUpdate(
-                    instance._id,
-                    { lifecycleStatus: 'Reserved' },
-                    { ...txOptions, new: true }
-                );
-            }
+        const invalidPriceItem = items.find((item) => Number(item.baseRentPrice || 0) <= 0);
+        if (invalidPriceItem) {
+            return res.status(400).json({ success: false, message: 'Giá thuê không hợp lệ, vui lòng thử lại.' });
         }
+
+        const resolvedItems = await resolveRentInstances(items, rentStartDate, rentEndDate, session, useTransaction);
+
+        // Không set Reserved khi PendingDeposit (chưa cọc): giữ chỗ qua RentOrderItem + availability.
+        // Reserved chỉ sau khi cọc (payDeposit / PayOS / reserveInstancesIfDueSoon).
 
         // 3. Tính toán tiền nong (Giữ nguyên logic cực tốt của bạn)
         const computedTotalAmount = resolvedItems.reduce(
@@ -601,12 +584,11 @@ exports.createRentOrder = async (req, res) => {
             discountAmount: voucherApplication.discountAmount,
             depositAmount,
             remainingAmount,
-            washingFee: 0,
             damageFee: 0,
             lateDays: 0,
             lateFee: 0,
             compensationFee: 0,
-            totalAmount: orderTotalAmount
+            totalAmount: orderTotalAmount,
         }], { session });
 
         // Gán mã đơn sau khi có _id
@@ -688,12 +670,13 @@ exports.createRentOrder = async (req, res) => {
             await session.endSession();
         }
         
-        console.error('Create rent order error:', error);
-        
         // Trả mã 400 nếu là lỗi logic (khách hàng), 500 nếu lỗi DB
         const CLIENT_ERROR_KEYWORDS = ['khả dụng', 'hết hàng', 'Ngày thuê', 'quá khứ', 'không hợp lệ'];
         const isClientError = error.isClientError === true
             || CLIENT_ERROR_KEYWORDS.some((kw) => error.message.includes(kw));
+        if (!isClientError) {
+            console.error('Create rent order error:', error);
+        }
         return res.status(isClientError ? 400 : 500).json({
             success: false,
             message: isClientError ? error.message : 'Lỗi server khi tạo đơn thuê',
@@ -815,6 +798,43 @@ exports.payDeposit = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Don thue nay da co dat coc' });
         }
 
+        // Re-check availability để chống double-booking (2 user đặt cùng lúc)
+        // excludeOrderId = id → bỏ qua chính đơn này khi check tránh tự block
+        const orderItems = await RentOrderItem.find({ orderId: id }).lean();
+        for (const item of orderItems) {
+            const available = await isInstanceAvailableForPeriod(
+                item.productInstanceId,
+                item.rentStartDate,
+                item.rentEndDate,
+                null,
+                id
+            );
+            if (!available) {
+                order.status = 'Cancelled';
+                order.history = [
+                    ...(order.history || []),
+                    {
+                        status: 'Cancelled',
+                        action: 'double_booking_auto_cancel',
+                        description: 'Đơn bị hủy tự động do sản phẩm đã được thuê bởi khách khác.',
+                        updatedAt: new Date(),
+                    },
+                ];
+                await order.save();
+                const conflictInstanceIds = orderItems.map((i) => i.productInstanceId).filter(Boolean);
+                if (conflictInstanceIds.length > 0) {
+                    await ProductInstance.updateMany(
+                        { _id: { $in: conflictInstanceIds }, lifecycleStatus: 'Reserved' },
+                        { lifecycleStatus: 'Available' }
+                    );
+                }
+                return res.status(409).json({
+                    success: false,
+                    message: 'Sản phẩm này vừa được thuê bởi khách hàng khác. Đơn thuê của bạn đã bị hủy tự động.',
+                });
+            }
+        }
+
         const deposit = await Deposit.create({
             orderId: id,
             amount: order.depositAmount,
@@ -838,22 +858,7 @@ exports.payDeposit = async (req, res) => {
         order.status = 'Deposited';
         await order.save();
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
-        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
-        if (instanceIds.length > 0) {
-            const now = new Date();
-            const orderStart = new Date(order.rentStartDate);
-
-            // Mark Reserved nếu ngày thuê trong vòng HOURS_BEFORE_RESERVED giờ tới
-            const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
-            const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
-            if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
-                await ProductInstance.updateMany(
-                    { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                    { lifecycleStatus: 'Reserved' }
-                );
-            }
-        }
+        await reserveInstancesIfDueSoon(id, order.rentStartDate);
 
         await writeAuditLog({
             req,
@@ -1031,21 +1036,7 @@ exports.staffCollectDeposit = async (req, res) => {
         order.status = 'Deposited';
         await order.save();
 
-        // Đánh dấu Reserved nếu thuê bắt đầu trong ngưỡng giờ tới
-        const items = await RentOrderItem.find({ orderId: id }).lean();
-        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
-        if (instanceIds.length > 0) {
-            const now = new Date();
-            const orderStart = new Date(order.rentStartDate);
-            const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
-            const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
-            if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
-                await ProductInstance.updateMany(
-                    { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                    { lifecycleStatus: 'Reserved' }
-                );
-            }
-        }
+        await reserveInstancesIfDueSoon(id, order.rentStartDate);
 
         await auditOrderChange(req, 'orders_rent.deposit.staff_collect', order._id, before, snapshotOrderForAudit(order));
 
@@ -1084,21 +1075,7 @@ exports.confirmRentOrder = async (req, res) => {
         order.confirmedAt = new Date();
         await order.save();
 
-        // Cập nhật ProductInstance → Reserved nếu ngày thuê trong vòng HOURS_BEFORE_RESERVED giờ tới
-        const items = await RentOrderItem.find({ orderId: id }).lean();
-        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
-        if (instanceIds.length > 0) {
-            const now = new Date();
-            const orderStart = new Date(order.rentStartDate);
-            const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
-            const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
-            if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
-                await ProductInstance.updateMany(
-                    { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                    { lifecycleStatus: 'Reserved' }
-                );
-            }
-        }
+        await reserveInstancesIfDueSoon(id, order.rentStartDate);
 
         await auditOrderChange(req, 'orders_rent.order.confirm', order._id, before, snapshotOrderForAudit(order));
 
@@ -1329,7 +1306,7 @@ exports.confirmReturn = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { returnedItems = [], note = '', washingFee = 0, returnDate: returnDateRaw } = req.body;
+        const { returnedItems = [], note = '', returnDate: returnDateRaw } = req.body;
 
         // Ngày thực tế trả — staff có thể chỉ định; mặc định là hôm nay
         const actualReturnDate = returnDateRaw ? new Date(returnDateRaw) : new Date();
@@ -1404,7 +1381,6 @@ exports.confirmReturn = async (req, res) => {
         const lateDays = Number(order.lateDays || 0);
         const lateFee = Number(order.lateFee || 0);
         const totalDamageFee = returnedItems.reduce((sum, item) => sum + Number(item.damageFee || 0), 0);
-        const totalWashingFee = Number(washingFee || 0);
         const conditions = new Set(returnedItems.map((item) => item.condition));
         const returnCondition = conditions.has('Damaged')
             ? 'Damaged'
@@ -1418,7 +1394,6 @@ exports.confirmReturn = async (req, res) => {
                     orderId: id,
                     returnDate: actualReturnDate,
                     condition: returnCondition,
-                    washingFee: totalWashingFee,
                     damageFee: totalDamageFee,
                     lateDays,
                     lateFee,
@@ -1482,7 +1457,6 @@ exports.confirmReturn = async (req, res) => {
 
         order.lateDays = lateDays;
         order.lateFee = lateFee;
-        order.washingFee = totalWashingFee;
         order.damageFee = totalDamageFee;
         order.actualReturnDate = actualReturnDate;
         order.returnedAt = new Date();
@@ -1504,7 +1478,6 @@ exports.confirmReturn = async (req, res) => {
                 condition: returnRecord.condition,
                 lateDays: returnRecord.lateDays,
                 lateFee: returnRecord.lateFee,
-                washingFee: returnRecord.washingFee,
                 damageFee: returnRecord.damageFee,
             },
         });
@@ -1778,46 +1751,7 @@ exports.createWalkInOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: `Thời gian thuê tối đa là ${MAX_RENTAL_DAYS} ngày` });
         }
 
-        // Resolve product instances (tương tự createRentOrder)
-        const resolvedItems = [];
-        const lockedInstanceIds = new Set();
-
-        for (const item of items) {
-            let instance = null;
-            const itemRentStart = new Date(item.rentStartDate || rentStartDate);
-            const itemRentEnd = new Date(item.rentEndDate || rentEndDate);
-
-            if (item.productInstanceId) {
-                const inst = useTransaction
-                    ? await ProductInstance.findById(item.productInstanceId).session(session)
-                    : await ProductInstance.findById(item.productInstanceId);
-                const rentable = inst
-                    && !['Washing', 'Repair', 'Lost'].includes(inst.lifecycleStatus)
-                    && await isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
-                if (!rentable) throw new Error('Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.');
-                instance = inst;
-            } else if (item.productId) {
-                const candidatesQuery = ProductInstance.find({
-                    productId: item.productId,
-                    _id: { $nin: Array.from(lockedInstanceIds) },
-                    lifecycleStatus: { $nin: ['Washing', 'Repair', 'Lost'] }
-                }).sort({ conditionScore: -1 });
-                const candidates = useTransaction ? await candidatesQuery.session(session) : await candidatesQuery;
-                console.log(`[WalkIn] productId=${item.productId} — found ${candidates.length} candidates:`,
-                    candidates.map((c) => ({ id: c._id, status: c.lifecycleStatus }))
-                );
-                for (const cand of candidates) {
-                    if (await isInstanceAvailableForPeriod(cand._id, itemRentStart, itemRentEnd, useTransaction ? session : null)) {
-                        instance = cand;
-                        break;
-                    }
-                }
-            }
-
-            if (!instance) throw new Error('Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.');
-            lockedInstanceIds.add(instance._id.toString());
-            resolvedItems.push({ source: item, instance, rentStartDate: itemRentStart, rentEndDate: itemRentEnd });
-        }
+        const resolvedItems = await resolveRentInstances(items, rentStartDate, rentEndDate, session, useTransaction);
 
         // Tính tiền
         const computedTotalAmount = resolvedItems.reduce(
@@ -1840,7 +1774,6 @@ exports.createWalkInOrder = async (req, res) => {
             depositAmount,
             remainingAmount,
             totalAmount: computedTotalAmount,
-            washingFee: 0,
             damageFee: 0,
             lateDays: 0,
             lateFee: 0,
@@ -1861,6 +1794,7 @@ exports.createWalkInOrder = async (req, res) => {
                 rentEndDate: item.rentEndDate,
                 condition: item.instance.conditionLevel,
                 appliedRuleIds: item.source.appliedRuleIds || [],
+                selectLevel: item.source.selectLevel || '',
                 size: item.source.size || '',
                 color: item.source.color || '',
                 note: item.source.note || ''
@@ -1891,15 +1825,9 @@ exports.createWalkInOrder = async (req, res) => {
             }], txOptions);
         }
 
-        // Đánh dấu Reserved nếu thuê bắt đầu hôm nay (áp dụng cả Cash lẫn PayOS)
-        const now = new Date();
-        if (parsedStart <= now) {
-            const instanceIds = resolvedItems.map((i) => i.instance._id);
-            await ProductInstance.updateMany(
-                { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                { lifecycleStatus: 'Reserved' },
-                txOptions
-            );
+        // Chỉ reserve sau khi đã thu cọc (Cash → Deposited). PayOS PendingDeposit: chờ thanh toán, không Reserved.
+        if (!isPayOS) {
+            await reserveInstancesIfDueSoon(rentOrder._id, rentStartDate, txOptions);
         }
 
         if (session) {

@@ -34,8 +34,16 @@ export default function VariantSelector({
       />
       {conditionOptions.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-            Tình trạng sản phẩm
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+              Tình trạng sản phẩm
+            </p>
+            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+              Chỉ áp dụng khi Mua
+            </span>
+          </div>
+          <p className="text-xs text-slate-400">
+            Khi thuê, hệ thống tự động chọn sản phẩm phù hợp.
           </p>
           <div className="flex flex-wrap gap-2">
             {conditionOptions.map((option) => {

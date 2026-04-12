@@ -32,7 +32,7 @@ const productInstanceSchema = new mongoose.Schema({
   },
   lifecycleStatus: {
     type: String,
-    enum: ['Available', 'Reserved', 'Rented', 'Washing', 'Repair', 'Lost'],
+    enum: ['Available', 'Reserved', 'Rented', 'Washing', 'Repair', 'Lost', 'Sold'],
     default: 'Available'
   },
   currentRentPrice: {

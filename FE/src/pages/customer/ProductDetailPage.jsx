@@ -312,9 +312,9 @@ export default function ProductDetailPage() {
       .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
       .map((item) => ({
         ...item,
-        label: `${item.level === "New" ? "Mới" : "Đã sử dụng"} - ${item.score}/100 - ${formatCurrency(item.rentPrice, lang)}${item.count > 1 ? ` (${item.count} sản phẩm)` : ""}`,
+        label: `${item.level === "New" ? "Mới" : "Đã sử dụng"} - ${item.score}%`,
       }));
-  }, [availableInstances, lang]);
+  }, [availableInstances]);
 
   const selectedConditionOption = useMemo(() => {
     if (!conditionOptions.length) return null;
@@ -346,10 +346,8 @@ export default function ProductDetailPage() {
     setSelectedImageIndex(0);
   }, [selectedImageIndex, currentImagesByColor]);
 
+  // Giá thuê luôn lấy từ product (variant matrix hoặc base), KHÔNG bị ảnh hưởng bởi condition
   const currentRentPrice = useMemo(() => {
-    if (selectedConditionOption) {
-      return Number(selectedConditionOption.rentPrice || 0);
-    }
     if (!product) return 0;
     if (!hasVariantPricing) return Number(product.baseRentPrice || 0);
 
@@ -366,7 +364,7 @@ export default function ProductDetailPage() {
     }
 
     return Number(product.baseRentPrice || 0);
-  }, [selectedConditionOption, product, hasVariantPricing, isFreeSize, selectedSize, selectedColor]);
+  }, [product, hasVariantPricing, isFreeSize, selectedSize, selectedColor]);
 
   const currentSalePrice = useMemo(() => {
     if (selectedConditionOption) {
@@ -375,25 +373,24 @@ export default function ProductDetailPage() {
     return Number(product?.baseSalePrice || 0);
   }, [selectedConditionOption, product?.baseSalePrice]);
 
+  // canSubmit: điều kiện cơ bản cho cả thuê lẫn mua (size + màu + còn hàng)
+  // Không yêu cầu condition vì thuê không cần chọn condition
   const canSubmit = useMemo(() => {
     if (!product) return false;
     if (Number(product?.availableQuantity || 0) <= 0) return false;
     if (!selectedColor) return false;
-    if (conditionOptions.length > 0 && !selectedConditionOption) return false;
     if (!isFreeSize && sizes.length > 0 && !selectedSize) return false;
     if (!isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) return false;
     return true;
-  }, [product, selectedColor, selectedSize, conditionOptions.length, selectedConditionOption, isFreeSize, sizes, isVariantAvailable]);
+  }, [product, selectedColor, selectedSize, isFreeSize, sizes, isVariantAvailable]);
 
   const canBuy = useMemo(() => {
     if (!canSubmit) return false;
     if (Number(currentSalePrice || 0) <= 0) return false;
     if (Number(product?.availableQuantity || 0) <= 0) return false;
-    if (conditionOptions.length > 0) {
-      return Number(selectedConditionOption?.score || 0) === 100;
-    }
+    if (conditionOptions.length > 0 && !selectedConditionOption) return false;
     return true;
-  }, [canSubmit, currentSalePrice, product?.availableQuantity, conditionOptions.length, selectedConditionOption?.score]);
+  }, [canSubmit, currentSalePrice, product?.availableQuantity, conditionOptions.length, selectedConditionOption]);
 
   useEffect(() => {
     if (!product?._id) return;
@@ -466,6 +463,7 @@ export default function ProductDetailPage() {
   };
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const maxRentalDays = useMemo(() => parseInt(import.meta.env.VITE_MAX_RENTAL_DAYS || "30", 10), []);
 
   const rentStartDateTime = useMemo(() => {
     if (!rentStartDate || !rentStartTime) return null;
@@ -528,18 +526,23 @@ export default function ProductDetailPage() {
       return;
     }
 
+    if (rentalDays > maxRentalDays) {
+      showToast(`Thời gian thuê tối đa là ${maxRentalDays} ngày.`);
+      return;
+    }
+
     setLoadingAction("rent");
     try {
       // Tạo datetime string với giờ
       const startDateTime = rentStartDate && rentStartTime ? `${rentStartDate}T${rentStartTime}:00` : rentStartDate;
       const endDateTime = rentEndDate && rentEndTime ? `${rentEndDate}T${rentEndTime}:00` : rentEndDate;
 
-      // Thêm sản phẩm vào giỏ thuê với thông tin ngày và giờ
+      // Thêm vào giỏ thuê – hệ thống tự assign instance (ưu tiên Used)
       addItem(product, {
         color: selectedColor,
         size: selectedSize,
         rentPrice: currentRentPrice,
-        productInstanceId: selectedConditionOption?.instanceId || null,
+        productInstanceId: null,
         rentStartDate: startDateTime,
         rentEndDate: endDateTime
       });
@@ -574,6 +577,7 @@ export default function ProductDetailPage() {
         size: selectedSize,
         salePrice: currentSalePrice,
         productInstanceId: selectedConditionOption?.instanceId || null,
+        conditionLevel: selectedConditionOption?.level || 'New',
         conditionScore: Number(selectedConditionOption?.score ?? 100),
         quantity: 1
       });
@@ -855,6 +859,11 @@ export default function ProductDetailPage() {
                     Vui lòng chọn giờ trả sau giờ nhận để tạo khoảng thuê hợp lệ.
                   </p>
                 )}
+                {rentalDays > maxRentalDays && (
+                  <p className="mt-3 text-sm font-medium text-rose-600">
+                    Thời gian thuê tối đa là {maxRentalDays} ngày. Hiện tại bạn đang chọn {rentalDays} ngày.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -869,7 +878,7 @@ export default function ProductDetailPage() {
               <button
                 type="button"
                 onClick={handleConfirmRent}
-                disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate || rentalDays === 0}
+                disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate || rentalDays === 0 || rentalDays > maxRentalDays}
                 className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-300"
               >
                 {loadingAction === "rent" ? "Đang xử lý..." : "Xác nhận"}

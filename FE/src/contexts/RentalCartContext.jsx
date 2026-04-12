@@ -28,6 +28,9 @@ export const RentalCartProvider = ({ children }) => {
     if (Number(product?.availableQuantity || 0) <= 0) {
       return
     }
+    if (Number(variant?.rentPrice || 0) <= 0) {
+      return
+    }
     const newItem = {
       id: `${product._id}_${variant.color}_${variant.size}_${Date.now()}`,
       productId: product._id,

@@ -31,8 +31,10 @@ export const BuyCartProvider = ({ children }) => {
     const price = Number(variant.salePrice ?? product.baseSalePrice ?? 0)
     const quantity = Math.max(Number(variant.quantity || 1), 1)
 
+    const conditionLevel = variant.conditionLevel === 'Used' ? 'Used' : 'New'
+
     const newItem = {
-      id: `${product._id}_${variant.color || 'default'}_${variant.size || 'default'}`,
+      id: `${product._id}_${variant.color || 'default'}_${variant.size || 'default'}_${conditionLevel}`,
       productId: product._id,
       productInstanceId: variant.productInstanceId || null,
       name: product.name,
@@ -41,6 +43,7 @@ export const BuyCartProvider = ({ children }) => {
       size: variant.size || 'FREE SIZE',
       salePrice: price,
       quantity,
+      conditionLevel,
       conditionScore: Number(variant.conditionScore ?? 100),
     }
 
@@ -49,7 +52,8 @@ export const BuyCartProvider = ({ children }) => {
         (item) =>
           item.productId === newItem.productId &&
           item.color === newItem.color &&
-          item.size === newItem.size
+          item.size === newItem.size &&
+          item.conditionLevel === newItem.conditionLevel
       )
 
       if (existingIndex >= 0) {

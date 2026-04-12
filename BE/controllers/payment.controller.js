@@ -222,6 +222,21 @@ exports.createSalePaymentLink = async (req, res) => {
 };
 
 /**
+ * PayOS hủy/hết hạn nhưng đơn vẫn PendingDeposit → trả instance đang Reserved về Available (sửa dữ liệu cũ / edge case).
+ */
+const releaseReservedInstancesForPendingDepositOrder = async (orderId) => {
+    const order = await RentOrder.findById(orderId).lean();
+    if (!order || order.status !== 'PendingDeposit') return;
+    const items = await RentOrderItem.find({ orderId }).lean();
+    const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+    if (instanceIds.length === 0) return;
+    await ProductInstance.updateMany(
+        { _id: { $in: instanceIds }, lifecycleStatus: 'Reserved' },
+        { lifecycleStatus: 'Available' }
+    );
+};
+
+/**
  * Xử lý nội bộ khi phát hiện thanh toán đã thành công (dùng chung cho webhook và polling)
  */
 const processConfirmedPayment = async (txn) => {
@@ -230,6 +245,36 @@ const processConfirmedPayment = async (txn) => {
     if (txn.purpose === 'Deposit') {
         const order = await RentOrder.findById(txn.orderId);
         if (order && order.status === 'PendingDeposit') {
+            // Re-check availability để chống double-booking qua PayOS
+            const { isInstanceAvailableForPeriodExcluding } = getRentOrderController();
+            if (typeof isInstanceAvailableForPeriodExcluding === 'function') {
+                const orderItems = await RentOrderItem.find({ orderId: txn.orderId }).lean();
+                for (const item of orderItems) {
+                    const available = await isInstanceAvailableForPeriodExcluding(
+                        item.productInstanceId, item.rentStartDate, item.rentEndDate, txn.orderId
+                    );
+                    if (!available) {
+                        order.status = 'Cancelled';
+                        order.history = [...(order.history || []), {
+                            status: 'Cancelled',
+                            action: 'double_booking_auto_cancel',
+                            description: 'Đơn bị hủy tự động do sản phẩm đã được thuê bởi khách khác.',
+                            updatedAt: new Date(),
+                        }];
+                        await order.save();
+                        const releaseIds = orderItems.map((i) => i.productInstanceId).filter(Boolean);
+                        if (releaseIds.length > 0) {
+                            await ProductInstance.updateMany(
+                                { _id: { $in: releaseIds }, lifecycleStatus: 'Reserved' },
+                                { lifecycleStatus: 'Available' }
+                            );
+                        }
+                        console.warn(`[PayOS] Double-booking detected, order ${order.orderCode || txn.orderId} auto-cancelled.`);
+                        return;
+                    }
+                }
+            }
+
             const existingDeposit = await Deposit.findOne({ orderId: txn.orderId, status: 'Held' });
             if (!existingDeposit) {
                 await Deposit.create({ orderId: txn.orderId, amount: txn.amount, method: 'Online', status: 'Held', paidAt: new Date() });
@@ -338,6 +383,9 @@ exports.checkPayosStatus = async (req, res) => {
                 } else if (payosInfo.status === 'CANCELLED' || payosInfo.status === 'EXPIRED') {
                     await PayOSTransaction.updateOne({ _id: txn._id }, { status: payosInfo.status });
                     txn.status = payosInfo.status;
+                    if (txn.orderType === ORDER_TYPE.RENT && txn.purpose === 'Deposit') {
+                        await releaseReservedInstancesForPendingDepositOrder(txn.orderId);
+                    }
                 }
             } catch (payosErr) {
                 console.warn(`[PayOS] Could not query payment status for ${orderCode}:`, payosErr.message);
@@ -394,6 +442,9 @@ exports.handleWebhook = async (req, res) => {
 
         if (!isPaid) {
             await PayOSTransaction.updateOne({ _id: txn._id }, { status: 'CANCELLED' });
+            if (txn.orderType === ORDER_TYPE.RENT && txn.purpose === 'Deposit') {
+                await releaseReservedInstancesForPendingDepositOrder(txn.orderId);
+            }
             return res.json({ success: true });
         }
 
