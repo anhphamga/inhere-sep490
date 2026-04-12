@@ -198,7 +198,6 @@ export default function Header({ active = "" }) {
                     {LABELS.vouchers}
                   </Link>
                   <Link to="/favorites" className="site-account-item" onClick={() => setMenuOpen(false)}>
-                    <Heart size={16} />
                     {LABELS.favorites}
                   </Link>
                   <Link to="/profile" className="site-account-item" onClick={() => setMenuOpen(false)}>

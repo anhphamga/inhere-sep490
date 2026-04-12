@@ -134,7 +134,7 @@ export default function UserDetail({ userId }) {
                             className="w-24 h-24 rounded-full object-cover border-4 border-slate-50 shadow-sm mx-auto"
                         />
                         <h2 className="mt-4 text-xl font-bold text-slate-900">{customer.name || 'N/A'}</h2>
-                        <p className="text-slate-500 text-sm">ID: {customer.id}</p>
+                        
                     </div>
 
                     <div className="p-6 space-y-4 text-sm">
@@ -205,8 +205,8 @@ export default function UserDetail({ userId }) {
                                 {transactions.map((tx) => (
                                     <tr key={`${tx.type}-${tx.id}`} className="hover:bg-slate-50 transition-colors">
                                         <td className="py-3 pr-4 font-medium">{tx.code}</td>
-                                        <td className="py-3 pr-4">{tx.type}</td>
-                                        <td className="py-3 pr-4">{tx.status}</td>
+                                        <td className="py-3 pr-4">{tx.type === 'Rent' ? 'Thuê' : 'Mua'}</td>
+                                        <td className="py-3 pr-4">{tx.status === 'PendingDeposit' ? 'Chờ đặt cọc' : tx.status === 'Deposited' ? 'Đã đặt cọc' : tx.status === 'Confirmed' ? 'Đã xác nhận' : tx.status === 'WaitingPickup' ? 'Chờ lấy đồ' : tx.status === 'Renting' ? 'Đang thuê' : tx.status === 'WaitingReturn' ? 'Chờ trả đồ' : tx.status === 'Returned' ? 'Đã trả đồ' : tx.status === 'Cancelled' ? 'Đã hủy' : tx.status === 'NoShow' ? 'Khách không đến' : tx.status === 'Compensation' ? 'Bồi thường' : tx.status === 'Completed' ? 'Hoàn tất' : 'N/A'}</td>
                                         <td className="py-3 pr-4 text-slate-500">{formatDateTime(tx.createdAt)}</td>
                                         <td className="py-3 pr-4 text-slate-500">{formatDateTime(tx.closedAt)}</td>
                                         <td className="py-3 text-right font-semibold">{currencyFormatter.format(tx.amount)}</td>
