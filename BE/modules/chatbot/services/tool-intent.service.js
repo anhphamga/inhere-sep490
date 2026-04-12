@@ -78,11 +78,16 @@ const isRentalKnowledgeIntent = (message) => {
   }
 
   const hasPolicyAction = includesAny(message, [
+    'cac buoc',
+    'buoc de',
     'muon thue can',
     'can gi de thue',
     'thu tuc thue',
     'quy trinh thue',
     'luong thue',
+    'cac buoc thue',
+    'cac buoc de thue',
+    'huong dan thue',
     'huy don',
     'huy don thue',
     'xu ly sao',
@@ -106,12 +111,54 @@ const isRentalKnowledgeIntent = (message) => {
   return hasPolicyAction && hasRentalContext;
 };
 
+const isPurchaseKnowledgeIntent = (message) => {
+  const hasPurchaseAction = includesAny(message, [
+    'quy trinh mua',
+    'thu tuc mua',
+    'luong mua',
+    'cac buoc mua',
+    'cac buoc de mua',
+    'mua can gi',
+    'can gi de mua',
+    'huong dan mua',
+  ]);
+
+  const hasPurchaseContext = includesAny(message, [
+    'mua',
+    'don mua',
+    'thanh toan',
+    'gio mua',
+    'khach vang lai',
+    'otp',
+    'dia chi nhan',
+  ]);
+
+  return hasPurchaseAction && hasPurchaseContext;
+};
+
 const isSelfOrderIntent = (message) => {
   const hasSelf = includesAny(message, ['cua toi', 'toi', 'my']);
-  const hasOrderNoun = includesAny(message, ['don', 'order']);
-  const hasDomain = includesAny(message, ['don hang', 'don thue', 'thue', 'rent', 'mua', 'sale']);
+  const hasOrderNoun = includesAny(message, [
+    'don',
+    'order',
+    'don hang',
+    'don thue',
+    'don mua',
+    'lich su don',
+    'ma don',
+    'trang thai don',
+  ]);
 
-  return hasSelf && (hasOrderNoun || hasDomain);
+  const hasExplicitMyOrder = includesAny(message, [
+    'don cua toi',
+    'don hang cua toi',
+    'don thue cua toi',
+    'don mua cua toi',
+    'order cua toi',
+    'my order',
+  ]);
+
+  return hasExplicitMyOrder || (hasSelf && hasOrderNoun);
 };
 
 const isOrderDetailIntent = (message) => {
@@ -207,7 +254,7 @@ const isFittingBookingKnowledgeIntent = (message) => {
 };
 
 const isProductIntent = (message) => {
-  if (isRentalKnowledgeIntent(message)) {
+  if (isRentalKnowledgeIntent(message) || isPurchaseKnowledgeIntent(message)) {
     return false;
   }
 
@@ -390,6 +437,13 @@ const detectChatIntent = (rawMessage) => {
   }
 
   if (isVoucherKnowledgeIntent(message) || isFittingBookingKnowledgeIntent(message)) {
+    return {
+      intent: 'KNOWLEDGE',
+      entity: null,
+    };
+  }
+
+  if (isPurchaseKnowledgeIntent(message)) {
     return {
       intent: 'KNOWLEDGE',
       entity: null,

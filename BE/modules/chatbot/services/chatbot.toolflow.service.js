@@ -337,6 +337,17 @@ const getRentalPolicyKnowledgeAnswer = (message) => {
     || normalized.includes('tre han')
     || normalized.includes('muon han tra');
 
+  const asksPurchaseFlow = normalized.includes('quy trinh mua')
+    || normalized.includes('thu tuc mua')
+    || normalized.includes('luong mua')
+    || normalized.includes('cac buoc mua')
+    || normalized.includes('cac buoc de mua')
+    || normalized.includes('huong dan mua')
+    || normalized.includes('mua can gi')
+    || normalized.includes('can gi de mua')
+    || /cac\s+buoc.*mua/.test(normalized)
+    || /huong\s+dan.*mua/.test(normalized);
+
   if (asksLostItem) {
     return 'Nếu bạn làm mất đồ thuê, bạn hãy báo shop ngay để khóa xử lý đơn và đối soát. Tiền cọc sẽ được dùng để bù trừ trước, nếu còn thiếu thì bổ sung theo giá trị bồi thường của sản phẩm. Shop sẽ thông báo rõ từng khoản trước khi chốt.';
   }
@@ -361,6 +372,10 @@ const getRentalPolicyKnowledgeAnswer = (message) => {
     return 'Khi trả đồ trễ, hệ thống ghi nhận số ngày trễ và áp dụng phí theo quy định nếu vượt ngưỡng tính phí. Bạn nên báo trước cho shop nếu có nguy cơ trễ hẹn để được hướng dẫn sớm và giảm phát sinh không cần thiết.';
   }
 
+  if (asksPurchaseFlow) {
+    return 'Quy trình mua gồm: chọn sản phẩm trong giỏ mua -> điền thông tin nhận hàng (tên, điện thoại, email, địa chỉ) -> chọn phương thức thanh toán -> xác nhận đơn. Nếu bạn mua với tư cách khách vãng lai, hệ thống sẽ yêu cầu xác minh OTP hoặc email trước khi tạo đơn. Sau khi đặt thành công, đơn thường ở trạng thái chờ xác nhận và bạn có thể theo dõi trong lịch sử đơn hàng.';
+  }
+
   const voucherUsageSignal = (
     (normalized.includes('voucher') || normalized.includes('ma giam') || normalized.includes('giam gia') || normalized.includes('uu dai'))
     && (normalized.includes('cach')
@@ -373,6 +388,10 @@ const getRentalPolicyKnowledgeAnswer = (message) => {
 
   if (voucherUsageSignal) {
     return 'Để dùng voucher: (1) Chọn sản phẩm và vào bước thanh toán. (2) Nhập mã voucher vào ô mã giảm giá. (3) Hệ thống sẽ tự kiểm tra điều kiện (hạn sử dụng, đơn tối thiểu, số lần dùng, loại đơn mua/thuê) và trừ giá nếu hợp lệ. (4) Nếu không áp dụng được, bạn sẽ thấy thông báo lý do để đổi mã khác.';
+  }
+
+  if (normalized.includes('voucher') || normalized.includes('ma giam') || normalized.includes('giam gia') || normalized.includes('uu dai')) {
+    return 'Voucher là mã ưu đãi giúp giảm chi phí khi thanh toán nếu thỏa điều kiện áp dụng. Bạn có thể nhập voucher ở bước thanh toán để hệ thống kiểm tra tự động. Nếu bạn muốn, mình có thể hướng dẫn chi tiết cách dùng hoặc kiểm tra danh sách voucher hiện có của bạn.';
   }
 
   const fittingGuideSignal = (
@@ -403,7 +422,14 @@ const getRentalPolicyKnowledgeAnswer = (message) => {
     return 'Quy tắc thuê có 4 điểm chính: đặt cọc theo quy định, sử dụng và bảo quản đồ đúng cách, trả đồ đúng lịch, và phát sinh phí nếu hỏng mất hoặc trễ hẹn theo mức độ. Bạn có thể xem chi tiết tại trang chính sách thuê của shop.';
   }
 
-  if (normalized.includes('luong thue') || normalized.includes('quy trinh thue') || normalized.includes('thu tuc thue')) {
+  if (normalized.includes('luong thue')
+    || normalized.includes('quy trinh thue')
+    || normalized.includes('thu tuc thue')
+    || normalized.includes('cac buoc thue')
+    || normalized.includes('cac buoc de thue')
+    || normalized.includes('huong dan thue')
+    || /cac\s+buoc.*thue/.test(normalized)
+    || /huong\s+dan.*thue/.test(normalized)) {
     return 'Luồng thuê gồm: chọn sản phẩm -> chọn thời gian thuê -> xác nhận đơn và đặt cọc -> lấy đồ -> sử dụng -> trả đồ -> đối soát và hoàn tất đơn.';
   }
 
