@@ -7,11 +7,40 @@ const MAX_INPUT_LENGTH = 1200
 const CHAT_HISTORY_KEY = 'inhere_chatbot_history_v1'
 const MAX_HISTORY_ITEMS = 60
 
+const ORDER_TYPE_LABELS = {
+  rent: 'Đơn thuê',
+  sale: 'Đơn mua',
+}
+
+const ORDER_STATUS_LABELS = {
+  Draft: 'Nháp',
+  PendingDeposit: 'Chờ đặt cọc',
+  Deposited: 'Đã đặt cọc',
+  Confirmed: 'Đã xác nhận',
+  WaitingPickup: 'Chờ nhận đồ',
+  Renting: 'Đang thuê',
+  WaitingReturn: 'Chờ trả đồ',
+  Returned: 'Đã trả đồ',
+  Completed: 'Hoàn tất',
+  NoShow: 'Không đến nhận',
+  Late: 'Trễ hạn',
+  Compensation: 'Bồi thường',
+  Cancelled: 'Đã hủy',
+  PendingPayment: 'Chờ thanh toán',
+  PendingConfirmation: 'Chờ xác nhận',
+  Paid: 'Đã thanh toán',
+  Shipping: 'Đang giao hàng',
+  Refunded: 'Đã hoàn tiền',
+}
+
+const getOrderTypeLabel = (type) => ORDER_TYPE_LABELS[type] || 'Đơn hàng'
+const getOrderStatusLabel = (status) => ORDER_STATUS_LABELS[status] || status || '-'
+
 const initialMessages = [
   {
     id: 'welcome-bot',
     role: 'bot',
-    text: 'Xin chao! Toi la tro ly INHERE. Ban co the hoi ve thong tin tai khoan, don hang, hoac goi y san pham.',
+    text: 'Xin chào! Tôi là trợ lý INHERE. Bạn có thể hỏi về thông tin tài khoản, đơn hàng, hoặc gợi ý sản phẩm.',
     type: 'TEXT',
     data: null,
   },
@@ -117,12 +146,12 @@ function Chatbot() {
 
     const trimmed = input.trim()
     if (!trimmed) {
-      setError('Vui long nhap cau hoi.')
+      setError('Vui lòng nhập câu hỏi.')
       return
     }
 
     if (trimmed.length > MAX_INPUT_LENGTH) {
-      setError(`Cau hoi qua dai. Gioi han ${MAX_INPUT_LENGTH} ky tu.`)
+      setError(`Câu hỏi quá dài. Giới hạn ${MAX_INPUT_LENGTH} ký tự.`)
       return
     }
 
@@ -138,7 +167,7 @@ function Chatbot() {
       if (botPayload?.type === 'PRODUCT_LIST') {
         addMessage(
           'bot',
-          botPayload?.message || 'Duoi day la mot so san pham ban co the tham khao:',
+          botPayload?.message || 'Dưới đây là một số sản phẩm bạn có thể tham khảo:',
           {
             type: 'PRODUCT_LIST',
             data: Array.isArray(botPayload?.data) ? botPayload.data : [],
@@ -148,22 +177,22 @@ function Chatbot() {
       } else if (botPayload?.type === 'ORDER') {
         addMessage(
           'bot',
-          botPayload?.message || 'Duoi day la danh sach don hang cua ban:',
+          botPayload?.message || 'Dưới đây là danh sách đơn hàng của bạn:',
           {
             type: 'ORDER',
             data: Array.isArray(botPayload?.data) ? botPayload.data : [],
           }
         )
       } else {
-        const answer = botPayload?.answer || 'Khong nhan duoc cau tra loi hop le.'
+        const answer = botPayload?.answer || 'Không nhận được câu trả lời hợp lệ.'
         addMessage('bot', answer)
       }
     } catch (apiError) {
       const message = apiError?.response?.data?.error?.message
         || apiError?.message
-        || 'Chatbot tam thoi khong kha dung.'
+        || 'Chatbot tạm thời không khả dụng.'
       setError(message)
-      addMessage('bot', `Loi: ${message}`)
+      addMessage('bot', `Lỗi: ${message}`)
     } finally {
       setLoading(false)
       requestAnimationFrame(scrollToBottom)
@@ -175,10 +204,10 @@ function Chatbot() {
       return
     }
 
-    const prompt = meta?.loadMorePrompt || 'xem them san pham'
+    const prompt = meta?.loadMorePrompt || 'xem thêm sản phẩm'
     setError('')
     setLoading(true)
-    addMessage('user', 'Xem them san pham')
+    addMessage('user', 'Xem thêm sản phẩm')
 
     try {
       const result = await sendChatMessage({ message: prompt })
@@ -187,7 +216,7 @@ function Chatbot() {
       if (botPayload?.type === 'PRODUCT_LIST') {
         addMessage(
           'bot',
-          botPayload?.message || 'Da tai them san pham.',
+          botPayload?.message || 'Đã tải thêm sản phẩm.',
           {
             type: 'PRODUCT_LIST',
             data: Array.isArray(botPayload?.data) ? botPayload.data : [],
@@ -195,14 +224,14 @@ function Chatbot() {
           }
         )
       } else {
-        addMessage('bot', botPayload?.answer || 'Khong nhan duoc ket qua hop le.')
+        addMessage('bot', botPayload?.answer || 'Không nhận được kết quả hợp lệ.')
       }
     } catch (apiError) {
       const message = apiError?.response?.data?.error?.message
         || apiError?.message
-        || 'Chatbot tam thoi khong kha dung.'
+        || 'Chatbot tạm thời không khả dụng.'
       setError(message)
-      addMessage('bot', `Loi: ${message}`)
+      addMessage('bot', `Lỗi: ${message}`)
     } finally {
       setLoading(false)
       requestAnimationFrame(scrollToBottom)
@@ -270,42 +299,27 @@ function Chatbot() {
                       {item.image ? (
                         <img
                           src={item.image}
-                          alt={item.name || 'San pham'}
+                          alt={item.name || 'Sản phẩm'}
                           className='h-14 w-14 flex-shrink-0 rounded-md bg-slate-200 object-cover'
                         />
                       ) : (
-                        <div className='flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-[10px] font-semibold text-slate-500'>No img</div>
+                        <div className='flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-md bg-slate-200 text-[10px] font-semibold text-slate-500'>Không có ảnh</div>
                       )}
 
                       <div className='min-w-0'>
-                        <div className='line-clamp-2 text-[13px] font-semibold text-slate-900'>{item.name || 'San pham'}</div>
+                        <div className='line-clamp-2 text-[13px] font-semibold text-slate-900'>{item.name || 'Sản phẩm'}</div>
                         <div className='mt-0.5 text-xs font-bold text-teal-700'>
                           {Number(item.price || 0).toLocaleString('vi-VN')} VND
                         </div>
 
                         {item.detailUrl && (
                           <a className='mt-1 inline-flex rounded-full bg-slate-700 px-2 py-1 text-[11px] font-bold text-white no-underline' href={item.detailUrl}>
-                            Chi tiet
+                            Chi tiết
                           </a>
                         )}
                       </div>
                     </div>
                   ))}
-
-                  {msg?.meta?.appliedFilters && (
-                    <div className='rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-emerald-800'>
-                      <div className='font-semibold'>Bo loc dang ap dung</div>
-                      <div className='mt-1 flex flex-wrap gap-1.5'>
-                        {Object.entries(msg.meta.appliedFilters)
-                          .filter(([, value]) => value !== null && value !== undefined && value !== '')
-                          .map(([key, value]) => (
-                            <span key={key} className='rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200'>
-                              {key}: {typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value)}
-                            </span>
-                          ))}
-                      </div>
-                    </div>
-                  )}
 
                   {msg?.meta?.canLoadMore && (
                     <button
@@ -314,7 +328,7 @@ function Chatbot() {
                       onClick={() => handleLoadMoreProducts(msg?.meta || {})}
                       disabled={loading}
                     >
-                      Xem them
+                      Xem thêm
                     </button>
                   )}
                 </div>
@@ -328,20 +342,20 @@ function Chatbot() {
                       return null
                     }
 
-                    const orderTypeLabel = item.orderType === 'rent' ? 'Don thue' : 'Don mua'
+                    const orderTypeLabel = getOrderTypeLabel(item.orderType)
                     const defaultUrl = item.orderType === 'rent' ? `/rental/${item.id}` : `/orders/${item.id}`
                     const detailUrl = item.detailUrl || defaultUrl
 
                     return (
                       <div className='rounded-lg border border-slate-200 bg-slate-50 p-2.5' key={`${item.id}-${index}`}>
                         <div className='text-[12px] font-semibold uppercase tracking-wide text-slate-500'>{orderTypeLabel}</div>
-                        <div className='mt-1 text-[13px] font-semibold text-slate-900'>Ma don: {String(item.id).slice(-8)}</div>
-                        <div className='mt-0.5 text-[12px] text-slate-700'>Trang thai: {item.status || '-'}</div>
+                        <div className='mt-1 text-[13px] font-semibold text-slate-900'>Mã đơn: {String(item.id).slice(-8)}</div>
+                        <div className='mt-0.5 text-[12px] text-slate-700'>Trạng thái: {getOrderStatusLabel(item.status)}</div>
                         {item.createdAt && (
-                          <div className='mt-0.5 text-[12px] text-slate-700'>Ngay tao: {new Date(item.createdAt).toLocaleDateString('vi-VN')}</div>
+                          <div className='mt-0.5 text-[12px] text-slate-700'>Ngày tạo: {new Date(item.createdAt).toLocaleDateString('vi-VN')}</div>
                         )}
                         {typeof item.totalAmount !== 'undefined' && (
-                          <div className='mt-0.5 text-[12px] font-semibold text-teal-700'>Tong tien: {Number(item.totalAmount || 0).toLocaleString('vi-VN')} VND</div>
+                          <div className='mt-0.5 text-[12px] font-semibold text-teal-700'>Tổng tiền: {Number(item.totalAmount || 0).toLocaleString('vi-VN')} VND</div>
                         )}
 
                         {detailUrl && (
@@ -350,7 +364,7 @@ function Chatbot() {
                             className='mt-2 inline-flex rounded-full bg-slate-700 px-2.5 py-1 text-[11px] font-bold text-white'
                             onClick={() => navigate(detailUrl)}
                           >
-                            Xem chi tiet
+                            Xem chi tiết
                           </button>
                         )}
                       </div>
@@ -363,13 +377,13 @@ function Chatbot() {
         </div>
 
         {error && <div className='mx-3 mt-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700'>{error}</div>}
-        {loading && <div className='px-3 pb-2 text-[13px] italic text-teal-700'>Dang xu ly...</div>}
+        {loading && <div className='px-3 pb-2 text-[13px] italic text-teal-700'>Đang xử lý...</div>}
 
         <form className='flex gap-2 border-t border-emerald-100 bg-white/80 p-2.5' onSubmit={onSubmit}>
           <input
             type='text'
             className='flex-1 rounded-xl border border-emerald-300 px-3 py-2.5 text-sm outline-none focus:border-teal-700'
-            placeholder='Nhap cau hoi...'
+            placeholder='Nhập câu hỏi...'
             value={input}
             onChange={(e) => setInput(e.target.value)}
             maxLength={MAX_INPUT_LENGTH + 20}
@@ -379,7 +393,7 @@ function Chatbot() {
             className='cursor-pointer rounded-xl bg-teal-700 px-3.5 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60'
             disabled={!canSend}
           >
-            Gui
+            Gửi
           </button>
         </form>
         </div>

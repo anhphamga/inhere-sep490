@@ -45,21 +45,65 @@ const hasOrderDomain = (message) => {
 };
 
 const isRentalKnowledgeIntent = (message) => {
-  return includesAny(message, [
+  const hasPolicyNoun = includesAny(message, [
     'quy tac thue',
     'quy dinh thue',
     'dieu kien thue',
+    'chinh sach thue',
+    'chinh sach',
+    'chinh sach coc',
+    'chinh sach boi thuong',
+    'chinh sach tra tre',
+    'dat coc',
+    'tien coc',
+    'hoan coc',
+    'boi thuong',
+    'hong mat',
+    'hong do',
+    'lam hong',
+    'lam rach',
+    'mat do',
+    'mat ao',
+    'that lac',
+    'tra tre',
+    'lay muon',
+    'den lay muon',
+    'khong den nhan',
+    'no show',
+    'noshow',
+  ]);
+
+  if (hasPolicyNoun) {
+    return true;
+  }
+
+  const hasPolicyAction = includesAny(message, [
     'muon thue can',
     'can gi de thue',
     'thu tuc thue',
     'quy trinh thue',
     'luong thue',
-    'chinh sach thue',
     'huy don',
     'huy don thue',
-    'tra tre',
-    'chinh sach tra tre',
+    'xu ly sao',
+    'co sao khong',
+    'tinh phi sao',
   ]);
+
+  const hasRentalContext = includesAny(message, [
+    'thue',
+    'don thue',
+    'lay do',
+    'tra do',
+    'san pham thue',
+    'trang phuc thue',
+    'ao',
+    'vay',
+    'dam',
+    'quan',
+  ]);
+
+  return hasPolicyAction && hasRentalContext;
 };
 
 const isSelfOrderIntent = (message) => {
@@ -163,6 +207,10 @@ const isFittingBookingKnowledgeIntent = (message) => {
 };
 
 const isProductIntent = (message) => {
+  if (isRentalKnowledgeIntent(message)) {
+    return false;
+  }
+
   const hasProductWord = includesAny(message, [
     'san pham',
     'trang phuc',
