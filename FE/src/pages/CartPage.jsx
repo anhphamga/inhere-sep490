@@ -13,6 +13,7 @@ import { getMyVouchersApi, validateVoucherApi } from '../services/voucher.servic
 import { ADDRESS_DATA } from '../constants/addressData'
 import { createCheckoutSchema } from '../validations/checkout.schema'
 import { mapZodErrors, normalizePhone } from '../utils/validation/validation.rules'
+import { formatConditionLabel, getConditionBadgeClass } from '../utils/formatConditionLabel'
 
 const ADDRESS_HISTORY_KEY = 'inhere_checkout_address_history'
 
@@ -173,8 +174,8 @@ function CartItemCard({ item, type, onRemove, onDecrease, onIncrease, subtotal }
               <p className="mt-1 text-sm text-slate-500">
                 Size {item.size} • Màu {item.color}
                 {type === 'buy' && item.conditionLevel && (
-                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${item.conditionLevel === 'New' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {item.conditionLevel === 'New' ? 'Mới' : 'Đã sử dụng'}
+                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${getConditionBadgeClass(item.conditionScore ?? (item.conditionLevel === 'New' ? 100 : 75))}`}>
+                    {formatConditionLabel(item.conditionScore ?? (item.conditionLevel === 'New' ? 100 : 75))}
                   </span>
                 )}
               </p>

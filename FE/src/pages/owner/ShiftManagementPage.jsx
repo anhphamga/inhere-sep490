@@ -33,6 +33,12 @@ const toTimeString = (value) => {
   return formatLocalTimeInput(date)
 }
 
+const isShiftPassedRuntime = (shift) => {
+  const endAt = shift?.endAt ? new Date(shift.endAt) : new Date(`${shift.workDate}T${shift.endTime}:00`)
+  if (Number.isNaN(endAt.getTime())) return false
+  return endAt.getTime() <= Date.now()
+}
+
 const normalizeStatusWithCapacity = (shift) => {
   if (shift.status === SHIFT_STATUS.DONE || shift.status === SHIFT_STATUS.CANCELLED) return shift.status
   if (Number(shift.assignedCount || 0) >= Number(shift.maxStaff || 0)) return SHIFT_STATUS.FULL
@@ -128,6 +134,11 @@ export default function ShiftManagementPage() {
           assignedCount,
           status: item.status || SHIFT_STATUS.OPEN,
           allowRegistration: item.allowRegistration !== false,
+          isPastShift: item.isPastShift === true || isShiftPassedRuntime({
+            workDate: workDate || formatToday(),
+            endTime: endTime || DEFAULT_SHIFT_PRESET.endTime,
+            endAt: item.endAt,
+          }),
           notes: item.notes || item.note || '',
           staffMembers,
         }
@@ -433,11 +444,16 @@ export default function ShiftManagementPage() {
                       <button
                         type="button"
                         onClick={() => handleToggleRegistration(shift)}
-                        className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        disabled={shift.isPastShift}
+                        className={`rounded-md border px-2 py-1 text-xs font-medium ${
+                          shift.isPastShift
+                            ? 'cursor-not-allowed border-slate-200 text-slate-400'
+                            : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
                       >
                         <span className="inline-flex items-center gap-1">
                           {shift.allowRegistration ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
-                          {shift.allowRegistration ? 'Khóa đăng ký' : 'Mở đăng ký'}
+                          {shift.isPastShift ? 'Đã qua ngày' : (shift.allowRegistration ? 'Khóa đăng ký' : 'Mở đăng ký')}
                         </span>
                       </button>
                       <button

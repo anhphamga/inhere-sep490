@@ -52,6 +52,30 @@ const sanitizeShift = (shift) => ({
   updatedAt: shift.updatedAt,
 });
 
+const resolveShiftStartAt = (shift) => {
+  if (shift?.startAt) {
+    const parsed = toDate(shift.startAt);
+    if (parsed) return parsed;
+  }
+  return buildDateFromWorkDateTime(shift?.workDate, shift?.startTime);
+};
+
+const resolveShiftEndAt = (shift) => {
+  if (shift?.endAt) {
+    const parsed = toDate(shift.endAt);
+    if (parsed) return parsed;
+  }
+  return buildDateFromWorkDateTime(shift?.workDate, shift?.endTime);
+};
+
+const hasShiftPassed = (shift, now = new Date()) => {
+  const endAt = resolveShiftEndAt(shift);
+  if (endAt) return endAt <= now;
+  const startAt = resolveShiftStartAt(shift);
+  if (startAt) return startAt <= now;
+  return false;
+};
+
 const normalizeShiftPayload = (payload = {}, { partial = false } = {}) => {
   const normalized = {};
 
@@ -159,6 +183,14 @@ const updateShift = async (req, res) => {
     const dateError = validateShiftDates(nextStart, nextEnd);
     if (dateError) return res.status(400).json({ success: false, message: dateError });
 
+    const isPastShift = hasShiftPassed({ startAt: nextStart, endAt: nextEnd });
+    if (isPastShift && normalized.allowRegistration === true) {
+      return res.status(400).json({
+        success: false,
+        message: 'Past shifts cannot open registration',
+      });
+    }
+
     const shift = await Shift.findByIdAndUpdate(id, normalized, {
       new: true,
       runValidators: true,
@@ -220,10 +252,28 @@ const listShifts = async (req, res) => {
     }
 
     const shifts = await Shift.find(query).sort({ startAt: 1 });
+    const now = new Date();
+    const data = shifts.map((shift) => {
+      const row = sanitizeShift(shift);
+      const isPastShift = hasShiftPassed(row, now);
+
+      let runtimeStatus = row.status;
+      if (isPastShift && !['DONE', 'CANCELLED'].includes(String(runtimeStatus || '').toUpperCase())) {
+        runtimeStatus = 'LOCKED';
+      }
+
+      return {
+        ...row,
+        status: runtimeStatus,
+        allowRegistration: !isPastShift && row.allowRegistration,
+        isPastShift,
+      };
+    });
+
     return res.status(200).json({
       success: true,
       message: 'Get shifts successfully',
-      data: shifts.map(sanitizeShift),
+      data,
     });
   } catch (error) {
     return res.status(500).json({
@@ -254,13 +304,23 @@ const listStaffShiftOptions = async (req, res) => {
     }
 
     const shifts = await Shift.find(query).sort({ startAt: 1 });
+    const now = new Date();
     const data = shifts.map((shift) => {
       const row = sanitizeShift(shift);
       const normalizedStaffIds = (row.staffIds || []).map((item) => String(item?._id || item));
       const isRegistered = normalizedStaffIds.includes(staffId);
       const remainingSlots = Math.max(Number(row.maxStaff || 0) - Number(row.assignedCount || 0), 0);
+      const isPastShift = hasShiftPassed(row, now);
+
+      let runtimeStatus = row.status;
+      if (isPastShift && !['DONE', 'CANCELLED'].includes(String(runtimeStatus || '').toUpperCase())) {
+        runtimeStatus = 'LOCKED';
+      }
+
       return {
         ...row,
+        status: runtimeStatus,
+        allowRegistration: !isPastShift && row.allowRegistration,
         isRegistered,
         remainingSlots,
       };
@@ -290,6 +350,13 @@ const registerMyShift = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Shift not found',
+      });
+    }
+
+    if (hasShiftPassed(shift, new Date())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot register past shifts',
       });
     }
 

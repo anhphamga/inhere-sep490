@@ -6,6 +6,7 @@ import { getMyShiftOptionsApi, registerMyShiftApi, unregisterMyShiftApi } from '
 import { formatLocalDateInput } from '../../utils/localDate'
 
 const formatToday = () => formatLocalDateInput(new Date())
+const PAGE_SIZE_OPTIONS = [10, 20, 50]
 
 export default function StaffShiftRegistration() {
   const [rows, setRows] = useState([])
@@ -16,6 +17,9 @@ export default function StaffShiftRegistration() {
   const [workDateFilter, setWorkDateFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [onlyRegistered, setOnlyRegistered] = useState(false)
+
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[1])
 
   const loadShifts = useCallback(async () => {
     try {
@@ -42,6 +46,36 @@ export default function StaffShiftRegistration() {
       return byDate && byStatus && byRegistered
     })
   }, [onlyRegistered, rows, statusFilter, workDateFilter])
+
+  const pagination = useMemo(() => {
+    const totalItems = filteredRows.length
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+    const safeCurrentPage = Math.min(currentPage, totalPages)
+    const startIndex = (safeCurrentPage - 1) * pageSize
+    const endIndex = Math.min(startIndex + pageSize, totalItems)
+
+    return {
+      totalItems,
+      totalPages,
+      safeCurrentPage,
+      startIndex,
+      endIndex,
+    }
+  }, [currentPage, filteredRows.length, pageSize])
+
+  const paginatedRows = useMemo(() => {
+    return filteredRows.slice(pagination.startIndex, pagination.endIndex)
+  }, [filteredRows, pagination.endIndex, pagination.startIndex])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [workDateFilter, statusFilter, onlyRegistered, pageSize])
+
+  useEffect(() => {
+    if (currentPage > pagination.totalPages) {
+      setCurrentPage(pagination.totalPages)
+    }
+  }, [currentPage, pagination.totalPages])
 
   const todayStats = useMemo(() => {
     const today = formatToday()
@@ -162,7 +196,7 @@ export default function StaffShiftRegistration() {
               </tr>
             ) : null}
 
-            {!loading && filteredRows.map((shift) => {
+            {!loading && paginatedRows.map((shift) => {
               const isFull = Number(shift.maxStaff || 0) > 0 && Number(shift.assignedCount || 0) >= Number(shift.maxStaff || 0)
               const canRegister = !shift.isRegistered && shift.allowRegistration && !isFull && !['DONE', 'CANCELLED'].includes(String(shift.status || '').toUpperCase())
 
@@ -205,6 +239,54 @@ export default function StaffShiftRegistration() {
           </tbody>
         </table>
       </div>
+
+      {!loading && filteredRows.length > 0 ? (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <div className="text-sm text-slate-600">
+            Hiển thị {pagination.startIndex + 1}-{pagination.endIndex} / {pagination.totalItems} ca
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600" htmlFor="shift-page-size">Mỗi trang</label>
+            <select
+              id="shift-page-size"
+              value={pageSize}
+              onChange={(event) => setPageSize(Number(event.target.value) || PAGE_SIZE_OPTIONS[1])}
+              className="rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={pagination.safeCurrentPage <= 1}
+              className={`rounded-md border px-3 py-1.5 text-sm ${
+                pagination.safeCurrentPage <= 1
+                  ? 'cursor-not-allowed border-slate-200 text-slate-400'
+                  : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              Trước
+            </button>
+            <span className="text-sm font-medium text-slate-700">
+              Trang {pagination.safeCurrentPage}/{pagination.totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.min(pagination.totalPages, prev + 1))}
+              disabled={pagination.safeCurrentPage >= pagination.totalPages}
+              className={`rounded-md border px-3 py-1.5 text-sm ${
+                pagination.safeCurrentPage >= pagination.totalPages
+                  ? 'cursor-not-allowed border-slate-200 text-slate-400'
+                  : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              Sau
+            </button>
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }

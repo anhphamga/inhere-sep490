@@ -13,6 +13,7 @@ import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useFavorites } from "../../contexts/FavoritesContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
 import { getProductReviewsApi } from "../../services/review.service";
+import { formatConditionLabel } from "../../utils/formatConditionLabel";
 
 const I18N = {
   vi: {
@@ -312,7 +313,7 @@ export default function ProductDetailPage() {
       .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
       .map((item) => ({
         ...item,
-        label: `${item.level === "New" ? "Mới" : "Đã sử dụng"} - ${item.score}%`,
+        label: formatConditionLabel(item.score),
       }));
   }, [availableInstances]);
 

@@ -14,13 +14,14 @@ import {
   AlertCircle
 } from 'lucide-react'
 import axiosClient from '../../config/axios'
+import { formatConditionLabel, getConditionBadgeClass } from '../../utils/formatConditionLabel'
 
 const conditionScoreOptions = [0, 25, 50, 75, 100]
 
 const conditionLevelOptions = [
   { value: '', label: 'Tất cả tình trạng' },
-  { value: 'New', label: 'Mới' },
-  { value: 'Used', label: 'Đã sử dụng' },
+  { value: 'New', label: formatConditionLabel(100) },
+  { value: 'Used', label: formatConditionLabel(75) },
 ]
 
 const lifecycleStatusOptions = [
@@ -32,11 +33,6 @@ const lifecycleStatusOptions = [
   { value: 'Repair', label: 'Đang sửa' },
   { value: 'Lost', label: 'Mất' }
 ]
-
-const conditionLevelColors = {
-  New: 'bg-green-100 text-green-800',
-  Used: 'bg-yellow-100 text-yellow-800',
-}
 
 const lifecycleStatusColors = {
   Available: 'bg-green-100 text-green-800',
@@ -215,7 +211,7 @@ export default function OwnerInventoryScreen() {
             className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
           >
             {conditionLevelOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>{opt.value === 'New' ? formatConditionLabel(100) : (opt.value === 'Used' ? formatConditionLabel(75) : opt.label)}</option>
             ))}
           </select>
 
@@ -297,12 +293,12 @@ export default function OwnerInventoryScreen() {
                           onChange={(e) => setEditForm({ ...editForm, conditionLevel: e.target.value })}
                           className="px-2 py-1 border border-gray-300 rounded text-sm"
                         >
-                          <option value="New">Mới</option>
-                          <option value="Used">Đã sử dụng</option>
+                          <option value="New">{formatConditionLabel(100)}</option>
+                          <option value="Used">{formatConditionLabel(75)}</option>
                         </select>
                       ) : (
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${conditionLevelColors[(instance.conditionLevel === 'New' || instance.conditionLevel === 'Used') ? instance.conditionLevel : (instance.conditionLevel === 'Good' ? 'New' : 'Used')] || 'bg-gray-100'}`}>
-                          {(instance.conditionLevel === 'New' || instance.conditionLevel === 'Good') ? 'Mới' : 'Đã sử dụng'}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getConditionBadgeClass(conditionScoreOptions.includes(instance.conditionScore) ? instance.conditionScore : 100)}`}>
+                          {formatConditionLabel(conditionScoreOptions.includes(instance.conditionScore) ? instance.conditionScore : 100)}
                         </span>
                       )}
                     </td>
