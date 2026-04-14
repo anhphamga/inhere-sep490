@@ -26,8 +26,8 @@ const RevenueChart = ({ data }) => {
       </div>
 
       {hasData ? (
-        <div className="h-80 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full min-w-0 overflow-hidden">
+          <ResponsiveContainer width="100%" height={320} minWidth={0}>
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="day" stroke="#64748b" tickLine={false} axisLine={false} />

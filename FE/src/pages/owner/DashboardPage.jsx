@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BadgePercent, ShoppingCart, TrendingUp, UserPlus } from 'lucide-react'
 import AlertBox from '../../components/dashboard/AlertBox'
 import OrderTable from '../../components/dashboard/OrderTable'
@@ -13,6 +14,8 @@ import {
   getOwnerRentalStatsApi,
   getOwnerRevenueAnalyticsApi
 } from '../../services/owner.service'
+import { useAuth } from '../../hooks/useAuth'
+import { normalizeRole } from '../../utils/auth'
 import { currencyFormatter, numberFormatter, toArray } from '../../utils/owner.utils'
 
 const unwrapApiData = (value) => value?.data ?? value ?? {}
@@ -87,6 +90,9 @@ const DashboardSkeleton = () => (
 )
 
 const DashboardPage = () => {
+  const navigate = useNavigate()
+  const { loading: authLoading, isAuthenticated, user } = useAuth()
+  const isOwner = normalizeRole(user?.role) === 'owner'
   const [dashboardData, setDashboardData] = useState({
     summary: {},
     customers: {},
@@ -99,6 +105,19 @@ const DashboardPage = () => {
   const [error, setError] = useState('')
 
   const loadDashboardData = useCallback(async () => {
+    if (!isAuthenticated || !isOwner) {
+      setLoading(false)
+      setDashboardData({
+        summary: {},
+        customers: {},
+        inventory: {},
+        revenue: [],
+        orders: [],
+        rental: {}
+      })
+      return
+    }
+
     setLoading(true)
     setError('')
 
@@ -130,11 +149,22 @@ const DashboardPage = () => {
     }
 
     setLoading(false)
-  }, [])
+  }, [isAuthenticated, isOwner])
+
+  const handleViewAllOrders = useCallback(() => {
+    navigate('/owner/orders')
+  }, [navigate])
+
+  const handleAlertClick = useCallback((alert) => {
+    const targetPath = String(alert?.to || '').trim()
+    if (!targetPath) return
+    navigate(targetPath)
+  }, [navigate])
 
   useEffect(() => {
+    if (authLoading) return
     loadDashboardData()
-  }, [loadDashboardData])
+  }, [authLoading, loadDashboardData])
 
   const revenueChartData = useMemo(() => {
     return toArray(dashboardData.revenue).slice(-7).map((row) => {
@@ -304,9 +334,21 @@ const DashboardPage = () => {
       }).length
 
     return [
-      `${overdueCount} đơn sắp trễ hạn`,
-      `${lowStockCount} sản phẩm sắp hết`,
-      `${unpaidCount} đơn chưa thanh toán`
+      {
+        id: 'overdue-orders',
+        label: `${overdueCount} đơn sắp trễ hạn`,
+        to: '/owner/rent-orders'
+      },
+      {
+        id: 'low-stock-products',
+        label: `${lowStockCount} sản phẩm sắp hết`,
+        to: '/owner/inventory'
+      },
+      {
+        id: 'unpaid-orders',
+        label: `${unpaidCount} đơn chưa thanh toán`,
+        to: '/owner/orders'
+      }
     ]
   }, [dashboardData.inventory, dashboardData.rental, dashboardData.summary, orders])
 
@@ -350,11 +392,11 @@ const DashboardPage = () => {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
-          <OrderTable orders={orders} />
+          <OrderTable orders={orders} onViewAll={handleViewAllOrders} />
         </div>
 
         <div className="space-y-6">
-          <AlertBox alerts={alerts} />
+          <AlertBox alerts={alerts} onAlertClick={handleAlertClick} />
           <RentalStatus statuses={rentalStatuses} />
           <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
             Tổng số trang phục đang quản lý: <span className="font-semibold text-slate-900">{totalRentalItems}</span>

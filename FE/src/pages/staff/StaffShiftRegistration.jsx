@@ -3,8 +3,9 @@ import { RefreshCcw } from 'lucide-react'
 import { ShiftStatusBadge, ShiftRegistrationBadge } from '../../components/shifts/ShiftStatusBadge'
 import { STATUS_FILTER_OPTIONS } from '../../constants/shiftStatus'
 import { getMyShiftOptionsApi, registerMyShiftApi, unregisterMyShiftApi } from '../../services/staff-shift.service'
+import { formatLocalDateInput } from '../../utils/localDate'
 
-const formatToday = () => new Date().toISOString().slice(0, 10)
+const formatToday = () => formatLocalDateInput(new Date())
 
 export default function StaffShiftRegistration() {
   const [rows, setRows] = useState([])

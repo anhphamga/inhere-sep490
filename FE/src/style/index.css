@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+:root {
+  --app-font: "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body {
+  font-family: var(--app-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+.staff-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-gutter: stable;
+}
+
+.staff-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.staff-scroll::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.staff-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

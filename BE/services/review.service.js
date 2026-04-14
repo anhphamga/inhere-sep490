@@ -6,7 +6,8 @@ const SaleOrderItem = require('../model/SaleOrderItem.model');
 const { ORDER_TYPE } = require('../constants/order.constants');
 
 const REVIEWABLE_SALE_STATUSES = new Set(['Completed', 'Returned', 'Refunded']);
-const REVIEW_STATUSES = new Set(['pending', 'approved', 'hidden', 'rejected']);
+const REVIEW_STATUSES = new Set(['approved', 'hidden']);
+const PUBLIC_VISIBLE_STATUSES = ['approved', 'pending'];
 
 const toObjectId = (value) => {
   if (!value || !mongoose.Types.ObjectId.isValid(value)) return null;
@@ -57,7 +58,7 @@ const getReviewSummary = async (productId) => {
 
   const publicMatch = {
     product: productObjectId,
-    status: 'approved',
+    status: { $in: PUBLIC_VISIBLE_STATUSES },
     isHidden: { $ne: true },
   };
 
@@ -208,7 +209,7 @@ const createReview = async ({
     comment: normalizedComment,
     images: normalizedImages,
     isVerifiedPurchase: true,
-    status: 'pending',
+    status: 'approved',
     isHidden: false,
   });
 
@@ -235,7 +236,7 @@ const getProductReviews = async ({
 
   const query = {
     product: productObjectId,
-    status: 'approved',
+    status: { $in: PUBLIC_VISIBLE_STATUSES },
     isHidden: { $ne: true },
   };
   if (Number.isInteger(normalizedRating) && normalizedRating >= 1 && normalizedRating <= 5) {
@@ -499,21 +500,19 @@ const deleteSellerReply = async ({ reviewId }) => {
 };
 
 const getReviewAdminStats = async () => {
-  const [total, pending, approved, hidden, rejected, averageAgg, ratingAgg, lowRatedProducts] = await Promise.all([
+  const [total, approved, hidden, averageAgg, ratingAgg, lowRatedProducts] = await Promise.all([
     Review.countDocuments({}),
-    Review.countDocuments({ status: 'pending' }),
-    Review.countDocuments({ status: 'approved', isHidden: { $ne: true } }),
+    Review.countDocuments({ status: { $in: PUBLIC_VISIBLE_STATUSES }, isHidden: { $ne: true } }),
     Review.countDocuments({ status: 'hidden' }),
-    Review.countDocuments({ status: 'rejected' }),
     Review.aggregate([
-      { $match: { status: 'approved', isHidden: { $ne: true } } },
+      { $match: { status: { $in: PUBLIC_VISIBLE_STATUSES }, isHidden: { $ne: true } } },
       { $group: { _id: null, averageRating: { $avg: '$rating' } } },
     ]),
     Review.aggregate([
       { $group: { _id: '$rating', count: { $sum: 1 } } },
     ]),
     Review.aggregate([
-      { $match: { status: 'approved', isHidden: { $ne: true } } },
+      { $match: { status: { $in: PUBLIC_VISIBLE_STATUSES }, isHidden: { $ne: true } } },
       {
         $group: {
           _id: '$product',
@@ -555,10 +554,10 @@ const getReviewAdminStats = async () => {
 
   return {
     totalReviews: total,
-    pendingReviews: pending,
+    pendingReviews: 0,
     approvedReviews: approved,
     hiddenReviews: hidden,
-    rejectedReviews: rejected,
+    rejectedReviews: 0,
     averageRating: Number((averageAgg?.[0]?.averageRating || 0).toFixed(2)),
     breakdown,
     lowRatedProducts,

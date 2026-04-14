@@ -1,21 +1,25 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { getRouteByRole, isDashboardRole } from '../../utils/auth'
 import { loadGoogleIdentityScript } from '../../utils/googleIdentity'
+import { loginSchema } from '../../validations/login.schema'
+import { mapZodErrors, toTrimmedText } from '../../utils/validation/validation.rules'
 import Header from '../../components/common/Header'
 import logoImage from '../../assets/logo/logo.png'
 import heroImage from '../../assets/banner/banner3.png'
 import '../../style/AuthPages.css'
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const phoneRegex = /^(0|\+84)\d{9,10}$/
+const PHONE_REGEX_VN = /^0\d{9}$/
+const normalizeIdentifierInput = (value = '') => toTrimmedText(value).replace(/\s+/g, ' ')
+const normalizeIdentifierForPhone = (value = '') => normalizeIdentifierInput(value).replace(/\s+/g, '')
 
 const LoginPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { login, loginWithGoogle } = useAuth()
   const googleButtonRef = useRef(null)
+  const googleInitializedRef = useRef(false)
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   const redirectPath = location.state?.from?.pathname
 
@@ -25,11 +29,72 @@ const LoginPage = () => {
     rememberMe: true
   })
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
+  const buildValidationState = (nextForm) => {
+    const normalizedForm = {
+      ...nextForm,
+      identifier: normalizeIdentifierInput(nextForm.identifier),
+      password: nextForm.password,
+    }
+    const parsed = loginSchema.safeParse(normalizedForm)
+    const errors = parsed.success ? {} : mapZodErrors(parsed.error)
+
+    const compactIdentifier = normalizeIdentifierForPhone(normalizedForm.identifier)
+    const isEmailIdentifier = normalizedForm.identifier.includes('@')
+    const isPhoneLike = !isEmailIdentifier && /^\+?\d+$/.test(compactIdentifier)
+    if (isPhoneLike && !PHONE_REGEX_VN.test(compactIdentifier)) {
+      errors.identifier = 'Số điện thoại phải đúng định dạng 0xxxxxxxxx.'
+    }
+
+    return { normalizedForm, parsed, errors }
+  }
+
+  const loginValidation = useMemo(() => buildValidationState(form), [form])
+  const loginParseResult = useMemo(() => loginValidation.parsed, [loginValidation])
+  const isFormValid = loginParseResult.success
+
+  const applyFieldChange = (field, value) => {
+    const nextForm = { ...form, [field]: value }
+    setForm(nextForm)
+    setError('')
+    if (!fieldErrors[field]) return
+
+    const nextValidation = buildValidationState(nextForm)
+    const nextMessage = nextValidation.errors[field] || ''
+    setFieldErrors((prev) => {
+      if (!prev[field] && !nextMessage) return prev
+      const next = { ...prev }
+      if (nextMessage) next[field] = nextMessage
+      else delete next[field]
+      return next
+    })
+  }
+
+  const handleFieldBlur = (field) => {
+    const nextForm = field === 'identifier'
+      ? { ...form, identifier: normalizeIdentifierInput(form.identifier) }
+      : form
+    if (nextForm !== form) setForm(nextForm)
+
+    const nextValidation = buildValidationState(nextForm)
+    const message = nextValidation.errors[field] || ''
+    setFieldErrors((prev) => {
+      if (!message) {
+        if (!prev[field]) return prev
+        const next = { ...prev }
+        delete next[field]
+        return next
+      }
+      if (prev[field] === message) return prev
+      return { ...prev, [field]: message }
+    })
+  }
+
   useEffect(() => {
-    if (!googleClientId || !googleButtonRef.current) {
+    if (!googleClientId || !googleButtonRef.current || googleInitializedRef.current) {
       return
     }
 
@@ -37,7 +102,7 @@ const LoginPage = () => {
 
     loadGoogleIdentityScript()
       .then(() => {
-        if (cancelled || !window.google?.accounts?.id || !googleButtonRef.current) {
+        if (cancelled || !window.google?.accounts?.id || !googleButtonRef.current || googleInitializedRef.current) {
           return
         }
 
@@ -71,6 +136,7 @@ const LoginPage = () => {
           locale: 'vi',
           width: 360
         })
+        googleInitializedRef.current = true
       })
       .catch(() => {
         setError('Không thể tải nút đăng nhập Google')
@@ -108,32 +174,26 @@ const LoginPage = () => {
     event.preventDefault()
     setError('')
 
-    const identifier = form.identifier.replace(/\s+/g, '').trim()
-    const password = form.password
-
-    if (!identifier || !password) {
-      setError('Vui lòng nhập đầy đủ thông tin đăng nhập')
+    const { normalizedForm, parsed, errors: mappedErrors } = buildValidationState(form)
+    if (!parsed.success || Object.keys(mappedErrors).length > 0) {
+      setFieldErrors(mappedErrors)
+      setError('Vui lòng kiểm tra lại thông tin đăng nhập.')
       return
     }
 
-    const isEmail = emailRegex.test(identifier)
-    const isPhone = phoneRegex.test(identifier)
-
-    if (!isEmail && !isPhone) {
-      setError('Vui lòng nhập đúng Email hoặc số điện thoại hợp lệ')
-      return
-    }
-
-    if (password.length < 6) {
-      setError('Mật khẩu tối thiểu 6 ký tự')
-      return
+    if (normalizedForm.identifier !== form.identifier) {
+      setForm((prev) => ({ ...prev, identifier: normalizedForm.identifier }))
     }
 
     setSubmitting(true)
 
     try {
-      const payload = isPhone
-        ? { phone: identifier, password, portal: 'customer' }
+      const identifier = normalizeIdentifierInput(parsed.data.identifier)
+      const compactIdentifier = normalizeIdentifierForPhone(identifier)
+      const password = parsed.data.password
+      const isPhoneIdentifier = PHONE_REGEX_VN.test(compactIdentifier)
+      const payload = isPhoneIdentifier
+        ? { phone: compactIdentifier, password, portal: 'customer' }
         : { email: identifier.toLowerCase(), password, portal: 'customer' }
 
       const data = await login(payload, { rememberMe: form.rememberMe })
@@ -184,14 +244,20 @@ const LoginPage = () => {
               <div className="auth-input-icon-wrap">
                 <span className="auth-input-icon" aria-hidden="true">@</span>
                 <input
+                  id="login-identifier"
                   type="text"
                   placeholder="Email hoặc số điện thoại"
                   value={form.identifier}
-                  onChange={(event) => setForm({ ...form, identifier: event.target.value })}
+                  onChange={(event) => applyFieldChange('identifier', event.target.value)}
+                  onBlur={() => handleFieldBlur('identifier')}
                   autoComplete="username"
+                  aria-invalid={Boolean(fieldErrors.identifier)}
+                  aria-describedby={fieldErrors.identifier ? 'login-identifier-error' : undefined}
+                  className={fieldErrors.identifier ? 'border-rose-400 focus:border-rose-500' : ''}
                   required
                 />
               </div>
+              {fieldErrors.identifier ? <div id="login-identifier-error" className="error-text" role="alert">{fieldErrors.identifier}</div> : null}
             </div>
 
             <div className="auth-input-wrap">
@@ -199,11 +265,16 @@ const LoginPage = () => {
               <div className="auth-input-icon-wrap">
                 <span className="auth-input-icon" aria-hidden="true">*</span>
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Nhập mật khẩu"
                   value={form.password}
-                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  onChange={(event) => applyFieldChange('password', event.target.value)}
+                  onBlur={() => handleFieldBlur('password')}
                   autoComplete="current-password"
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                  className={fieldErrors.password ? 'border-rose-400 focus:border-rose-500' : ''}
                   required
                 />
                 <button
@@ -215,6 +286,7 @@ const LoginPage = () => {
                   {showPassword ? 'Ẩn' : 'Hiện'}
                 </button>
               </div>
+              {fieldErrors.password ? <div id="login-password-error" className="error-text" role="alert">{fieldErrors.password}</div> : null}
             </div>
 
             <div className="auth-row-between">
@@ -222,16 +294,19 @@ const LoginPage = () => {
                 <input
                   type="checkbox"
                   checked={form.rememberMe}
-                  onChange={(event) => setForm({ ...form, rememberMe: event.target.checked })}
+                  onChange={(event) => {
+                    setForm({ ...form, rememberMe: event.target.checked })
+                    setError('')
+                  }}
                 />
                 <span>Ghi nhớ tôi</span>
               </label>
               <Link to="/forgot-password" className="inline-link">Quên mật khẩu?</Link>
             </div>
 
-            {error && <div className="error-text">{error}</div>}
+            {error && <div className="error-text" role="alert">{error}</div>}
 
-            <button type="submit" disabled={submitting} className="login-submit-btn">
+            <button type="submit" disabled={submitting || !isFormValid} className="login-submit-btn">
               {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </button>
 

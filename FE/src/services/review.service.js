@@ -1,7 +1,6 @@
 import {
   canReviewRequest,
   createReviewRequest,
-  deleteAdminReplyReviewRequest,
   getAdminReviewDetailRequest,
   getAdminReviewsRequest,
   getAdminReviewStatsSummaryRequest,
@@ -9,7 +8,6 @@ import {
   getProductReviewsRequest,
   patchAdminHideReviewRequest,
   patchAdminReplyReviewRequest,
-  patchAdminReviewStatusRequest,
   updateReviewRequest,
 } from '../api/review.api'
 
@@ -48,11 +46,6 @@ export const getAdminReviewDetailApi = async (id) => {
   return response.data
 }
 
-export const patchAdminReviewStatusApi = async (id, payload) => {
-  const response = await patchAdminReviewStatusRequest(id, payload)
-  return response.data
-}
-
 export const patchAdminHideReviewApi = async (id, payload) => {
   const response = await patchAdminHideReviewRequest(id, payload)
   return response.data
@@ -60,11 +53,6 @@ export const patchAdminHideReviewApi = async (id, payload) => {
 
 export const patchAdminReplyReviewApi = async (id, payload) => {
   const response = await patchAdminReplyReviewRequest(id, payload)
-  return response.data
-}
-
-export const deleteAdminReplyReviewApi = async (id) => {
-  const response = await deleteAdminReplyReviewRequest(id)
   return response.data
 }
 

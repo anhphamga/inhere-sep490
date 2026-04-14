@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BadgeCheck,
@@ -17,7 +17,6 @@ import {
   Search,
   Settings,
   Shirt,
-  Home,
   Users,
   Package,
   Folder,
@@ -89,13 +88,7 @@ const OwnerLayout = () => {
   const [notifications, setNotifications] = useState([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationsError, setNotificationsError] = useState('')
-
-  const formatNotificationTime = (value) => {
-    if (!value) return 'N/A'
-    const parsed = new Date(value)
-    if (Number.isNaN(parsed.getTime())) return 'N/A'
-    return parsed.toLocaleString('vi-VN')
-  }
+  const notificationRef = useRef(null)
 
   const fetchNotifications = async () => {
     try {
@@ -162,6 +155,21 @@ const OwnerLayout = () => {
     fetchNotifications()
   }, [notificationsOpen])
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!notificationRef.current || notificationRef.current.contains(event.target)) return
+      setNotificationsOpen(false)
+    }
+
+    if (notificationsOpen) {
+      document.addEventListener('click', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [notificationsOpen])
+
   const handleProductsSearchChange = (value) => {
     const nextParams = new URLSearchParams(location.search)
     if (value.trim()) nextParams.set('q', value)
@@ -181,7 +189,7 @@ const OwnerLayout = () => {
       className={cn('flex min-h-screen font-sans text-slate-900 owner-theme-root', appearance === 'dark' ? 'owner-theme-dark' : 'owner-theme-light')}
       style={{ '--owner-accent': selectedAccentHex }}
     >
-      <aside className={cn('fixed top-0 z-50 flex h-full w-64 flex-col border-slate-200 bg-white', direction === 'rtl' ? 'right-0 border-l' : 'left-0 border-r')}>
+      <aside className={cn('fixed top-0 z-50 flex h-screen w-64 flex-col overflow-hidden border-slate-200 bg-white', direction === 'rtl' ? 'right-0 border-l' : 'left-0 border-r')}>
         <Link to="/owner/dashboard" className="flex items-center gap-3 p-6 transition-opacity hover:opacity-90">
           <div className="rounded-lg bg-[#1975d2] p-2">
             <Shirt className="h-6 w-6 text-white" />
@@ -189,7 +197,7 @@ const OwnerLayout = () => {
           <span className="text-xl font-bold tracking-tight text-slate-900">{t('sidebar.ownerDashboard')}</span>
         </Link>
 
-        <nav className="mt-4 flex-1 space-y-1 px-4">
+        <nav className="owner-sidebar-scroll mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto px-4 pb-4">
           {navItems.map((item) => {
             const Icon = item.icon
             return (
@@ -287,21 +295,43 @@ const OwnerLayout = () => {
               </div>
             ) : null}
             <div className="flex items-center gap-4">
-              <Link
-                to="/"
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
-                title="Trang chủ"
-              >
-                <Home className="h-4 w-4" />
-                Trang chủ
-              </Link>
               <button
+                ref={notificationRef}
                 type="button"
                 className="relative rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100"
-                onClick={() => setNotificationsOpen(true)}
+                onClick={() => setNotificationsOpen((prev) => !prev)}
                 title="Thông báo"
               >
                 <Bell className="h-5 w-5" />
+
+                {notificationsOpen ? (
+                  <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-lg border border-slate-200 bg-white text-left shadow-lg">
+                    <div className="border-b border-slate-200 p-4 font-semibold text-slate-900">Thông báo</div>
+
+                    {notificationsLoading ? (
+                      <div className="px-4 py-3 text-center text-sm text-slate-500">Đang tải thông báo...</div>
+                    ) : null}
+
+                    {notificationsError ? (
+                      <div className="px-4 py-3 text-center text-sm text-rose-700">{notificationsError}</div>
+                    ) : null}
+
+                    {!notificationsLoading && !notificationsError && notifications.length === 0 ? (
+                      <div className="px-4 py-3 text-center text-sm text-slate-500">Không có thông báo mới</div>
+                    ) : null}
+
+                    {!notificationsLoading && !notificationsError && notifications.length > 0 ? (
+                      <div className="max-h-80 overflow-y-auto">
+                        {notifications.map((item) => (
+                          <article key={item?._id || `${item?.createdAt}-${item?.message}`} className="border-b border-slate-100 px-4 py-3 last:border-0">
+                            <div className="mb-1 text-[11px] font-semibold text-slate-500">{item?.type || 'Thông báo'}</div>
+                            <p className="text-sm text-slate-800">{item?.message || 'Không có nội dung thông báo'}</p>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </button>
               <button
                 type="button"
@@ -403,55 +433,9 @@ const OwnerLayout = () => {
         </>
       ) : null}
 
-      {notificationsOpen ? (
-        <>
-          <div className="fixed inset-0 z-[60] bg-slate-900/30" onClick={() => setNotificationsOpen(false)} />
-          <aside className="fixed right-0 top-0 z-[61] h-full w-full max-w-md border-l border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <h3 className="text-base font-bold text-slate-900">Thông báo</h3>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-                onClick={() => setNotificationsOpen(false)}
-              >
-                Đóng
-              </button>
-            </div>
-
-            <div className="h-[calc(100%-64px)] overflow-y-auto p-4">
-              {notificationsLoading ? (
-                <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">Đang tải thông báo...</div>
-              ) : null}
-
-              {notificationsError ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{notificationsError}</div>
-              ) : null}
-
-              {!notificationsLoading && !notificationsError && notifications.length === 0 ? (
-                <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">Không có thông báo.</div>
-              ) : null}
-
-              {!notificationsLoading && !notificationsError && notifications.length > 0 ? (
-                <div className="space-y-3">
-                  {notifications.map((item) => (
-                    <article key={item?._id || `${item?.createdAt}-${item?.message}`} className="rounded-lg border border-slate-200 bg-white p-3">
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                          {item?.type || 'Thông báo'}
-                        </span>
-                        <span className="text-[11px] text-slate-500">{formatNotificationTime(item?.createdAt)}</span>
-                      </div>
-                      <p className="text-sm text-slate-800">{item?.message || 'Không có nội dung thông báo'}</p>
-                    </article>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </aside>
-        </>
-      ) : null}
     </div>
   )
 }
 
 export default OwnerLayout
+

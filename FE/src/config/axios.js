@@ -20,7 +20,7 @@ const refreshClient = axios.create({
     }
 })
 
-const getAccessToken = () => localStorage.getItem(ACCESS_TOKEN_KEY)
+const getAccessToken = () => localStorage.getItem(ACCESS_TOKEN_KEY) || sessionStorage.getItem(ACCESS_TOKEN_KEY)
 const getRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY)
 
 const getStoredUserRole = () => {

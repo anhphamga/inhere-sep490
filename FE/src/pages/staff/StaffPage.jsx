@@ -9,6 +9,7 @@ import StaffReviewsPage from './StaffReviewsPage';
 import StaffBlogsPage from './StaffBlogsPage';
 import BookingPage from './bookings/BookingPage';
 import OrdersList from '../../components/owner/OrdersList';
+import ProfilePage from '../auth/ProfilePage';
 
 const STAFF_PLACEHOLDER_TITLES = {
   'rent-order': 'staff.createRentOrder',
@@ -59,6 +60,10 @@ const StaffPage = () => {
 
     if (subPath === 'blogs') {
       return <StaffBlogsPage pathName={location.pathname} />;
+    }
+
+    if (subPath === 'profile') {
+      return <ProfilePage embedded backPath="/staff" logoutRedirect="/work/login?role=staff" />;
     }
 
     return (

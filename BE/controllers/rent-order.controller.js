@@ -28,6 +28,23 @@ const {
     repairVoucherUsageCounterIfNeeded,
 } = require('../services/voucher.service');
 const { ORDER_TYPE } = require('../constants/order.constants');
+const { RENT_ORDER_STATUS } = require('../constants/status.constants');
+
+const RENT_STATUS_META = {
+    [RENT_ORDER_STATUS.DRAFT]: 'Nháp',
+    [RENT_ORDER_STATUS.PENDING_DEPOSIT]: 'Chờ đặt cọc',
+    [RENT_ORDER_STATUS.DEPOSITED]: 'Đã đặt cọc',
+    [RENT_ORDER_STATUS.CONFIRMED]: 'Đã xác nhận',
+    [RENT_ORDER_STATUS.WAITING_PICKUP]: 'Chờ lấy đồ',
+    [RENT_ORDER_STATUS.RENTING]: 'Đang thuê',
+    [RENT_ORDER_STATUS.WAITING_RETURN]: 'Chờ trả đồ',
+    [RENT_ORDER_STATUS.LATE]: 'Trễ hạn',
+    [RENT_ORDER_STATUS.RETURNED]: 'Đã trả đồ',
+    [RENT_ORDER_STATUS.CANCELLED]: 'Đã hủy',
+    [RENT_ORDER_STATUS.NO_SHOW]: 'Khách không đến',
+    [RENT_ORDER_STATUS.COMPENSATION]: 'Bồi thường',
+    [RENT_ORDER_STATUS.COMPLETED]: 'Hoàn tất',
+};
 
 /**
  * Sinh mã đơn thuê dạng TH-YYMMDD-XXXX
@@ -959,17 +976,26 @@ exports.getAllRentOrders = async (req, res) => {
 
         const cappedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
         const skip = (Number(page) - 1) * cappedLimit;
-        const [orders, total] = await Promise.all([
+        const [orders, total, distinctStatuses] = await Promise.all([
             RentOrder.find(query)
                 .populate('customerId', 'name phone email')
                 .populate('staffId', 'name phone')
-                .sort({ createdAt: -1 })
+                .sort({ createdAt: 1, _id: 1 })
                 .skip(skip)
                 .limit(cappedLimit),
-            RentOrder.countDocuments(query)
+            RentOrder.countDocuments(query),
+            RentOrder.distinct('status', {})
         ]);
 
         const data = await attachItems(orders);
+        const statusSet = new Set(distinctStatuses.map((item) => String(item || '').trim()).filter(Boolean));
+        const statusOrder = Object.values(RENT_ORDER_STATUS);
+        const statusOptions = statusOrder
+            .filter((statusKey) => statusSet.has(statusKey))
+            .map((statusKey) => ({
+                value: statusKey,
+                label: RENT_STATUS_META[statusKey] || statusKey
+            }));
 
         return res.json({
             success: true,
@@ -979,6 +1005,9 @@ exports.getAllRentOrders = async (req, res) => {
                 limit: cappedLimit,
                 total,
                 pages: Math.ceil(total / cappedLimit)
+            },
+            meta: {
+                statusOptions
             }
         });
     } catch (error) {
@@ -1621,7 +1650,7 @@ exports.markNoShow = async (req, res) => {
             targetType: 'RentOrder',
             targetId: order._id,
             status: 'New',
-            message: `Don ${order._id} da coc nhung khong den nhan do`,
+            message: `Đơn ${order._id} đã đặt cọc nhưng khách không đến nhận đồ`,
             actionRequired: true
         });
 

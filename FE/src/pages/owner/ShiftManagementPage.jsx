@@ -4,6 +4,7 @@ import ShiftFormModal from '../../components/shifts/ShiftFormModal'
 import ShiftDetailModal from '../../components/shifts/ShiftDetailModal'
 import { ShiftRegistrationBadge, ShiftStatusBadge } from '../../components/shifts/ShiftStatusBadge'
 import { STATUS_FILTER_OPTIONS, REGISTRATION_FILTER_OPTIONS, SHIFT_STATUS } from '../../constants/shiftStatus'
+import { DEFAULT_SHIFT_PRESET, SHIFT_MANAGEMENT_PAGINATION, SHIFT_PRESETS } from '../../constants/shiftManagement'
 import {
   createOwnerShiftApi,
   deleteOwnerShiftApi,
@@ -11,8 +12,9 @@ import {
   getOwnerStaffApi,
   updateOwnerShiftApi,
 } from '../../services/owner.service'
+import { formatLocalDateInput, formatLocalTimeInput } from '../../utils/localDate'
 
-const formatToday = () => new Date().toISOString().slice(0, 10)
+const formatToday = () => formatLocalDateInput(new Date())
 const formatShiftTime = (shift) => `${shift.startTime} - ${shift.endTime}`
 const makeShiftCode = (index, dateStr) => `CA_${index}_${dateStr.replaceAll('-', '_')}`
 
@@ -20,7 +22,7 @@ const toDateString = (value) => {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
+  return formatLocalDateInput(date)
 }
 
 const toTimeString = (value) => {
@@ -28,7 +30,7 @@ const toTimeString = (value) => {
   if (/^\d{2}:\d{2}$/.test(String(value))) return String(value)
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(11, 16)
+  return formatLocalTimeInput(date)
 }
 
 const normalizeStatusWithCapacity = (shift) => {
@@ -82,7 +84,7 @@ export default function ShiftManagementPage() {
       setError('')
 
       const [staffRes, shiftsRes] = await Promise.all([
-        getOwnerStaffApi({ limit: 200 }),
+        getOwnerStaffApi({ limit: SHIFT_MANAGEMENT_PAGINATION.staffLimit }),
         getOwnerShiftsApi({}),
       ])
 
@@ -120,8 +122,8 @@ export default function ShiftManagementPage() {
           code: item.code || makeShiftCode(index + 1, workDate || formatToday()),
           name: item.name || item.title || 'Ca làm',
           workDate: workDate || formatToday(),
-          startTime: startTime || '08:30',
-          endTime: endTime || '16:30',
+          startTime: startTime || DEFAULT_SHIFT_PRESET.startTime,
+          endTime: endTime || DEFAULT_SHIFT_PRESET.endTime,
           maxStaff,
           assignedCount,
           status: item.status || SHIFT_STATUS.OPEN,
@@ -245,10 +247,12 @@ export default function ShiftManagementPage() {
 
   const handleQuickCreate = async () => {
     const targetDate = workDateFilter || formatToday()
-    const quickShifts = [
-      { index: 1, name: 'Ca 1', startTime: '08:30', endTime: '16:30' },
-      { index: 2, name: 'Ca 2', startTime: '14:30', endTime: '22:30' },
-    ]
+    const quickShifts = SHIFT_PRESETS.map((preset, index) => ({
+      index: index + 1,
+      name: preset.quickCreateName,
+      startTime: preset.startTime,
+      endTime: preset.endTime,
+    }))
 
     const existingCodes = new Set(shifts.map((item) => item.code))
     const payloads = quickShifts

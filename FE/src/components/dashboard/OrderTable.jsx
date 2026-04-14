@@ -1,16 +1,20 @@
-const statusClassMap = {
+﻿const statusClassMap = {
   'Đang thuê': 'bg-amber-50 text-amber-700',
   'Đã trả': 'bg-emerald-50 text-emerald-700',
   'Chờ xác nhận': 'bg-sky-50 text-sky-700',
-  'Quá hạn': 'bg-rose-50 text-rose-700'
-}
+  'Quá hạn': 'bg-rose-50 text-rose-700',
+};
 
-const OrderTable = ({ orders }) => {
+const OrderTable = ({ orders = [], onViewAll = () => {} }) => {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-base font-semibold text-slate-900">Đơn gần nhất</h3>
-        <button className="text-sm font-medium text-[#0F9D58] transition-colors hover:text-emerald-700">
+        <button
+          type="button"
+          onClick={onViewAll}
+          className="text-sm font-medium text-[#0F9D58] transition-colors hover:text-emerald-700"
+        >
           Xem tất cả
         </button>
       </div>
@@ -34,7 +38,11 @@ const OrderTable = ({ orders }) => {
                 <td className="py-3 pr-4 text-slate-700">{order.costume}</td>
                 <td className="py-3 pr-4 text-slate-600">{order.rentalDate}</td>
                 <td className="py-3">
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClassMap[order.status] || 'bg-slate-100 text-slate-700'}`}>
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      statusClassMap[order.status] || 'bg-slate-100 text-slate-700'
+                    }`}
+                  >
                     {order.status}
                   </span>
                 </td>
@@ -44,7 +52,7 @@ const OrderTable = ({ orders }) => {
         </table>
       </div>
     </section>
-  )
-}
+  );
+};
 
-export default OrderTable
+export default OrderTable;

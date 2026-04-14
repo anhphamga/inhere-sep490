@@ -52,6 +52,46 @@ const normalizeText = (value) => String(value || '').trim();
 
 const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const VIETNAMESE_CHAR_GROUPS = {
+  a: 'aàáạảãâầấậẩẫăằắặẳẵ',
+  e: 'eèéẹẻẽêềếệểễ',
+  i: 'iìíịỉĩ',
+  o: 'oòóọỏõôồốộổỗơờớợởỡ',
+  u: 'uùúụủũưừứựửữ',
+  y: 'yỳýỵỷỹ',
+  d: 'dđ',
+};
+
+const VIETNAMESE_CHAR_TO_GROUP = Object.entries(VIETNAMESE_CHAR_GROUPS).reduce((acc, [, chars]) => {
+  chars.split('').forEach((char) => {
+    acc[char] = chars;
+  });
+  return acc;
+}, {});
+
+const buildVietnameseInsensitivePattern = (value = '') => {
+  const raw = String(value || '');
+  let pattern = '';
+
+  for (const char of raw) {
+    if (/\s/.test(char)) {
+      pattern += '\\s+';
+      continue;
+    }
+
+    const lower = char.toLowerCase();
+    const groupedChars = VIETNAMESE_CHAR_TO_GROUP[lower];
+    if (groupedChars) {
+      pattern += `[${groupedChars}]`;
+      continue;
+    }
+
+    pattern += escapeRegex(char);
+  }
+
+  return pattern;
+};
+
 const parseJsonLike = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
   if (Array.isArray(value) || (value && typeof value === 'object')) return value;
@@ -554,7 +594,7 @@ const getProducts = async (req, res) => {
 
     const filter = withCategory({});
     if (search) {
-      const regex = new RegExp(escapeRegex(search), 'i');
+      const regex = new RegExp(buildVietnameseInsensitivePattern(search), 'i');
       filter.$and = [
         ...(Array.isArray(filter.$and) ? filter.$and : []),
         {
@@ -1554,11 +1594,12 @@ const getProductInstances = async (req, res) => {
     // Search theo product name
     let productIds = null;
     if (search) {
+      const searchRegex = new RegExp(buildVietnameseInsensitivePattern(search), 'i');
       const products = await Product.find({
         $or: [
-          { name: { $regex: search, $options: 'i' } },
-          { 'name.en': { $regex: search, $options: 'i' } },
-          { 'name.vi': { $regex: search, $options: 'i' } }
+          { name: { $regex: searchRegex } },
+          { 'name.en': { $regex: searchRegex } },
+          { 'name.vi': { $regex: searchRegex } }
         ]
       }).select('_id');
       productIds = products.map(p => p._id);

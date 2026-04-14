@@ -897,7 +897,7 @@ exports.getOwnerSaleOrders = async (req, res) => {
         .populate('customerId', 'name phone email')
         .populate('staffId', 'name phone email')
         .populate('history.updatedBy', 'name email')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: 1, _id: 1 })
         .skip(skip)
         .limit(pageSize),
       SaleOrder.countDocuments(query),
@@ -926,6 +926,20 @@ exports.getOwnerSaleOrders = async (req, res) => {
 
     const mappedData = data.map((order) => mapSaleOrderForOwner(order, { customerFacing: false }));
 
+    const statusOrder = Object.keys(SALE_ORDER_TRANSITIONS);
+    const statusSet = new Set(
+      (await SaleOrder.distinct('status', { orderType: ORDER_TYPE.BUY }))
+        .map((item) => normalizeSaleOrderStatusInput(item))
+        .filter((item) => item && SALE_ORDER_ALLOWED_STATUSES.has(item))
+    );
+    const statusOptions = statusOrder
+      .filter((statusKey) => statusSet.has(statusKey))
+      .map((statusKey) => ({
+        value: statusKey,
+        label: getSaleStatusMeta(statusKey).label,
+        badgeClass: getSaleStatusMeta(statusKey).badgeClass,
+      }));
+
     return res.json({
       success: true,
       data: mappedData,
@@ -936,11 +950,7 @@ exports.getOwnerSaleOrders = async (req, res) => {
         pages: Math.max(Math.ceil((normalizedKeyword ? data.length : total) / pageSize), 1),
       },
       meta: {
-        statusOptions: Object.keys(SALE_ORDER_TRANSITIONS).map((status) => ({
-          value: status,
-          label: getSaleStatusMeta(status).label,
-          badgeClass: getSaleStatusMeta(status).badgeClass,
-        })),
+        statusOptions,
       },
     });
   } catch (error) {

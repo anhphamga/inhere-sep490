@@ -2,6 +2,7 @@ import {
   approveBlogRequest,
   createBlogRequest,
   deleteBlogRequest,
+  getApprovedBlogsRequest,
   getBlogBySlugRequest,
   getMyBlogsRequest,
   getPendingBlogsRequest,
@@ -50,6 +51,11 @@ export const deleteBlogApi = async (id) => {
 
 export const getPendingBlogsApi = async () => {
   const response = await getPendingBlogsRequest();
+  return response.data;
+};
+
+export const getApprovedBlogsApi = async () => {
+  const response = await getApprovedBlogsRequest();
   return response.data;
 };
 

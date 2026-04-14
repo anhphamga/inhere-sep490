@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactQuill from 'react-quill';
+import DOMPurify from 'dompurify';
 import 'react-quill/dist/quill.snow.css';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -11,6 +12,8 @@ import {
   updateBlogApi,
   uploadBlogThumbnailApi,
 } from '../../services/blog.service';
+import { BLOG_CATEGORY_VALUES, createBlogSchema } from '../../validations/blog.schema';
+import { mapZodErrors } from '../../utils/validation/validation.rules';
 
 const STATUS_LABELS = {
   draft: 'Nháp',
@@ -29,7 +32,45 @@ const DEFAULT_FORM = {
   content: '',
 };
 
+const MAX_THUMBNAIL_SIZE = 3 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+
 const toText = (value) => String(value || '').trim();
+const normalizeSpaces = (value) => toText(value).replace(/\s+/g, ' ');
+const stripQuillHtml = (html) =>
+  String(html || '')
+    .replace(/<p><br><\/p>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/?(p|div|span|strong|em|u|ol|ul|li|blockquote|h[1-6])[^>]*>/gi, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#8203;/gi, ' ')
+    .replace(/\u200B/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+const sanitizeHtml = (html) =>
+  DOMPurify.sanitize(String(html || ''), {
+    USE_PROFILES: { html: true },
+  });
+const normalizeTags = (value) => {
+  const unique = new Set();
+  String(value || '')
+    .split(/[;,]/)
+    .map((item) => normalizeSpaces(item))
+    .filter(Boolean)
+    .forEach((tag) => unique.add(tag.toLowerCase()));
+  return Array.from(unique);
+};
+const normalizeCategory = (value) => {
+  const incoming = normalizeSpaces(value).toLowerCase();
+  return BLOG_CATEGORY_VALUES.find((item) => item.toLowerCase() === incoming) || '';
+};
 const extractApiError = (error, fallback) =>
   error?.response?.data?.error ||
   error?.response?.data?.message ||
@@ -84,10 +125,28 @@ function BlogEditor({ blogId, onBack, onSaved }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [form, setForm] = useState(DEFAULT_FORM);
   const [existingBlog, setExistingBlog] = useState(null);
   const fileRef = useRef(null);
   const autosaveTimerRef = useRef(null);
+
+  const normalizeEditorForm = useCallback(
+    (source = form) => {
+      const normalizedCategory = normalizeCategory(source.category);
+      const normalizedTags = normalizeTags(source.tags);
+      return {
+        title: normalizeSpaces(source.title),
+        category: normalizedCategory || normalizeSpaces(source.category),
+        tags: normalizedTags.join(', '),
+        thumbnail: toText(source.thumbnail),
+        metaTitle: normalizeSpaces(source.metaTitle),
+        metaDescription: normalizeSpaces(source.metaDescription),
+        content: sanitizeHtml(source.content),
+      };
+    },
+    [form]
+  );
 
   const draftStorageKey = useMemo(
     () => `staff_blog_draft_${toText(user?.id)}_${blogId || 'new'}`,
@@ -151,43 +210,128 @@ function BlogEditor({ blogId, onBack, onSaved }) {
 
   useEffect(() => {
     if (loading) return;
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-    }
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
       localStorage.setItem(draftStorageKey, JSON.stringify(form));
     }, 500);
     return () => {
       if (autosaveTimerRef.current) {
         clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
       }
     };
   }, [draftStorageKey, form, loading]);
 
+  useEffect(
+    () => () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    },
+    []
+  );
+
+  const validateForm = useCallback(
+    (isDraft, source = form) => {
+      const normalized = normalizeEditorForm(source);
+      const schemaErrors = (() => {
+        const parsed = createBlogSchema({ isDraft }).safeParse(normalized);
+        if (parsed.success) return {};
+        return mapZodErrors(parsed.error);
+      })();
+
+      const nextErrors = { ...schemaErrors };
+      const plainContent = stripQuillHtml(normalized.content);
+      if (!isDraft && plainContent.length < 30) {
+        nextErrors.content = nextErrors.content || 'Nội dung bài viết tối thiểu 30 ký tự.';
+      }
+      if (!isDraft && normalized.category && !BLOG_CATEGORY_VALUES.includes(normalized.category)) {
+        nextErrors.category = nextErrors.category || 'Danh mục không hợp lệ.';
+      }
+      if (normalized.metaTitle.length > 60) {
+        nextErrors.metaTitle = 'Meta title tối đa 60 ký tự.';
+      }
+      if (normalized.metaDescription.length > 160) {
+        nextErrors.metaDescription = 'Meta description tối đa 160 ký tự.';
+      }
+
+      return { normalized, errors: nextErrors };
+    },
+    [form, normalizeEditorForm]
+  );
+
+  const strictValidation = useMemo(() => validateForm(false), [validateForm]);
+  const canSubmitReview = !saving && Object.keys(strictValidation.errors).length === 0;
+
+  const syncFieldError = useCallback(
+    (field, source = form) => {
+      const { errors } = validateForm(false, source);
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        if (errors[field]) next[field] = errors[field];
+        else delete next[field];
+        return next;
+      });
+    },
+    [form, validateForm]
+  );
+
   const handleInput = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    const nextForm = { ...form, [key]: value };
+    setForm(nextForm);
+    if (fieldErrors[key]) {
+      syncFieldError(key, nextForm);
+    }
   };
 
-  const buildPayload = () => ({
-    title: toText(form.title),
-    category: toText(form.category),
-    tags: toText(form.tags)
-      .split(',')
-      .map((item) => toText(item))
-      .filter(Boolean),
-    thumbnail: toText(form.thumbnail),
-    metaTitle: toText(form.metaTitle),
-    metaDescription: toText(form.metaDescription),
-    content: toText(form.content),
-  });
+  const handleBlur = (key) => {
+    if (key === 'tags') {
+      const normalizedTagText = normalizeTags(form.tags).join(', ');
+      if (normalizedTagText !== form.tags) {
+        setForm((prev) => ({ ...prev, tags: normalizedTagText }));
+      }
+    }
+    if (key === 'category') {
+      const normalizedCategory = normalizeCategory(form.category);
+      if (normalizedCategory && normalizedCategory !== form.category) {
+        setForm((prev) => ({ ...prev, category: normalizedCategory }));
+      }
+    }
+    syncFieldError(key);
+  };
+
+  const buildPayload = useCallback(
+    (source = form) => {
+      const normalized = normalizeEditorForm(source);
+      return {
+        title: normalized.title,
+        category: normalized.category,
+        tags: normalizeTags(normalized.tags),
+        thumbnail: normalized.thumbnail,
+        metaTitle: normalized.metaTitle,
+        metaDescription: normalized.metaDescription,
+        content: normalized.content,
+      };
+    },
+    [form, normalizeEditorForm]
+  );
 
   const saveDraft = async () => {
     try {
+      const draftValidation = validateForm(true);
+      const draftErrors = draftValidation.errors;
+      if (Object.keys(draftErrors).length > 0) {
+        setFieldErrors(draftErrors);
+        setError(Object.values(draftErrors)[0] || 'Dữ liệu chưa hợp lệ.');
+        return;
+      }
+
       setSaving(true);
       setError('');
       setSuccess('');
 
-      const payload = buildPayload();
+      const payload = buildPayload(draftValidation.normalized);
       let response;
       if (blogId) {
         response = await updateBlogApi(blogId, payload);
@@ -199,6 +343,10 @@ function BlogEditor({ blogId, onBack, onSaved }) {
       if (!saved) throw new Error('Không nhận được dữ liệu bài viết sau khi lưu');
 
       localStorage.removeItem(draftStorageKey);
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
       setSuccess('Đã lưu nháp thành công.');
       onSaved?.(saved);
     } catch (saveError) {
@@ -210,11 +358,19 @@ function BlogEditor({ blogId, onBack, onSaved }) {
 
   const handleSubmitReview = async () => {
     try {
+      const submitValidation = validateForm(false);
+      const submitErrors = submitValidation.errors;
+      if (Object.keys(submitErrors).length > 0) {
+        setFieldErrors(submitErrors);
+        setError(Object.values(submitErrors)[0] || 'Vui lòng kiểm tra lại thông tin bài viết.');
+        return;
+      }
+
       setSaving(true);
       setError('');
       setSuccess('');
 
-      const payload = buildPayload();
+      const payload = buildPayload(submitValidation.normalized);
       let activeBlogId = blogId;
       if (blogId) {
         await updateBlogApi(blogId, payload);
@@ -229,6 +385,10 @@ function BlogEditor({ blogId, onBack, onSaved }) {
 
       await submitBlogApi(activeBlogId);
       localStorage.removeItem(draftStorageKey);
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
       setSuccess('Đã gửi duyệt bài viết.');
       onSaved?.();
     } catch (submitError) {
@@ -242,13 +402,27 @@ function BlogEditor({ blogId, onBack, onSaved }) {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (!ALLOWED_IMAGE_TYPES.has(String(file.type || '').toLowerCase())) {
+      setError('Chỉ hỗ trợ upload ảnh JPG, PNG, WEBP hoặc GIF.');
+      if (event.target) event.target.value = '';
+      return;
+    }
+
+    if (Number(file.size || 0) > MAX_THUMBNAIL_SIZE) {
+      setError('Kích thước ảnh tối đa 3MB.');
+      if (event.target) event.target.value = '';
+      return;
+    }
+
     try {
       setUploading(true);
       setError('');
       const response = await uploadBlogThumbnailApi(file);
       const url = response?.data?.url || '';
       if (!url) throw new Error('Upload ảnh thất bại');
-      setForm((prev) => ({ ...prev, thumbnail: url }));
+      const nextForm = { ...form, thumbnail: url };
+      setForm(nextForm);
+      syncFieldError('thumbnail', nextForm);
     } catch (uploadError) {
       setError(extractApiError(uploadError, 'Không thể tải ảnh'));
     } finally {
@@ -298,9 +472,13 @@ function BlogEditor({ blogId, onBack, onSaved }) {
                 type="text"
                 value={form.title}
                 onChange={(event) => handleInput('title', event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onBlur={() => handleBlur('title')}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${fieldErrors.title ? 'border-rose-400 focus:border-rose-500' : 'border-slate-300'}`}
+                aria-invalid={Boolean(fieldErrors.title)}
+                aria-describedby={fieldErrors.title ? 'staff-blog-title-error' : undefined}
                 placeholder="Nhập tiêu đề bài viết"
               />
+              {fieldErrors.title ? <p id="staff-blog-title-error" className="mt-1 text-xs text-rose-600">{fieldErrors.title}</p> : null}
             </label>
 
             <label className="block text-sm font-medium text-slate-700">
@@ -309,9 +487,13 @@ function BlogEditor({ blogId, onBack, onSaved }) {
                 type="text"
                 value={form.category}
                 onChange={(event) => handleInput('category', event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onBlur={() => handleBlur('category')}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${fieldErrors.category ? 'border-rose-400 focus:border-rose-500' : 'border-slate-300'}`}
+                aria-invalid={Boolean(fieldErrors.category)}
+                aria-describedby={fieldErrors.category ? 'staff-blog-category-error' : undefined}
                 placeholder="Ví dụ: Cẩm nang Hội An"
               />
+              {fieldErrors.category ? <p id="staff-blog-category-error" className="mt-1 text-xs text-rose-600">{fieldErrors.category}</p> : null}
             </label>
 
             <label className="block text-sm font-medium text-slate-700">
@@ -320,9 +502,13 @@ function BlogEditor({ blogId, onBack, onSaved }) {
                 type="text"
                 value={form.tags}
                 onChange={(event) => handleInput('tags', event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onBlur={() => handleBlur('tags')}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${fieldErrors.tags ? 'border-rose-400 focus:border-rose-500' : 'border-slate-300'}`}
+                aria-invalid={Boolean(fieldErrors.tags)}
+                aria-describedby={fieldErrors.tags ? 'staff-blog-tags-error' : undefined}
                 placeholder="áo dài, thuê đồ, phố cổ"
               />
+              {fieldErrors.tags ? <p id="staff-blog-tags-error" className="mt-1 text-xs text-rose-600">{fieldErrors.tags}</p> : null}
             </label>
 
             <label className="block text-sm font-medium text-slate-700 md:col-span-2">
@@ -332,7 +518,10 @@ function BlogEditor({ blogId, onBack, onSaved }) {
                   type="text"
                   value={form.thumbnail}
                   onChange={(event) => handleInput('thumbnail', event.target.value)}
-                  className="min-w-[280px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  onBlur={() => handleBlur('thumbnail')}
+                  className={`min-w-[280px] flex-1 rounded-lg border px-3 py-2 text-sm ${fieldErrors.thumbnail ? 'border-rose-400 focus:border-rose-500' : 'border-slate-300'}`}
+                  aria-invalid={Boolean(fieldErrors.thumbnail)}
+                  aria-describedby={fieldErrors.thumbnail ? 'staff-blog-thumbnail-error' : undefined}
                   placeholder="Dán URL ảnh hoặc tải ảnh lên"
                 />
                 <input
@@ -351,6 +540,7 @@ function BlogEditor({ blogId, onBack, onSaved }) {
                   {uploading ? 'Đang tải...' : 'Tải ảnh'}
                 </button>
               </div>
+              {fieldErrors.thumbnail ? <p id="staff-blog-thumbnail-error" className="mt-1 text-xs text-rose-600">{fieldErrors.thumbnail}</p> : null}
             </label>
 
             <label className="block text-sm font-medium text-slate-700">
@@ -359,7 +549,10 @@ function BlogEditor({ blogId, onBack, onSaved }) {
                 type="text"
                 value={form.metaTitle}
                 onChange={(event) => handleInput('metaTitle', event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onBlur={() => handleBlur('metaTitle')}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${fieldErrors.metaTitle ? 'border-rose-400 focus:border-rose-500' : 'border-slate-300'}`}
+                aria-invalid={Boolean(fieldErrors.metaTitle)}
+                aria-describedby={fieldErrors.metaTitle ? 'staff-blog-meta-title-error' : undefined}
                 placeholder="Tiêu đề SEO"
               />
             </label>
@@ -370,7 +563,10 @@ function BlogEditor({ blogId, onBack, onSaved }) {
                 type="text"
                 value={form.metaDescription}
                 onChange={(event) => handleInput('metaDescription', event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onBlur={() => handleBlur('metaDescription')}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${fieldErrors.metaDescription ? 'border-rose-400 focus:border-rose-500' : 'border-slate-300'}`}
+                aria-invalid={Boolean(fieldErrors.metaDescription)}
+                aria-describedby={fieldErrors.metaDescription ? 'staff-blog-meta-description-error' : undefined}
                 placeholder="Mô tả SEO ngắn"
               />
             </label>
@@ -378,7 +574,8 @@ function BlogEditor({ blogId, onBack, onSaved }) {
 
           <div>
             <p className="mb-2 text-sm font-medium text-slate-700">Nội dung bài viết</p>
-            <ReactQuill theme="snow" value={form.content} onChange={(value) => handleInput('content', value)} modules={quillModules} formats={quillFormats} />
+            <ReactQuill theme="snow" value={form.content} onChange={(value) => handleInput('content', value)} onBlur={() => handleBlur('content')} modules={quillModules} formats={quillFormats} />
+            {fieldErrors.content ? <p id="staff-blog-content-error" className="mt-2 text-xs text-rose-600">{fieldErrors.content}</p> : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -393,7 +590,7 @@ function BlogEditor({ blogId, onBack, onSaved }) {
             <button
               type="button"
               onClick={handleSubmitReview}
-              disabled={saving}
+              disabled={!canSubmitReview}
               className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
               {saving ? 'Đang xử lý...' : 'Gửi duyệt'}
@@ -416,7 +613,7 @@ function BlogEditor({ blogId, onBack, onSaved }) {
             <p className="text-xs text-slate-500">{form.metaDescription || 'Meta description sẽ hiển thị tại đây.'}</p>
             <div
               className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: form.content || '<p>Chưa có nội dung.</p>' }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(form.content) || '<p>Chưa có nội dung.</p>' }}
             />
           </div>
         </div>
@@ -435,7 +632,7 @@ export default function StaffBlogsPage({ pathName }) {
 
   const routeMeta = useMemo(() => parseMode(pathName), [pathName]);
 
-  const loadMyPosts = async (status = statusFilter) => {
+  const loadMyPosts = useCallback(async (status = statusFilter) => {
     try {
       setLoading(true);
       setError('');
@@ -446,12 +643,12 @@ export default function StaffBlogsPage({ pathName }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
 
   useEffect(() => {
     if (routeMeta.mode !== 'list') return;
     loadMyPosts();
-  }, [routeMeta.mode, statusFilter]);
+  }, [loadMyPosts, routeMeta.mode, statusFilter]);
 
   const handleSubmit = async (id) => {
     try {

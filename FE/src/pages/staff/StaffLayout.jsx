@@ -101,7 +101,7 @@ export default function StaffLayout({ children }) {
   ];
 
   return (
-    <div className="flex min-h-screen bg-white">
+    <div className="flex h-screen overflow-hidden bg-white">
       <aside className="flex w-56 flex-col border-r border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-6 py-5">
           <Link to="/staff" className="text-xl font-bold text-indigo-600 hover:opacity-90">
@@ -109,7 +109,7 @@ export default function StaffLayout({ children }) {
           </Link>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-4">
+        <nav className="staff-scroll flex-1 space-y-1 overflow-y-auto px-4 py-4">
           {sidebarMenu.map((m) => (
             <NavLink
               key={m.to}
@@ -142,7 +142,7 @@ export default function StaffLayout({ children }) {
             Tổng quan
           </Link>
           <Link
-            to="/profile"
+            to="/staff/profile"
             className="flex items-center gap-3 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50"
           >
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-gray-100 text-xs font-bold">
@@ -162,7 +162,7 @@ export default function StaffLayout({ children }) {
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-gray-200 bg-white px-8 py-5">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-gray-100">
@@ -209,7 +209,7 @@ export default function StaffLayout({ children }) {
                 ) : null}
 
                 {!notificationsLoading && !notificationsError && notifications.length > 0 ? (
-                  <div className="max-h-80 overflow-y-auto">
+                  <div className="staff-scroll max-h-80 overflow-y-auto">
                     {notifications.map((item) => (
                       <div key={item?._id || `${item?.createdAt}-${item?.message}`} className="border-b border-gray-100 px-4 py-3 text-left last:border-0">
                         <div className="mb-1 text-[11px] font-semibold text-gray-500">{item?.type || "Thông báo"}</div>
@@ -223,7 +223,7 @@ export default function StaffLayout({ children }) {
           </button>
         </header>
 
-        <main className="flex-1 overflow-auto bg-gray-50 p-8">{children}</main>
+        <main className="staff-scroll flex-1 overflow-y-auto bg-gray-50 p-8">{children}</main>
       </div>
     </div>
   );

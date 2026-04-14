@@ -177,8 +177,22 @@ exports.createSalePaymentLink = async (req, res) => {
 
         const order = await SaleOrder.findById(orderId);
         if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
-        if (!['PendingPayment', 'PendingConfirmation'].includes(order.status)) {
+        if (!['PendingPayment', 'PendingConfirmation', 'Failed'].includes(order.status)) {
             return res.status(400).json({ success: false, message: `Đơn đang ở trạng thái "${order.status}", không thể tạo link thanh toán` });
+        }
+
+        if (order.status === 'Failed') {
+            order.status = 'PendingPayment';
+            order.userStatus = resolveSaleOrderUserStatus('PendingPayment', order.userStatus);
+            order.history = Array.isArray(order.history) ? order.history : [];
+            order.history.push({
+                status: 'PendingPayment',
+                action: 'retry_payment',
+                description: 'Tạo lại link thanh toán sau khi giao dịch thất bại',
+                updatedBy: req.user?.id || null,
+                updatedAt: new Date(),
+            });
+            await order.save();
         }
 
         const existing = await PayOSTransaction.findOne({ orderId, purpose: 'SalePayment', status: 'PENDING' });
@@ -234,6 +248,26 @@ const releaseReservedInstancesForPendingDepositOrder = async (orderId) => {
         { _id: { $in: instanceIds }, lifecycleStatus: 'Reserved' },
         { lifecycleStatus: 'Available' }
     );
+};
+
+const markSaleOrderAsFailed = async (orderId, reason = '') => {
+    const saleOrder = await SaleOrder.findById(orderId);
+    if (!saleOrder) return;
+    if (!['PendingPayment', 'PendingConfirmation'].includes(String(saleOrder.status || ''))) return;
+
+    saleOrder.status = 'Failed';
+    saleOrder.userStatus = resolveSaleOrderUserStatus('Failed', saleOrder.userStatus);
+    saleOrder.history = Array.isArray(saleOrder.history) ? saleOrder.history : [];
+    saleOrder.history.push({
+        status: 'Failed',
+        action: 'payment_failed',
+        description: reason
+            ? `Thanh toán thất bại (${reason})`
+            : 'Thanh toán thất bại',
+        updatedBy: null,
+        updatedAt: new Date(),
+    });
+    await saleOrder.save();
 };
 
 /**
@@ -386,6 +420,10 @@ exports.checkPayosStatus = async (req, res) => {
                     if (txn.orderType === ORDER_TYPE.RENT && txn.purpose === 'Deposit') {
                         await releaseReservedInstancesForPendingDepositOrder(txn.orderId);
                     }
+                    if (txn.orderType === ORDER_TYPE.SALE && txn.purpose === 'SalePayment') {
+                        const reason = payosInfo.status === 'EXPIRED' ? 'quá hạn thanh toán' : 'khách hủy thanh toán';
+                        await markSaleOrderAsFailed(txn.orderId, reason);
+                    }
                 }
             } catch (payosErr) {
                 console.warn(`[PayOS] Could not query payment status for ${orderCode}:`, payosErr.message);
@@ -444,6 +482,9 @@ exports.handleWebhook = async (req, res) => {
             await PayOSTransaction.updateOne({ _id: txn._id }, { status: 'CANCELLED' });
             if (txn.orderType === ORDER_TYPE.RENT && txn.purpose === 'Deposit') {
                 await releaseReservedInstancesForPendingDepositOrder(txn.orderId);
+            }
+            if (txn.orderType === ORDER_TYPE.SALE && txn.purpose === 'SalePayment') {
+                await markSaleOrderAsFailed(txn.orderId, 'giao dịch không thành công');
             }
             return res.json({ success: true });
         }

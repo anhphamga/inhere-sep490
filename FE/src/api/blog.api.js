@@ -10,6 +10,7 @@ export const submitBlogRequest = (id) => axiosClient.post(`/blogs/${id}/submit`)
 export const deleteBlogRequest = (id) => axiosClient.delete(`/blogs/${id}`);
 
 export const getPendingBlogsRequest = () => axiosClient.get('/blogs/pending');
+export const getApprovedBlogsRequest = () => axiosClient.get('/blogs/approved');
 export const approveBlogRequest = (id) => axiosClient.post(`/blogs/${id}/approve`);
 export const rejectBlogRequest = (id) => axiosClient.post(`/blogs/${id}/reject`);
 export const publishBlogRequest = (id) => axiosClient.post(`/blogs/${id}/publish`);

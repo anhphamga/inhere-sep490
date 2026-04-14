@@ -2,7 +2,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import Header from "../../components/common/Header";
-import { getBlogPostsFromData } from "../../utils/blogSource";
+import { getPublishedBlogsApi } from "../../services/blog.service";
 import "../../style/pages/HomePage.css";
 import logo from "../../assets/logo/logo.png";
 import banner1 from "../../assets/banner/banner 1.png";
@@ -24,7 +24,6 @@ const I18N = {
     "nav.booking": "Đặt lịch thử đồ",
     "nav.packages": "Combo chụp ảnh",
     "nav.blog": "Blog / Cẩm nang",
-    "nav.promo": "Khuyến mãi",
     "nav.contact": "Liên hệ",
 
     "search.placeholder": "Tìm trang phục...",
@@ -148,9 +147,6 @@ const I18N = {
     "blog.p3.d":
       "Lộ trình gợi ý để chụp đẹp mà không quá mệt.",
 
-    "promo.title": "Khuyến mãi",
-    "promo.sub":
-      "Theo dõi chương trình ưu đãi theo mùa – đặt lịch online để giữ ưu đãi.",
 
     "contact.title": "Liên hệ",
     "contact.sub":
@@ -420,10 +416,37 @@ const Homepage = ({ initialSection = "" }) => {
   }, [lang]);
 
   useEffect(() => {
-    setBlogsLoading(true);
-    setBlogsError("");
-    setBlogs(getBlogPostsFromData());
-    setBlogsLoading(false);
+    let isMounted = true;
+
+    const fetchBlogs = async () => {
+      try {
+        setBlogsLoading(true);
+        setBlogsError("");
+        const response = await getPublishedBlogsApi({ page: 1, limit: 3 });
+        const apiBlogs = Array.isArray(response?.data) ? response.data : [];
+        if (isMounted) {
+          setBlogs(apiBlogs.slice(0, 3));
+        }
+      } catch {
+        if (isMounted) {
+          setBlogs([]);
+          setBlogsError(
+            lang === "vi"
+              ? "Không tải được bài viết từ hệ thống."
+              : "Failed to load blog posts from server."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setBlogsLoading(false);
+        }
+      }
+    };
+
+    fetchBlogs();
+    return () => {
+      isMounted = false;
+    };
   }, [lang]);
 
   useEffect(() => {
@@ -518,7 +541,7 @@ const Homepage = ({ initialSection = "" }) => {
       return;
     }
 
-    const sectionIds = ["rent", "buy", "fitting", "packages", "blog", "promo", "contact"];
+    const sectionIds = ["rent", "buy", "fitting", "packages", "blog", "contact"];
 
     const handleScroll = () => {
       const offset = 130; // gần bằng chiều cao header + nav
@@ -571,13 +594,19 @@ const Homepage = ({ initialSection = "" }) => {
     return "Other";
   };
 
-  const navigateToBuyCategory = (categoryValue) => {
+  const navigateToBuyCategory = (categoryValue, categoryType = "sale_or_rent") => {
     const value = String(categoryValue || "").trim();
+    const normalizedType = String(categoryType || "").trim().toLowerCase();
+    const purpose =
+      normalizedType === "rent" || normalizedType === "service"
+        ? "rent"
+        : "buy";
+
     if (!value) {
-      navigate("/buy");
+      navigate(`/buy?purpose=${purpose}`);
       return;
     }
-    navigate(`/buy?category=${encodeURIComponent(value)}`);
+    navigate(`/buy?purpose=${purpose}&category=${encodeURIComponent(value)}`);
   };
 
   const formatCurrency = (amount) =>
@@ -704,7 +733,7 @@ const Homepage = ({ initialSection = "" }) => {
 
   const displayedBlogs =
     blogs.length > 0
-      ? blogs.slice(0, 6).map((item, index) => {
+      ? blogs.slice(0, 3).map((item, index) => {
         const rawContent = String(item?.content || "").trim();
         const lines = rawContent
           .split(/\r?\n/)
@@ -907,20 +936,6 @@ const Homepage = ({ initialSection = "" }) => {
                     }}
                   >
                     {t(lang, "nav.blog")}
-                  </a>
-                  <a
-                    className={
-                      "nav-item" +
-                      (activeSection === "promo" ? " active" : "")
-                    }
-                    href="#promo"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      scrollToId("#promo");
-                      setActiveSection("promo");
-                    }}
-                  >
-                    {t(lang, "nav.promo")}
                   </a>
                   <a
                     className={
@@ -1261,11 +1276,19 @@ const Homepage = ({ initialSection = "" }) => {
                 key={`${category.slug}-${index}`}
                 role="button"
                 tabIndex={0}
-                onClick={() => navigateToBuyCategory(category.value || category.displayName)}
+                onClick={() =>
+                  navigateToBuyCategory(
+                    category.value || category.displayName,
+                    category.type
+                  )
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    navigateToBuyCategory(category.value || category.displayName);
+                    navigateToBuyCategory(
+                      category.value || category.displayName,
+                      category.type
+                    );
                   }
                 }}
               >
@@ -1303,7 +1326,10 @@ const Homepage = ({ initialSection = "" }) => {
                           className="category-child-btn"
                           onClick={(event) => {
                             event.stopPropagation();
-                            navigateToBuyCategory(child.value || child.displayName);
+                            navigateToBuyCategory(
+                              child.value || child.displayName,
+                              child.type || category.type
+                            );
                           }}
                         >
                           <span>{child.displayName}</span>
@@ -1324,7 +1350,7 @@ const Homepage = ({ initialSection = "" }) => {
         <div className="container">
           <div className="row-head">
             <h2>{t(lang, "rent.title")}</h2>
-            <a href="#promo">{t(lang, "rent.more")}</a>
+            <Link to="/buy?purpose=rent&sort=top_liked">{t(lang, "rent.more")}</Link>
           </div>
           {topRentLoading && (
             <p className="rent-status">
@@ -1392,7 +1418,7 @@ const Homepage = ({ initialSection = "" }) => {
         <div className="container">
           <div className="row-head">
             <h2>{t(lang, "buy.title")}</h2>
-            <a href="#promo">{t(lang, "buy.more")}</a>
+            <Link to="/buy?purpose=rent&category=co-phuc">{t(lang, "buy.more")}</Link>
           </div>
           {buyLoading && (
             <p className="rent-status">
@@ -1456,7 +1482,9 @@ const Homepage = ({ initialSection = "" }) => {
             <h2>
               {lang === "vi" ? "Váy - đầm cho thuê" : "Dress Rentals"}
             </h2>
-            <a href="#rent">{lang === "vi" ? "Xem đồ thuê" : "View rentals"}</a>
+            <Link to="/buy?purpose=rent&q=vay">
+              {lang === "vi" ? "Xem đồ thuê" : "View rentals"}
+            </Link>
           </div>
           {fittingLoading && (
             <p className="rent-status">
@@ -1569,39 +1597,6 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
-      <section className="soft" id="reviews">
-        <div className="container">
-          <h2 className="section-title">
-            {t(lang, "reviews.title")}
-          </h2>
-          <p className="section-sub">
-            {t(lang, "reviews.sub")}
-          </p>
-
-          <div className="grid-3-cards">
-            <div className="info-card">
-              <h3>★★★★★</h3>
-              <p className="footer-text">
-                {t(lang, "reviews.r1")}
-              </p>
-            </div>
-            <div className="info-card">
-              <h3>★★★★★</h3>
-              <p className="footer-text">
-                {t(lang, "reviews.r2")}
-              </p>
-            </div>
-            <div className="info-card">
-              <h3>★★★★★</h3>
-              <p className="footer-text">
-                {t(lang, "reviews.r3")}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* BLOG */}
       <section id="blog">
         <div className="container">
@@ -1645,18 +1640,6 @@ const Homepage = ({ initialSection = "" }) => {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* PROMO / CONTACT */}
-      <section className="soft" id="promo">
-        <div className="container">
-          <h2 className="section-title">
-            {t(lang, "promo.title")}
-          </h2>
-          <p className="section-sub">
-            {t(lang, "promo.sub")}
-          </p>
         </div>
       </section>
 

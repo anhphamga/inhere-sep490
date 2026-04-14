@@ -42,6 +42,17 @@ const RENT_STATUS_LABELS = {
     Completed: 'Hoàn tất'
 }
 
+const SALE_STATUS_LABELS = {
+    PendingConfirmation: 'Chờ xác nhận',
+    Confirmed: 'Đã xác nhận',
+    Processing: 'Đang xử lý',
+    Shipping: 'Đang giao',
+    Delivered: 'Đã giao',
+    Completed: 'Hoàn tất',
+    Cancelled: 'Đã hủy',
+    Refunded: 'Đã hoàn tiền',
+    Returned: 'Đã trả hàng'
+}
 const DEFAULT_STATUS_BADGE = 'bg-slate-100 text-slate-700'
 
 const formatDateTime = (value) => {
@@ -56,16 +67,22 @@ const getSaleStatusOptions = (saleMeta) => {
     return ['All', ...values]
 }
 
-const getRentStatusOptions = (orders) => {
+const getRentStatusOptions = (rentMeta, orders) => {
+    const valuesFromMeta = toArray(rentMeta?.statusOptions).map((item) => item?.value).filter(Boolean)
+    if (valuesFromMeta.length > 0) {
+        return ['All', ...valuesFromMeta]
+    }
+
     const values = Array.from(new Set(toArray(orders).map((order) => String(order?.status || '')).filter(Boolean)))
     return ['All', ...values]
 }
 
-const getStatusOptions = (orderType, saleMeta, orders) => (
-    orderType === ORDER_TYPES.sale ? getSaleStatusOptions(saleMeta) : getRentStatusOptions(orders)
+const getStatusOptions = (orderType, saleMeta, rentMeta, orders) => (
+    orderType === ORDER_TYPES.sale ? getSaleStatusOptions(saleMeta) : getRentStatusOptions(rentMeta, orders)
 )
 
 const getRentStatusLabel = (status) => RENT_STATUS_LABELS[status] || status || 'N/A'
+const getSaleStatusLabel = (status) => SALE_STATUS_LABELS[status] || status || 'N/A'
 
 const getCustomerName = (order, orderType) => (
     orderType === ORDER_TYPES.sale
@@ -96,19 +113,23 @@ const getSaleStatusOption = (saleMeta, status) => (
     toArray(saleMeta?.statusOptions).find((item) => item?.value === status) || null
 )
 
-const getStatusOptionLabel = (orderType, saleMeta, status) => {
+const getRentStatusOption = (rentMeta, status) => (
+    toArray(rentMeta?.statusOptions).find((item) => item?.value === status) || null
+)
+
+const getStatusOptionLabel = (orderType, saleMeta, rentMeta, status) => {
     if (status === 'All') return 'Tất cả trạng thái'
     if (orderType === ORDER_TYPES.sale) {
-        return getSaleStatusOption(saleMeta, status)?.label || status
+        return getSaleStatusOption(saleMeta, status)?.label || getSaleStatusLabel(status)
     }
-    return getRentStatusLabel(status)
+    return getRentStatusOption(rentMeta, status)?.label || getRentStatusLabel(status)
 }
 
-const getStatusLabel = (order, orderType, saleMeta) => {
+const getStatusLabel = (order, orderType, saleMeta, rentMeta) => {
     if (orderType === ORDER_TYPES.sale) {
-        return order?.statusLabel || getSaleStatusOption(saleMeta, order?.status)?.label || order?.status || 'N/A'
+        return order?.statusLabel || getSaleStatusOption(saleMeta, order?.status)?.label || getSaleStatusLabel(order?.status)
     }
-    return getRentStatusLabel(order?.status)
+    return order?.statusLabel || getRentStatusOption(rentMeta, order?.status)?.label || getRentStatusLabel(order?.status)
 }
 
 const getStatusClassName = (order, orderType, saleMeta) => {
@@ -140,8 +161,8 @@ const getTimelineItems = (order, orderType) => {
     }
 
     return [{
-        label: getRentStatusLabel(order?.status) || '??n thu?',
-        description: 'D? li?u ti?n tr?nh hi?n ???c l?y t? API ??n thu?.',
+        label: getRentStatusLabel(order?.status) || 'Đơn thuê',
+        description: 'Dữ liệu tiến trình hiện được lấy từ API đơn thuê.',
         value: order?.updatedAt || order?.createdAt,
         actor: order?.staffId?.name || '',
         active: true
@@ -205,6 +226,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
     const [orderType, setOrderType] = useState(normalizedFixedOrderType || ORDER_TYPES.sale)
     const [orders, setOrders] = useState([])
     const [saleMeta, setSaleMeta] = useState({ statusOptions: [] })
+    const [rentMeta, setRentMeta] = useState({ statusOptions: [] })
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [statusFilter, setStatusFilter] = useState('All')
@@ -251,6 +273,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                 setSaleMeta({
                     statusOptions: toArray(response?.meta?.statusOptions)
                 })
+                setRentMeta({ statusOptions: [] })
                 return
             }
 
@@ -260,6 +283,9 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
             })
 
             const rows = toArray(response?.data)
+            setRentMeta({
+                statusOptions: toArray(response?.meta?.statusOptions)
+            })
             const keyword = searchValue.trim().toLowerCase()
             const filteredRows = keyword
                 ? rows.filter((order) => {
@@ -449,9 +475,9 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                             onChange={(event) => setStatusFilter(event.target.value)}
                             className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#1975d2]/30"
                         >
-                            {getStatusOptions(orderType, saleMeta, orders).map((status) => (
+                            {getStatusOptions(orderType, saleMeta, rentMeta, orders).map((status) => (
                                 <option key={status} value={status}>
-                                    {getStatusOptionLabel(orderType, saleMeta, status)}
+                                    {getStatusOptionLabel(orderType, saleMeta, rentMeta, status)}
                                 </option>
                             ))}
                         </select>
@@ -510,7 +536,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                                     <td className="px-5 py-4 text-slate-600">{formatDateTime(order.createdAt)}</td>
                                     <td className="px-5 py-4">
                                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClassName(order, orderType, saleMeta)}`}>
-                                            {getStatusLabel(order, orderType, saleMeta)}
+                                            {getStatusLabel(order, orderType, saleMeta, rentMeta)}
                                         </span>
                                     </td>
                                     <td className="px-5 py-4 text-right font-semibold text-slate-900">{currencyFormatter.format(getOrderAmount(order))}</td>
@@ -581,7 +607,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
 
                                     <div className="flex flex-wrap items-center gap-3">
                                         <span className={`inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-semibold ${getStatusClassName(selectedOrder, orderType, saleMeta)}`}>
-                                            {getStatusLabel(selectedOrder, orderType, saleMeta)}
+                                            {getStatusLabel(selectedOrder, orderType, saleMeta, rentMeta)}
                                         </span>
                                         <button
                                             type="button"
@@ -827,7 +853,7 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                                                                 className={`rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 ${savingStatus ? 'cursor-not-allowed opacity-70' : ''}`}
                                                             >
                                                                 <div className="flex items-center justify-between gap-3">
-                                                                    <span>{getSaleStatusOption(saleMeta, status)?.label || status}</span>
+                                                                    <span>{getSaleStatusOption(saleMeta, status)?.label || getSaleStatusLabel(status)}</span>
                                                                     <CheckCircle2 className="h-4 w-4 text-slate-400" />
                                                                 </div>
                                                             </button>
@@ -859,3 +885,6 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
         </div>
     )
 }
+
+
+

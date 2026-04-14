@@ -34,7 +34,7 @@ const cancelOrder = async (order) => {
     targetType: 'RentOrder',
     targetId: orderId,
     status: 'New',
-    message: `Don ${orderId} bi huy tu dong do qua han dat coc`,
+    message: `Đơn ${orderId} bị hủy tự động do quá hạn đặt cọc`,
     actionRequired: false
   });
 };

@@ -4,6 +4,24 @@
     gap: 1rem;
 }
 
+.owner-sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+.owner-sidebar-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.owner-sidebar-scroll::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 999px;
+}
+
+.owner-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
 .owner-theme-light {
     background: #f6f7f8;
 }

@@ -1,4 +1,4 @@
-﻿import { createElement, useEffect, useMemo, useState } from 'react'
+import { createElement, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Lock, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Trash2, User, CreditCard } from 'lucide-react'
 import Header from '../components/common/Header'
@@ -11,9 +11,9 @@ import { createDepositPaymentLinkApi, createSalePaymentLinkApi } from '../servic
 import { checkoutApi, guestCheckoutApi } from '../services/order.service'
 import { getMyVouchersApi, validateVoucherApi } from '../services/voucher.service'
 import { ADDRESS_DATA } from '../constants/addressData'
+import { createCheckoutSchema } from '../validations/checkout.schema'
+import { mapZodErrors, normalizePhone } from '../utils/validation/validation.rules'
 
-const PHONE_REGEX = /^\+?[0-9]{9,15}$/
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const ADDRESS_HISTORY_KEY = 'inhere_checkout_address_history'
 
 const PAYMENT_OPTIONS = [
@@ -22,8 +22,22 @@ const PAYMENT_OPTIONS = [
 ]
 
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
-const normalizePhoneInput = (value = '') => value.replace(/\s+/g, '').trim()
+const normalizePhoneInput = (value = '') => normalizePhone(value)
 const normalizeVoucherCode = (value = '') => String(value || '').trim().toUpperCase()
+const normalizeText = (value = '') => String(value ?? '').trim()
+const normalizeEmail = (value = '') => normalizeText(value).toLowerCase()
+const PHONE_REGEX_VN = /^(?:0|\+84)\d{9,10}$/
+const sanitizeCheckoutForm = (nextForm = {}) => ({
+  ...nextForm,
+  name: normalizeText(nextForm.name),
+  phone: normalizePhoneInput(nextForm.phone),
+  email: normalizeEmail(nextForm.email),
+  province: normalizeText(nextForm.province),
+  district: normalizeText(nextForm.district),
+  ward: normalizeText(nextForm.ward),
+  detailedAddress: normalizeText(nextForm.detailedAddress),
+  note: normalizeText(nextForm.note),
+})
 const createIdempotencyKey = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 const formatVoucherValue = (voucher) => {
   if (String(voucher?.voucherType || '').toLowerCase() === 'percent') {
@@ -79,28 +93,6 @@ const saveAddressHistory = (entry) => {
   localStorage.setItem(ADDRESS_HISTORY_KEY, JSON.stringify(next))
 }
 
-const validateBuyForm = (form, options = {}) => {
-  const errors = {}
-  const normalizedEmail = String(form.email || '').trim().toLowerCase()
-
-  if (!form.name.trim()) errors.name = 'Vui lòng nhập họ và tên.'
-  if (!PHONE_REGEX.test(normalizePhoneInput(form.phone))) errors.phone = 'Số điện thoại chưa hợp lệ.'
-  if (!EMAIL_REGEX.test(normalizedEmail)) {
-    errors.email = 'Email chưa hợp lệ.'
-  } else if (
-    options.requireVerifiedEmail &&
-    options.verifiedEmail &&
-    normalizedEmail !== String(options.verifiedEmail).trim().toLowerCase()
-  ) {
-    errors.email = 'Email thanh toán phải trùng với email đã xác minh.'
-  }
-  if (!form.province) errors.province = 'Chọn tỉnh/thành phố.'
-  if (!form.district) errors.district = 'Chọn quận/huyện.'
-  if (!form.ward) errors.ward = 'Chọn phường/xã.'
-  if (!form.detailedAddress.trim()) errors.detailedAddress = 'Nhập địa chỉ chi tiết.'
-  return errors
-}
-
 function SummaryRow({ label, value, emphasized = false }) {
   return (
     <div className={`flex items-center justify-between gap-4 ${emphasized ? 'text-base font-semibold text-slate-950' : 'text-sm text-slate-500'}`}>
@@ -110,8 +102,8 @@ function SummaryRow({ label, value, emphasized = false }) {
   )
 }
 
-function FieldError({ message }) {
-  return message ? <p className="mt-2 text-xs font-medium text-rose-600">{message}</p> : null
+function FieldError({ message, id }) {
+  return message ? <p id={id} className="mt-2 text-xs font-medium text-rose-600">{message}</p> : null
 }
 
 function CheckoutSection({ icon: SectionIcon, title, subtitle, children }) {
@@ -243,6 +235,7 @@ export default function CartPage() {
   const [buySuccess, setBuySuccess] = useState('')
   const [checkoutResult, setCheckoutResult] = useState(null)
   const [buyFieldErrors, setBuyFieldErrors] = useState({})
+  const [buyTouched, setBuyTouched] = useState({})
   const [addressHistory, setAddressHistory] = useState(() => getStoredAddressHistory())
   const [guestVerificationOpen, setGuestVerificationOpen] = useState(false)
   const [pendingGuestCheckout, setPendingGuestCheckout] = useState(null)
@@ -255,6 +248,7 @@ export default function CartPage() {
   const [buyVoucherResult, setBuyVoucherResult] = useState(null)
   const [rentalVoucherCode, setRentalVoucherCode] = useState('')
   const [rentalVoucherResult, setRentalVoucherResult] = useState(null)
+  const voucherApplyRequestRef = useRef(0)
   const [suggestedVouchers, setSuggestedVouchers] = useState([])
   const [voucherSuggestionsLoading, setVoucherSuggestionsLoading] = useState(false)
   const [buyForm, setBuyForm] = useState({
@@ -364,6 +358,66 @@ export default function CartPage() {
         .slice(0, 3),
     [addressHistory, buyForm.district, buyForm.province]
   )
+  const checkoutSchemaOptions = useMemo(
+    () => ({
+      requireVerifiedEmail: buyItems.length > 0 && !isAuthenticated && Boolean(guestVerificationSession?.verificationToken),
+      verifiedEmail: normalizeEmail(guestVerificationSession?.guestVerification?.email || ''),
+    }),
+    [buyItems.length, guestVerificationSession?.guestVerification?.email, guestVerificationSession?.verificationToken, isAuthenticated]
+  )
+
+  const getBuyValidationErrors = useMemo(() => {
+    return (nextForm, options = {}) => {
+      const sanitized = sanitizeCheckoutForm(nextForm)
+      const validationOptions = { ...checkoutSchemaOptions, ...options }
+      const fieldErrors = {}
+
+      const schema = createCheckoutSchema(validationOptions)
+      const parsed = schema.safeParse(sanitized)
+      if (!parsed.success) Object.assign(fieldErrors, mapZodErrors(parsed.error))
+
+      if (sanitized.phone && !PHONE_REGEX_VN.test(sanitized.phone)) {
+        fieldErrors.phone = fieldErrors.phone || 'Số điện thoại Việt Nam không hợp lệ.'
+      }
+
+      const selectedProvinceEntry = ADDRESS_DATA.find((item) => item.province === sanitized.province)
+      if (!selectedProvinceEntry) {
+        fieldErrors.province = fieldErrors.province || 'Tỉnh/thành phố không hợp lệ.'
+      }
+
+      const districtEntry = selectedProvinceEntry?.districts?.find((item) => item.district === sanitized.district)
+      if (!districtEntry) {
+        fieldErrors.district = fieldErrors.district || 'Quận/huyện không hợp lệ.'
+      }
+
+      const validWard = Array.isArray(districtEntry?.wards) && districtEntry.wards.includes(sanitized.ward)
+      if (!validWard) {
+        fieldErrors.ward = fieldErrors.ward || 'Phường/xã không hợp lệ.'
+      }
+
+      if (validationOptions.requireVerifiedEmail && validationOptions.verifiedEmail && sanitized.email !== validationOptions.verifiedEmail) {
+        fieldErrors.email = fieldErrors.email || 'Email thanh toán phải trùng với email đã xác minh.'
+      }
+
+      return fieldErrors
+    }
+  }, [checkoutSchemaOptions])
+
+  const validateBuyForm = (nextForm = buyForm, options = {}) => {
+    const finalOptions = { ...checkoutSchemaOptions, ...options }
+    const errors = getBuyValidationErrors(nextForm, finalOptions)
+    return { errors, sanitized: sanitizeCheckoutForm(nextForm), isValid: Object.keys(errors).length === 0 }
+  }
+
+  const buyFormIsValid = useMemo(
+    () => Object.keys(getBuyValidationErrors(buyForm, checkoutSchemaOptions)).length === 0,
+    [buyForm, checkoutSchemaOptions, getBuyValidationErrors]
+  )
+
+  const getBuyFieldClassName = (field) =>
+    `w-full rounded-2xl border bg-white px-4 py-3 outline-none transition ${
+      buyFieldErrors[field] ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-rose-300'
+    }`
   const eligibleVoucherSuggestions = useMemo(() => {
     const availableOrderTypes = new Set()
     if (buyItems.length > 0) availableOrderTypes.add('sale')
@@ -393,7 +447,24 @@ export default function CartPage() {
   }, [buyItems.length, buySubtotal, rentalItems.length, rentalTotalAmount, suggestedVouchers])
 
   const handleBuyFieldChange = (field, value) => {
-    setBuyForm((prev) => ({ ...prev, [field]: value }))
+    const rawValue = typeof value === 'string' ? value : value ?? ''
+    const nextForm = { ...buyForm, [field]: rawValue }
+
+    if (field === 'province') {
+      const selectedProvinceEntry = ADDRESS_DATA.find((item) => item.province === rawValue)
+      const nextDistrict = selectedProvinceEntry?.districts?.[0]?.district || ''
+      const nextWard = selectedProvinceEntry?.districts?.[0]?.wards?.[0] || ''
+      nextForm.district = nextDistrict
+      nextForm.ward = nextWard
+    }
+
+    if (field === 'district') {
+      const selectedProvinceEntry = ADDRESS_DATA.find((item) => item.province === nextForm.province)
+      const selectedDistrictEntry = selectedProvinceEntry?.districts?.find((item) => item.district === rawValue)
+      nextForm.ward = selectedDistrictEntry?.wards?.[0] || ''
+    }
+
+    setBuyForm(nextForm)
 
     if (
       field === 'email' &&
@@ -402,10 +473,47 @@ export default function CartPage() {
     ) {
       setGuestVerificationSession(null)
     }
+    if (buyFieldErrors[field]) {
+      const { errors: nextErrors } = validateBuyForm(nextForm)
+      setBuyFieldErrors((prev) => {
+        const next = { ...prev }
+        if (nextErrors[field]) next[field] = nextErrors[field]
+        else delete next[field]
+        if (field === 'province') {
+          if (nextErrors.district) next.district = nextErrors.district
+          else delete next.district
+          if (nextErrors.ward) next.ward = nextErrors.ward
+          else delete next.ward
+        }
+        if (field === 'district') {
+          if (nextErrors.ward) next.ward = nextErrors.ward
+          else delete next.ward
+        }
+        return next
+      })
+    }
+  }
+
+  const handleBuyFieldBlur = (field) => {
+    setBuyTouched((prev) => ({ ...prev, [field]: true }))
+    const trimmedValue = typeof buyForm[field] === 'string' ? normalizeText(buyForm[field]) : buyForm[field]
+    const nextForm = typeof buyForm[field] === 'string' ? { ...buyForm, [field]: trimmedValue } : buyForm
+    if (nextForm !== buyForm) setBuyForm(nextForm)
+    const { errors: nextErrors } = validateBuyForm(nextForm)
     setBuyFieldErrors((prev) => {
-      if (!prev[field]) return prev
       const next = { ...prev }
-      delete next[field]
+      if (nextErrors[field]) next[field] = nextErrors[field]
+      else delete next[field]
+      if (field === 'province') {
+        if (nextErrors.district) next.district = nextErrors.district
+        else delete next.district
+        if (nextErrors.ward) next.ward = nextErrors.ward
+        else delete next.ward
+      }
+      if (field === 'district') {
+        if (nextErrors.ward) next.ward = nextErrors.ward
+        else delete next.ward
+      }
       return next
     })
   }
@@ -439,8 +547,8 @@ export default function CartPage() {
     setRentalVoucherCode('')
   }
 
-  const handleOrderVoucher = async () => {
-    const code = normalizeVoucherCode(orderVoucherCode)
+  const applyVoucherCode = async (rawCode, { invalidMessage = 'Voucher không hợp lệ.', requestErrorMessage = 'Không thể áp voucher lúc này.' } = {}) => {
+    const code = normalizeVoucherCode(rawCode)
     if (!code) {
       clearAppliedVoucherState()
       setOrderVoucherMessage('')
@@ -448,6 +556,11 @@ export default function CartPage() {
       return
     }
 
+    // Prevent stale async responses from overriding newer voucher validations.
+    const requestId = voucherApplyRequestRef.current + 1
+    voucherApplyRequestRef.current = requestId
+
+    setOrderVoucherCode(code)
     setOrderVoucherLoading(true)
     setOrderVoucherError('')
     setOrderVoucherMessage('')
@@ -473,6 +586,8 @@ export default function CartPage() {
           : Promise.resolve(null)
       ])
 
+      if (voucherApplyRequestRef.current !== requestId) return
+
       const [buyResult, rentalResult] = validations
       const candidates = [
         buyResult?.valid ? { target: 'buy', result: buyResult, label: 'đơn mua' } : null,
@@ -480,7 +595,7 @@ export default function CartPage() {
       ].filter(Boolean)
 
       if (candidates.length === 0) {
-        setOrderVoucherError(buyResult?.message || rentalResult?.message || 'Voucher không hợp lệ.')
+        setOrderVoucherError(buyResult?.message || rentalResult?.message || invalidMessage)
         return
       }
 
@@ -497,81 +612,39 @@ export default function CartPage() {
       setOrderVoucherCode(selected.result.code || code)
       setOrderVoucherMessage(`Đã áp voucher cho ${selected.label}.`)
     } catch (error) {
-      setOrderVoucherError(error.response?.data?.message || 'Không thể kiểm tra voucher lúc này.')
+      if (voucherApplyRequestRef.current !== requestId) return
+      setOrderVoucherError(error.response?.data?.message || requestErrorMessage)
     } finally {
-      setOrderVoucherLoading(false)
+      if (voucherApplyRequestRef.current === requestId) setOrderVoucherLoading(false)
     }
+  }
+
+  const handleOrderVoucher = async () => {
+    if (orderVoucherLoading) return
+    await applyVoucherCode(orderVoucherCode, {
+      invalidMessage: 'Voucher không hợp lệ.',
+      requestErrorMessage: 'Không thể kiểm tra voucher lúc này.'
+    })
   }
 
   const handleSelectSuggestedVoucher = async (voucher) => {
-    const code = normalizeVoucherCode(voucher?.code)
-    if (!code) return
-    setOrderVoucherCode(code)
-    setOrderVoucherError('')
-    setOrderVoucherMessage('')
-    setBuyVoucherResult(null)
-    setRentalVoucherResult(null)
-
-    setOrderVoucherLoading(true)
-
-    try {
-      const validations = await Promise.all([
-        buyItems.length > 0
-          ? validateVoucherApi({
-              code,
-              cartItems: buildBuyVoucherCartItems(),
-              subtotal: buySubtotal,
-              orderType: 'sale'
-            })
-          : Promise.resolve(null),
-        rentalItems.length > 0
-          ? validateVoucherApi({
-              code,
-              cartItems: buildRentalVoucherCartItems(),
-              subtotal: rentalTotalAmount,
-              orderType: 'rental'
-            })
-          : Promise.resolve(null)
-      ])
-
-      const [buyResult, rentalResult] = validations
-      const candidates = [
-        buyResult?.valid ? { target: 'buy', result: buyResult, label: 'đơn mua' } : null,
-        rentalResult?.valid ? { target: 'rental', result: rentalResult, label: 'đơn thuê' } : null
-      ].filter(Boolean)
-
-      if (candidates.length === 0) {
-        setOrderVoucherError('Voucher này hiện chưa áp dụng được cho đơn hàng của bạn.')
-        return
-      }
-
-      const selected = candidates.sort((a, b) => Number(b.result?.discountAmount || 0) - Number(a.result?.discountAmount || 0))[0]
-
-      if (selected.target === 'buy') {
-        setBuyVoucherCode(selected.result.code || code)
-        setBuyVoucherResult(selected.result)
-      } else {
-        setRentalVoucherCode(selected.result.code || code)
-        setRentalVoucherResult(selected.result)
-      }
-
-      setOrderVoucherCode(selected.result.code || code)
-      setOrderVoucherMessage(`Đã áp voucher cho ${selected.label}.`)
-    } catch (error) {
-      setOrderVoucherError(error.response?.data?.message || 'Không thể áp voucher lúc này.')
-    } finally {
-      setOrderVoucherLoading(false)
-    }
+    if (orderVoucherLoading) return
+    await applyVoucherCode(voucher?.code, {
+      invalidMessage: 'Voucher này hiện chưa áp dụng được cho đơn hàng của bạn.',
+      requestErrorMessage: 'Không thể áp voucher lúc này.'
+    })
   }
 
-  const buildBuyPayload = (session = guestVerificationSession) => ({
+  const buildBuyPayload = (session = guestVerificationSession) => {
+    const sanitizedForm = sanitizeCheckoutForm(buyForm)
+    return ({
     ...(isAuthenticated ? {} : { verificationToken: session?.verificationToken }),
-    name: buyForm.name.trim(),
-    phone: normalizePhoneInput(buyForm.phone),
-    email: buyForm.email.trim().toLowerCase(),
-    address: addressPreview,
-    paymentMethod: buyForm.paymentMethod,
-    note: buyForm.note.trim(),
+    name: sanitizedForm.name,
+    phone: sanitizedForm.phone,
+    email: sanitizedForm.email,
+    address: buildShippingAddress(sanitizedForm),
+    paymentMethod: sanitizedForm.paymentMethod,
+    note: sanitizedForm.note,
     shippingFee: buyShippingFee,
     voucherCode: buyVoucherResult?.code || normalizeVoucherCode(buyVoucherCode),
     items: buyItems.map((item) => ({
@@ -583,6 +656,7 @@ export default function CartPage() {
       conditionLevel: item.conditionLevel || 'New'
     }))
   })
+  }
 
   const buildRentPayload = (idempotencyKey) => {
     const validDates = rentalItems.filter((item) => item.rentStartDate && item.rentEndDate)
@@ -645,12 +719,21 @@ export default function CartPage() {
       )
     }
 
-    const verifiedEmailFromSession = String(session?.guestVerification?.email || '').trim().toLowerCase()
-    const validationErrors = validateBuyForm(buyForm, {
+    const verificationOptions = {
       requireVerifiedEmail: buyItems.length > 0 && !isAuthenticated && Boolean(session?.verificationToken),
-      verifiedEmail: verifiedEmailFromSession,
-    })
+      verifiedEmail: normalizeEmail(session?.guestVerification?.email || ''),
+    }
+    const { errors: validationErrors, sanitized: sanitizedBuyForm } = validateBuyForm(buyForm, verificationOptions)
     if (buyItems.length > 0 && Object.keys(validationErrors).length > 0) {
+      setBuyTouched({
+        name: true,
+        phone: true,
+        email: true,
+        province: true,
+        district: true,
+        ward: true,
+        detailedAddress: true,
+      })
       setBuyFieldErrors(validationErrors)
       return setBuyError('Vui lòng hoàn thiện đầy đủ thông tin giao hàng.')
     }
@@ -696,10 +779,10 @@ export default function CartPage() {
         }
         if (!isAuthenticated) setGuestVerificationSession(null)
         saveAddressHistory({
-          province: buyForm.province,
-          district: buyForm.district,
-          ward: buyForm.ward,
-          detailedAddress: buyForm.detailedAddress.trim(),
+          province: sanitizedBuyForm.province,
+          district: sanitizedBuyForm.district,
+          ward: sanitizedBuyForm.ward,
+          detailedAddress: sanitizedBuyForm.detailedAddress,
           hotel: ''
         })
         setAddressHistory(getStoredAddressHistory())
@@ -945,18 +1028,45 @@ export default function CartPage() {
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div className="sm:col-span-2">
                             <label className="mb-2 block text-sm font-medium text-slate-700">Họ và tên</label>
-                            <input type="text" value={buyForm.name} onChange={(event) => handleBuyFieldChange('name', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300" />
-                            <FieldError message={buyFieldErrors.name} />
+                            <input
+                              id="checkout-name"
+                              type="text"
+                              value={buyForm.name}
+                              onChange={(event) => handleBuyFieldChange('name', event.target.value)}
+                              onBlur={() => handleBuyFieldBlur('name')}
+                              className={getBuyFieldClassName('name')}
+                              aria-invalid={Boolean(buyTouched.name && buyFieldErrors.name)}
+                              aria-describedby={buyTouched.name && buyFieldErrors.name ? 'checkout-name-error' : undefined}
+                            />
+                            {buyTouched.name && buyFieldErrors.name ? <FieldError message={buyFieldErrors.name} id="checkout-name-error" /> : null}
                           </div>
                           <div>
                             <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700"><Phone className="h-4 w-4 text-slate-400" />Số điện thoại</label>
-                            <input type="tel" value={buyForm.phone} onChange={(event) => handleBuyFieldChange('phone', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300" />
-                            <FieldError message={buyFieldErrors.phone} />
+                            <input
+                              id="checkout-phone"
+                              type="tel"
+                              value={buyForm.phone}
+                              onChange={(event) => handleBuyFieldChange('phone', event.target.value)}
+                              onBlur={() => handleBuyFieldBlur('phone')}
+                              className={getBuyFieldClassName('phone')}
+                              aria-invalid={Boolean(buyTouched.phone && buyFieldErrors.phone)}
+                              aria-describedby={buyTouched.phone && buyFieldErrors.phone ? 'checkout-phone-error' : undefined}
+                            />
+                            {buyTouched.phone && buyFieldErrors.phone ? <FieldError message={buyFieldErrors.phone} id="checkout-phone-error" /> : null}
                           </div>
                           <div>
                             <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700"><Mail className="h-4 w-4 text-slate-400" />Email</label>
-                            <input type="email" value={buyForm.email} onChange={(event) => handleBuyFieldChange('email', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300" />
-                            <FieldError message={buyFieldErrors.email} />
+                            <input
+                              id="checkout-email"
+                              type="email"
+                              value={buyForm.email}
+                              onChange={(event) => handleBuyFieldChange('email', event.target.value)}
+                              onBlur={() => handleBuyFieldBlur('email')}
+                              className={getBuyFieldClassName('email')}
+                              aria-invalid={Boolean(buyTouched.email && buyFieldErrors.email)}
+                              aria-describedby={buyTouched.email && buyFieldErrors.email ? 'checkout-email-error' : undefined}
+                            />
+                            {buyTouched.email && buyFieldErrors.email ? <FieldError message={buyFieldErrors.email} id="checkout-email-error" /> : null}
                           </div>
                         </div>
                       </CheckoutSection>
@@ -965,29 +1075,62 @@ export default function CartPage() {
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
                             <label className="mb-2 block text-sm font-medium text-slate-700">Tỉnh / Thành phố</label>
-                            <select value={buyForm.province} onChange={(event) => handleBuyFieldChange('province', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300">
+                            <select
+                              id="checkout-province"
+                              value={buyForm.province}
+                              onChange={(event) => handleBuyFieldChange('province', event.target.value)}
+                              onBlur={() => handleBuyFieldBlur('province')}
+                              className={getBuyFieldClassName('province')}
+                              aria-invalid={Boolean(buyTouched.province && buyFieldErrors.province)}
+                              aria-describedby={buyTouched.province && buyFieldErrors.province ? 'checkout-province-error' : undefined}
+                            >
                               {ADDRESS_DATA.map((item) => <option key={item.province} value={item.province}>{item.province}</option>)}
                             </select>
-                            <FieldError message={buyFieldErrors.province} />
+                            {buyTouched.province && buyFieldErrors.province ? <FieldError message={buyFieldErrors.province} id="checkout-province-error" /> : null}
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-medium text-slate-700">Quận / Huyện</label>
-                            <select value={buyForm.district} onChange={(event) => handleBuyFieldChange('district', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300">
+                            <select
+                              id="checkout-district"
+                              value={buyForm.district}
+                              onChange={(event) => handleBuyFieldChange('district', event.target.value)}
+                              onBlur={() => handleBuyFieldBlur('district')}
+                              className={getBuyFieldClassName('district')}
+                              aria-invalid={Boolean(buyTouched.district && buyFieldErrors.district)}
+                              aria-describedby={buyTouched.district && buyFieldErrors.district ? 'checkout-district-error' : undefined}
+                            >
                               {districtOptions.map((item) => <option key={item.district} value={item.district}>{item.district}</option>)}
                             </select>
-                            <FieldError message={buyFieldErrors.district} />
+                            {buyTouched.district && buyFieldErrors.district ? <FieldError message={buyFieldErrors.district} id="checkout-district-error" /> : null}
                           </div>
                           <div className="sm:col-span-2">
                             <label className="mb-2 block text-sm font-medium text-slate-700">Phường / Xã</label>
-                            <select value={buyForm.ward} onChange={(event) => handleBuyFieldChange('ward', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300">
+                            <select
+                              id="checkout-ward"
+                              value={buyForm.ward}
+                              onChange={(event) => handleBuyFieldChange('ward', event.target.value)}
+                              onBlur={() => handleBuyFieldBlur('ward')}
+                              className={getBuyFieldClassName('ward')}
+                              aria-invalid={Boolean(buyTouched.ward && buyFieldErrors.ward)}
+                              aria-describedby={buyTouched.ward && buyFieldErrors.ward ? 'checkout-ward-error' : undefined}
+                            >
                               {wardOptions.map((ward) => <option key={ward} value={ward}>{ward}</option>)}
                             </select>
-                            <FieldError message={buyFieldErrors.ward} />
+                            {buyTouched.ward && buyFieldErrors.ward ? <FieldError message={buyFieldErrors.ward} id="checkout-ward-error" /> : null}
                           </div>
                           <div className="sm:col-span-2">
                             <label className="mb-2 block text-sm font-medium text-slate-700">Địa chỉ chi tiết</label>
-                            <input type="text" value={buyForm.detailedAddress} onChange={(event) => handleBuyFieldChange('detailedAddress', event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-rose-300" />
-                            <FieldError message={buyFieldErrors.detailedAddress} />
+                            <input
+                              id="checkout-detailed-address"
+                              type="text"
+                              value={buyForm.detailedAddress}
+                              onChange={(event) => handleBuyFieldChange('detailedAddress', event.target.value)}
+                              onBlur={() => handleBuyFieldBlur('detailedAddress')}
+                              className={getBuyFieldClassName('detailedAddress')}
+                              aria-invalid={Boolean(buyTouched.detailedAddress && buyFieldErrors.detailedAddress)}
+                              aria-describedby={buyTouched.detailedAddress && buyFieldErrors.detailedAddress ? 'checkout-detailed-address-error' : undefined}
+                            />
+                            {buyTouched.detailedAddress && buyFieldErrors.detailedAddress ? <FieldError message={buyFieldErrors.detailedAddress} id="checkout-detailed-address-error" /> : null}
                           </div>
                         </div>
 
@@ -1023,7 +1166,7 @@ export default function CartPage() {
 
                       {buyError ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{buyError}</p> : null}
 
-                      <button type="button" onClick={handleCheckout} disabled={buyLoading || rentalLoading} className="mt-5 w-full rounded-[22px] bg-[linear-gradient(135deg,#e11d48,#f97316)] px-5 py-4 text-base font-semibold text-white">
+                      <button type="button" onClick={handleCheckout} disabled={buyLoading || rentalLoading || !buyFormIsValid} className="mt-5 w-full rounded-[22px] bg-[linear-gradient(135deg,#e11d48,#f97316)] px-5 py-4 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
                         {buyLoading || rentalLoading ? 'Đang xử lý...' : rentalItems.length > 0 ? `Xác nhận thanh toán ${formatCurrency(combinedTotal)}` : `Xác nhận mua ${formatCurrency(buyGrandTotal)}`}
                       </button>
                     </>
@@ -1058,3 +1201,5 @@ export default function CartPage() {
     </div>
   )
 }
+
+
