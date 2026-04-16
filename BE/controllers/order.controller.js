@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
+const RentOrder = require('../model/RentOrder.model');
+const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
 const GuestVerification = require('../model/GuestVerification.model');
@@ -143,6 +145,52 @@ const buildNormalizedSaleItems = (items = [], productMap = new Map()) => {
   });
 };
 
+// Sale: chặn bán nếu instance còn nằm trong bất kỳ `RentOrderItem` chưa kết thúc (so với "today").
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const VN_TZ_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
+const toVnCalendarDay = (d) => Math.floor((new Date(d).getTime() + VN_TZ_OFFSET_MS) / DAY_IN_MS);
+const RENT_ORDER_TERMINAL_STATUSES_LOWER = ['cancelled', 'completed', 'noshow', 'returned'];
+
+const getBlockedInstanceIdsForFutureRent = async (instanceIds = []) => {
+  if (!Array.isArray(instanceIds) || instanceIds.length === 0) return new Set();
+
+  const rentItems = await RentOrderItem.find({
+    productInstanceId: { $in: instanceIds },
+  }).select('productInstanceId orderId rentEndDate').lean();
+
+  if (!rentItems.length) return new Set();
+
+  const todayDay = toVnCalendarDay(new Date());
+  const relevantRentItems = rentItems.filter((item) => {
+    if (!item?.rentEndDate) return false;
+    // Inclusive theo ngày nghiệp vụ: endDay >= today => instance còn "dính" thuê trong tương lai.
+    return toVnCalendarDay(item.rentEndDate) >= todayDay;
+  });
+
+  if (!relevantRentItems.length) return new Set();
+
+  const orderIds = Array.from(new Set(relevantRentItems.map((i) => String(i.orderId)).filter(Boolean)));
+  if (!orderIds.length) return new Set();
+
+  const activeOrders = await RentOrder.find({
+    _id: { $in: orderIds },
+  }).select('status').lean();
+
+  const activeOrderIdSet = new Set(
+    activeOrders
+      .filter((o) => !RENT_ORDER_TERMINAL_STATUSES_LOWER.includes(String(o?.status || '').toLowerCase()))
+      .map((o) => String(o._id))
+  );
+
+  const blocked = new Set();
+  for (const item of relevantRentItems) {
+    if (activeOrderIdSet.has(String(item.orderId))) {
+      blocked.add(String(item.productInstanceId));
+    }
+  }
+  return blocked;
+};
+
 const ensureSaleStockAvailable = async (normalizedItems = []) => {
   // Group by productId + conditionLevel to check per-condition stock
   const requestedByKey = {};
@@ -155,27 +203,51 @@ const ensureSaleStockAvailable = async (normalizedItems = []) => {
     requestedByKey[key].count += Number(item.quantity || 0);
   }
 
-  for (const { productId, conditionLevel, count } of Object.values(requestedByKey)) {
-    const available = await ProductInstance.countDocuments({
-      productId: new mongoose.Types.ObjectId(String(productId)),
-      lifecycleStatus: 'Available',
-      conditionLevel,
-    });
+  const grouped = Object.values(requestedByKey);
+  const requestedProductIds = Array.from(new Set(grouped.map((g) => String(g.productId)))).map((id) => new mongoose.Types.ObjectId(id));
+  const requestedConditionLevels = Array.from(new Set(grouped.map((g) => g.conditionLevel)));
 
-    if (available < count) {
-      throw new Error('OUT_OF_STOCK');
-    }
+  const candidateInstances = await ProductInstance.find({
+    productId: { $in: requestedProductIds },
+    lifecycleStatus: 'Available',
+    conditionLevel: { $in: requestedConditionLevels },
+  }).select('_id productId conditionLevel').lean();
+
+  const blockedInstanceIds = await getBlockedInstanceIdsForFutureRent(candidateInstances.map((i) => i._id).filter(Boolean));
+  const unblockedCandidates = candidateInstances.filter((i) => !blockedInstanceIds.has(String(i._id)));
+
+  for (const { productId, conditionLevel, count } of grouped) {
+    const available = unblockedCandidates.filter((i) => String(i.productId) === String(productId) && i.conditionLevel === conditionLevel).length;
+    if (available < count) throw new Error('OUT_OF_STOCK');
   }
 };
 
 const assignSaleInstances = async (normalizedItems = [], session = null) => {
   const txOptions = session ? { session } : {};
+
+  const requestedProductIds = Array.from(new Set(normalizedItems.map((i) => String(i.productId)))).map((id) => new mongoose.Types.ObjectId(id));
+  const requestedConditionLevels = Array.from(new Set(normalizedItems.map((i) => i.conditionLevel)));
+
+  const candidateInstances = await ProductInstance.find({
+    productId: { $in: requestedProductIds },
+    lifecycleStatus: 'Available',
+    conditionLevel: { $in: requestedConditionLevels },
+  }).select('_id conditionLevel productId').lean();
+
+  const blockedInstanceIds = await getBlockedInstanceIdsForFutureRent(candidateInstances.map((i) => i._id).filter(Boolean));
+  const blockedObjectIds = Array.from(blockedInstanceIds).map((id) => new mongoose.Types.ObjectId(id));
+
   for (const item of normalizedItems) {
     const qty = Number(item.quantity || 1);
     const conditionLevel = item.conditionLevel === 'Used' ? 'Used' : 'New';
     for (let i = 0; i < qty; i++) {
       const instance = await ProductInstance.findOneAndUpdate(
-        { productId: item.productId, lifecycleStatus: 'Available', conditionLevel },
+        {
+          productId: item.productId,
+          lifecycleStatus: 'Available',
+          conditionLevel,
+          ...(blockedObjectIds.length ? { _id: { $nin: blockedObjectIds } } : {}),
+        },
         { lifecycleStatus: 'Sold' },
         { new: true, sort: { conditionScore: -1 }, ...txOptions }
       );

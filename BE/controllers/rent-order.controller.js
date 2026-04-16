@@ -157,9 +157,25 @@ const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDa
     });
 
     // Kiểm tra 1: chồng lấp ngày hợp đồng với đơn chưa kết thúc
+    // Lưu ý timezone/ranh giới ngày:
+    // - frontend/backend có thể parse date theo UTC khác UTC+7
+    // - end date trong nghiệp vụ thường mang nghĩa "đến hết ngày"
+    // => quy đổi sang "ngày lịch Việt Nam" để quyết định overlap cho đúng (cho phép thuê liên tiếp).
+    const DAY_IN_MS = 24 * 60 * 60 * 1000;
+    const VN_TZ_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
+    const toVnCalendarDay = (d) => Math.floor((new Date(d).getTime() + VN_TZ_OFFSET_MS) / DAY_IN_MS);
+
+    const requestedStartDay = toVnCalendarDay(rentStartDate);
+    const requestedEndDay = toVnCalendarDay(rentEndDate);
+
+    // Candidate window theo timestamp (để giảm số lượng record),
+    // rồi vẫn lọc lại overlap theo ngày VN (để chống sai lệch timezone/biên).
+    const requestedStartUtcMidnight = new Date(requestedStartDay * DAY_IN_MS - VN_TZ_OFFSET_MS);
+    const requestedEndUtcMidnightExclusive = new Date((requestedEndDay + 1) * DAY_IN_MS - VN_TZ_OFFSET_MS);
+
     const overlapQuery = RentOrderItem.find(buildItemFilter({
-        rentStartDate: { $lt: rentEndDate },
-        rentEndDate: { $gt: rentStartDate },
+        rentStartDate: { $lt: requestedEndUtcMidnightExclusive },
+        rentEndDate: { $gte: requestedStartUtcMidnight },
     })).populate({ path: 'orderId', select: 'status' });
 
     if (session) overlapQuery.session(session);
@@ -169,7 +185,14 @@ const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDa
         if (!item.orderId) return false;
         const status = String(item.orderId.status || '').toLowerCase();
         if (TERMINAL_ORDER_STATUSES.includes(status)) return false;
-        return true;
+
+        if (!item.rentStartDate || !item.rentEndDate) return false;
+
+        const itemStartDay = toVnCalendarDay(item.rentStartDate);
+        const itemEndDay = toVnCalendarDay(item.rentEndDate);
+
+        // Overlap theo ngày lịch VN (end là inclusive theo nghiệp vụ).
+        return itemStartDay <= requestedEndDay && itemEndDay >= requestedStartDay;
     });
     if (conflictingOverlaps.length > 0) {
         return false;
