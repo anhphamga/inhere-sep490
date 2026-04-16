@@ -11,12 +11,14 @@ export default function ProductActions({
   onBuy,
   loadingAction,
   canSubmit,
+  canRent,
   canBuy,
   productImage,
 }) {
   const [showTryOn, setShowTryOn] = useState(false);
   const renting = loadingAction === "rent";
   const buying = loadingAction === "buy";
+  const rentAllowed = canRent !== undefined && canRent !== null ? canRent : canSubmit;
 
   return (
     <>
@@ -36,7 +38,7 @@ export default function ProductActions({
           <button
             type="button"
             onClick={onRent}
-            disabled={!canSubmit || renting || buying}
+            disabled={!rentAllowed || renting || buying}
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {renting && <Spinner />}
@@ -89,7 +91,7 @@ export default function ProductActions({
           <button
             type="button"
             onClick={onRent}
-            disabled={!canSubmit || renting || buying}
+            disabled={!rentAllowed || renting || buying}
             className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {renting && <Spinner />}

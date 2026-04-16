@@ -25,7 +25,9 @@ export const RentalCartProvider = ({ children }) => {
   const [items, setItems] = useState(getStoredCart)
 
   const addItem = useCallback((product, variant) => {
-    if (Number(product?.availableQuantity || 0) <= 0) {
+    const rq = Number(product?.rentableQuantity)
+    const rentable = Number.isFinite(rq) ? rq : Number(product?.availableQuantity || 0)
+    if (rentable <= 0) {
       return
     }
     if (Number(variant?.rentPrice || 0) <= 0) {

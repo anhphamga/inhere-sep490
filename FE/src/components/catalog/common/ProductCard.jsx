@@ -14,7 +14,10 @@ export default function ProductCard({
 }) {
   const isRent = mode === 'rent';
   const availableQuantity = Number(product?.availableQuantity || 0);
-  const inStock = availableQuantity > 0;
+  const rentableRaw = Number(product?.rentableQuantity);
+  const rentableQuantity = Number.isFinite(rentableRaw) ? rentableRaw : availableQuantity;
+  /** Mua: chỉ instance Available. Thuê: còn bản không Mất/Đã bán (khớp API `rentableQuantity`). */
+  const inStock = isRent ? rentableQuantity > 0 : availableQuantity > 0;
   const rentPrice = Number(product?.baseRentPrice || product?.baseSalePrice || 0);
   const salePrice = Number(product?.baseSalePrice || product?.baseRentPrice || 0);
 
