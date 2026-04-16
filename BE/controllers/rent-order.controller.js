@@ -119,18 +119,18 @@ const applyVoucherForRentOrder = async ({
 /**
  * Checks whether a specific product instance is free for a given rental window.
  *
- * Blocks instances in non-rentable lifecycle states, then checks overlapping
- * RentOrderItem records (chỉ bỏ qua đơn terminal). PendingDeposit vẫn chặn chồng lấp
+ * Chặn tuyệt đối instance Lost/Sold; các trạng thái khác (Rented, Washing, Repair, Reserved…)
+ * dựa vào chồng lấp RentOrderItem (chỉ bỏ qua đơn terminal). PendingDeposit vẫn chặn chồng lấp
  * cho đến khi đơn bị hủy (user / auto-cancel) — tránh lỗ hổng giữa hết “soft hold” và cron hủy.
  */
 // Các trạng thái đã kết thúc vòng đời — đồ đã trả hoặc huỷ
-const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow'];
+const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow', 'returned'];
 
 // Số ngày thuê tối đa cho 1 đơn
 const MAX_RENTAL_DAYS = parseInt(process.env.MAX_RENTAL_DAYS || '30', 10);
 
-/** Trạng thái instance không được cho thuê (kể cả khi không có overlap trong DB). */
-const INSTANCE_STATUSES_BLOCKING_RENT = ['Washing', 'Repair', 'Lost', 'Sold'];
+/** Chỉ chặn tuyệt đối: mất / đã bán. Các trạng thái Rented, Washing, Repair… vẫn có thể đặt thuê tương lai nếu không overlap RentOrderItem. */
+const INSTANCE_STATUSES_BLOCKING_RENT = ['Lost', 'Sold'];
 
 /**
  * @param {*} instanceId
@@ -467,7 +467,7 @@ const resolveRentInstances = async (items, defaultStart, defaultEnd, session, us
 
         const isInstanceRentable = async (inst) => {
             if (!inst) return false;
-            if (['Washing', 'Repair', 'Lost'].includes(inst.lifecycleStatus)) return false;
+            if (['Lost', 'Sold'].includes(inst.lifecycleStatus)) return false;
             return isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
         };
 
@@ -484,7 +484,7 @@ const resolveRentInstances = async (items, defaultStart, defaultEnd, session, us
         const candidatesQuery = ProductInstance.find({
                 productId: item.productId,
                 _id: { $nin: Array.from(lockedInstanceIds) },
-                lifecycleStatus: { $nin: ['Washing', 'Repair', 'Lost', 'Sold'] }
+                lifecycleStatus: { $nin: ['Lost', 'Sold'] }
             }).sort({ conditionScore: 1 });
             const candidates = useTransaction ? await candidatesQuery.session(session) : await candidatesQuery;
             for (const cand of candidates) {

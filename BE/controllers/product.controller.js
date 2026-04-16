@@ -41,6 +41,11 @@ const toIntegerOrNaN = (value) => {
   return Number.isInteger(n) ? n : Number.NaN;
 };
 
+/** Instance còn trong kho thuê (backend có thể gán theo ngày), không tính mất/đã bán. */
+const INSTANCE_STATUS_RENT_EXCLUDED = new Set(['Lost', 'Sold']);
+const countRentableInstances = (instances = []) =>
+  instances.filter((item) => !INSTANCE_STATUS_RENT_EXCLUDED.has(item.lifecycleStatus)).length;
+
 const normalizeImages = (images) => {
   if (!Array.isArray(images)) return [];
   return images
@@ -507,6 +512,9 @@ const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
     reviewCount: Math.max(Number(product.reviewCount || 0), 0),
     totalQuantity: quantity.totalQuantity || 0,
     availableQuantity: quantity.availableQuantity || 0,
+    rentableQuantity: Number.isFinite(Number(quantity.rentableQuantity))
+      ? Number(quantity.rentableQuantity)
+      : 0,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
   };
@@ -565,6 +573,11 @@ const getQuantityMap = async (productIds = []) => {
             $cond: [{ $eq: ['$lifecycleStatus', 'Available'] }, 1, 0],
           },
         },
+        rentableQuantity: {
+          $sum: {
+            $cond: [{ $in: ['$lifecycleStatus', ['Lost', 'Sold']] }, 0, 1],
+          },
+        },
       },
     },
   ]);
@@ -575,6 +588,7 @@ const getQuantityMap = async (productIds = []) => {
       {
         totalQuantity: row.totalQuantity || 0,
         availableQuantity: row.availableQuantity || 0,
+        rentableQuantity: row.rentableQuantity || 0,
       },
     ])
   );
@@ -702,14 +716,16 @@ const getOwnerProductDetail = async (req, res) => {
     const instances = await ProductInstance.find({ productId: product._id }).sort({ createdAt: -1 }).lean();
     const totalQuantity = instances.length;
     const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
+    const rentableQuantity = countRentableInstances(instances);
 
     return res.status(200).json({
       success: true,
       data: {
-        product: sanitizeProduct(product, { totalQuantity, availableQuantity }, lang),
+        product: sanitizeProduct(product, { totalQuantity, availableQuantity, rentableQuantity }, lang),
         instances,
         totalQuantity,
         availableQuantity,
+        rentableQuantity,
       },
     });
   } catch (error) {
@@ -856,6 +872,7 @@ const getProductById = async (req, res) => {
     const quantity = {
       totalQuantity: instances.length,
       availableQuantity: instances.filter((item) => item.lifecycleStatus === 'Available').length,
+      rentableQuantity: countRentableInstances(instances),
     };
     return res.status(200).json({
       success: true,
@@ -1003,7 +1020,11 @@ const createOwnerProduct = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      data: sanitizeProduct(created.toObject(), { totalQuantity: quantity, availableQuantity: quantity }, lang),
+      data: sanitizeProduct(created.toObject(), {
+        totalQuantity: quantity,
+        availableQuantity: quantity,
+        rentableQuantity: quantity,
+      }, lang),
     });
   } catch (error) {
     return res.status(500).json({
@@ -1110,13 +1131,15 @@ const updateOwnerProduct = async (req, res) => {
     const instances = await ProductInstance.find({ productId: updated._id }).lean();
     const totalQuantity = instances.length;
     const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
+    const rentableQuantity = countRentableInstances(instances);
 
     return res.status(200).json({
       success: true,
       data: {
-        product: sanitizeProduct(updated.toObject(), { totalQuantity, availableQuantity }, lang),
+        product: sanitizeProduct(updated.toObject(), { totalQuantity, availableQuantity, rentableQuantity }, lang),
         totalQuantity,
         availableQuantity,
+        rentableQuantity,
       },
     });
   } catch (error) {

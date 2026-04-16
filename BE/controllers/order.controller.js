@@ -156,38 +156,36 @@ const getBlockedInstanceIdsForFutureRent = async (instanceIds = []) => {
 
   const rentItems = await RentOrderItem.find({
     productInstanceId: { $in: instanceIds },
-  }).select('productInstanceId orderId rentEndDate').lean();
+  }).select('productInstanceId orderId rentEndDate rentStartDate').lean();
 
   if (!rentItems.length) return new Set();
 
-  const todayDay = toVnCalendarDay(new Date());
-  const relevantRentItems = rentItems.filter((item) => {
-    if (!item?.rentEndDate) return false;
-    // Inclusive theo ngày nghiệp vụ: endDay >= today => instance còn "dính" thuê trong tương lai.
-    return toVnCalendarDay(item.rentEndDate) >= todayDay;
-  });
-
-  if (!relevantRentItems.length) return new Set();
-
-  const orderIds = Array.from(new Set(relevantRentItems.map((i) => String(i.orderId)).filter(Boolean)));
+  const orderIds = Array.from(new Set(rentItems.map((i) => String(i.orderId)).filter(Boolean)));
   if (!orderIds.length) return new Set();
 
-  const activeOrders = await RentOrder.find({
-    _id: { $in: orderIds },
-  }).select('status').lean();
+  const orders = await RentOrder.find({ _id: { $in: orderIds } })
+    .select('status rentStartDate rentEndDate')
+    .lean();
+  const orderById = new Map(orders.map((o) => [String(o._id), o]));
 
-  const activeOrderIdSet = new Set(
-    activeOrders
-      .filter((o) => !RENT_ORDER_TERMINAL_STATUSES_LOWER.includes(String(o?.status || '').toLowerCase()))
-      .map((o) => String(o._id))
-  );
-
+  const todayDay = toVnCalendarDay(new Date());
   const blocked = new Set();
-  for (const item of relevantRentItems) {
-    if (activeOrderIdSet.has(String(item.orderId))) {
-      blocked.add(String(item.productInstanceId));
-    }
+
+  for (const item of rentItems) {
+    const order = orderById.get(String(item.orderId));
+    if (!order) continue;
+    const status = String(order.status || '').toLowerCase();
+    if (RENT_ORDER_TERMINAL_STATUSES_LOWER.includes(status)) continue;
+
+    const effectiveEnd = item.rentEndDate || order.rentEndDate;
+    if (!effectiveEnd) continue;
+    const endDay = toVnCalendarDay(effectiveEnd);
+    // Ngày kết thúc thuê (inclusive) >= hôm nay theo lịch VN → instance vẫn phải phục vụ đơn thuê, không bán.
+    if (endDay < todayDay) continue;
+
+    blocked.add(String(item.productInstanceId));
   }
+
   return blocked;
 };
 
