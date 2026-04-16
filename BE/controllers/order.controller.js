@@ -344,6 +344,13 @@ const findSaleOrderByIdempotencyKey = async (idempotencyKey) => {
   return SaleOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
 };
 
+/** Đã xác nhận MongoDB (standalone) không dùng được transaction cho sale checkout — tránh gọi startTransaction lặp lại. */
+let saleMongoTransactionsUnsupported = false;
+let saleMongoTransactionsFallbackLogged = false;
+
+const shouldForceSaleCheckoutWithoutTransaction = () =>
+  ['1', 'true', 'yes'].includes(String(process.env.DISABLE_SALE_MONGO_TRANSACTIONS || '').toLowerCase());
+
 const runSaleCheckoutTransaction = async ({
   createOrderPayload,
   voucherId = null,
@@ -362,6 +369,10 @@ const runSaleCheckoutTransaction = async ({
 
     return saleOrder;
   };
+
+  if (shouldForceSaleCheckoutWithoutTransaction() || saleMongoTransactionsUnsupported) {
+    return runWithoutTransaction();
+  }
 
   const session = await mongoose.startSession();
 
@@ -393,7 +404,18 @@ const runSaleCheckoutTransaction = async ({
     }
 
     if (isTransactionNotSupportedError(error)) {
-      console.warn('MongoDB transactions are not supported in this environment. Falling back to non-transaction sale checkout.');
+      saleMongoTransactionsUnsupported = true;
+      if (!saleMongoTransactionsFallbackLogged) {
+        saleMongoTransactionsFallbackLogged = true;
+        const wantLog = ['1', 'true', 'yes'].includes(String(process.env.LOG_SALE_CHECKOUT_TXN || '').toLowerCase());
+        if (wantLog) {
+          console.info(
+            '[SaleCheckout] MongoDB không hỗ trợ transaction trên deployment này; đã bật chế độ không-transaction cho các lần checkout sau. ' +
+              'Tuỳ chọn: DISABLE_SALE_MONGO_TRANSACTIONS=true (bỏ thử transaction) hoặc dùng replica set / Atlas.',
+            error?.message || error
+          );
+        }
+      }
       return runWithoutTransaction();
     }
 
@@ -405,17 +427,20 @@ const runSaleCheckoutTransaction = async ({
 
 const isTransactionNotSupportedError = (error) => {
   const message = String(error?.message || '').toLowerCase();
-  const name = String(error?.name || '').toLowerCase();
   const codeName = String(error?.codeName || '').toLowerCase();
+
+  if (codeName === 'illegaloperation') {
+    return (
+      message.includes('transaction') ||
+      message.includes('replica set member') ||
+      message.includes('mongos')
+    );
+  }
 
   return (
     message.includes('transaction numbers are only allowed on a replica set member or mongos') ||
     message.includes('transactions are not supported') ||
-    message.includes('cannot use transactions') ||
-    message.includes('replica set') ||
-    message.includes('mongos') ||
-    name.includes('mongoservererror') ||
-    codeName.includes('illegaloperation')
+    message.includes('cannot use transactions')
   );
 };
 
