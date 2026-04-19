@@ -45,6 +45,14 @@ const lifecycleStatusColors = {
   Sold: 'bg-slate-100 text-slate-700'
 }
 
+const sortInstancesBySoldLast = (list = []) =>
+  [...list].sort((a, b) => {
+    const aSold = a?.lifecycleStatus === 'Sold'
+    const bSold = b?.lifecycleStatus === 'Sold'
+    if (aSold === bSold) return 0
+    return aSold ? 1 : -1
+  })
+
 export default function OwnerInventoryScreen() {
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -77,7 +85,8 @@ export default function OwnerInventoryScreen() {
       if (search) params.append('search', search)
 
       const response = await axiosClient.get(`/products/instances?${params.toString()}`)
-      setInstances(response.data.data || [])
+      const nextInstances = Array.isArray(response.data.data) ? response.data.data : []
+      setInstances(sortInstancesBySoldLast(nextInstances))
       setPagination(response.data.pagination || { page: 1, limit: 20, total: 0, pages: 0 })
     } catch (err) {
       setError('Không thể tải dữ liệu tồn kho')
@@ -107,18 +116,14 @@ export default function OwnerInventoryScreen() {
 
   // Handle edit
   const handleEdit = (instance) => {
-    const normalizedConditionLevel = instance.conditionLevel === 'New' || instance.conditionLevel === 'Used'
-      ? instance.conditionLevel
-      : instance.conditionLevel === 'Good'
-        ? 'New'
-        : 'Used'
+    if (instance?.lifecycleStatus === 'Sold') return
+
     const normalizedConditionScore = conditionScoreOptions.includes(instance.conditionScore)
       ? instance.conditionScore
       : 100
 
     setEditingId(instance._id)
     setEditForm({
-      conditionLevel: normalizedConditionLevel,
       conditionScore: normalizedConditionScore,
       lifecycleStatus: instance.lifecycleStatus,
       currentRentPrice: instance.currentRentPrice,
@@ -135,13 +140,20 @@ export default function OwnerInventoryScreen() {
   const handleSaveEdit = async (id) => {
     try {
       setLoading(true)
-      const response = await axiosClient.put(`/products/instances/${id}`, editForm)
+      const payload = {
+        conditionScore: editForm.conditionScore,
+        lifecycleStatus: editForm.lifecycleStatus,
+        currentRentPrice: editForm.currentRentPrice,
+        currentSalePrice: editForm.currentSalePrice,
+        note: editForm.note
+      }
+      const response = await axiosClient.put(`/products/instances/${id}`, payload)
 
       if (response.data.success) {
         setInstances(prevInstances => 
-          prevInstances.map(inst =>
+          sortInstancesBySoldLast(prevInstances.map(inst =>
             inst._id === id ? response.data.data : inst
-          )
+          ))
         )
         setEditingId(null)
         setEditForm({})
@@ -289,20 +301,9 @@ export default function OwnerInventoryScreen() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {editingId === instance._id ? (
-                        <select
-                          value={editForm.conditionLevel}
-                          onChange={(e) => setEditForm({ ...editForm, conditionLevel: e.target.value })}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="New">{formatConditionLabel(100)}</option>
-                          <option value="Used">{formatConditionLabel(75)}</option>
-                        </select>
-                      ) : (
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getConditionBadgeClass(conditionScoreOptions.includes(instance.conditionScore) ? instance.conditionScore : 100)}`}>
-                          {formatConditionLabel(conditionScoreOptions.includes(instance.conditionScore) ? instance.conditionScore : 100)}
-                        </span>
-                      )}
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getConditionBadgeClass(conditionScoreOptions.includes(instance.conditionScore) ? instance.conditionScore : 100)}`}>
+                        {formatConditionLabel(conditionScoreOptions.includes(instance.conditionScore) ? instance.conditionScore : 100)}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       {editingId === instance._id ? (
@@ -406,8 +407,9 @@ export default function OwnerInventoryScreen() {
                           <>
                             <button
                               onClick={() => handleEdit(instance)}
-                              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                              title="Sửa"
+                              className={`p-1 rounded ${instance.lifecycleStatus === 'Sold' ? 'cursor-not-allowed text-gray-400' : 'text-blue-600 hover:bg-blue-50'}`}
+                              title={instance.lifecycleStatus === 'Sold' ? 'San pham da ban khong the chinh sua' : 'Sửa'}
+                              disabled={instance.lifecycleStatus === 'Sold'}
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>

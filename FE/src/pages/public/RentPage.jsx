@@ -9,6 +9,7 @@ import RentHero from '../../components/catalog/rent/RentHero';
 import OutfitCarousel from '../../components/catalog/rent/OutfitCarousel';
 import StickyRentCTA from '../../components/catalog/rent/StickyRentCTA';
 import SortDropdown from '../../components/catalog/shop/SortDropdown';
+import Pagination from '../../components/catalog/shop/Pagination';
 import BookingModal from '../../components/booking/BookingModal';
 import {
   buildSidebarTree,
@@ -21,6 +22,7 @@ import {
 import { useFavorites } from '../../contexts/FavoritesContext';
 
 const DEFAULT_FILTERS = { occasion: '', category: '', color: '', size: '', price: '' };
+const RENT_PAGE_SIZE = 12;
 
 const OCCASION_KEYWORDS = {
   wedding: ['cuoi', 'wedding', 'le cuoi', 'an hoi'],
@@ -76,6 +78,7 @@ export default function RentPage() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('top_liked');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [startDate, setStartDate] = useState('');
@@ -234,6 +237,26 @@ export default function RentPage() {
     return list;
   }, [products, filters, sortBy, searchKeyword, startDate, endDate]);
 
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredProducts.length / RENT_PAGE_SIZE)),
+    [filteredProducts.length]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchKeyword, filters, sortBy, startDate, endDate]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const paginatedProducts = useMemo(() => {
+    const start = (page - 1) * RENT_PAGE_SIZE;
+    return filteredProducts.slice(start, start + RENT_PAGE_SIZE);
+  }, [filteredProducts, page]);
+
   const favoriteIds = useMemo(() => {
     const ids = new Set();
     filteredProducts.forEach((product) => {
@@ -362,7 +385,7 @@ export default function RentPage() {
           <div className="space-y-5">
             <ProductGrid
               mode="rent"
-              products={filteredProducts}
+              products={paginatedProducts}
               loading={loading}
               favoriteIds={favoriteIds}
               favoriteLoadingIds={favoriteLoadingIds}
@@ -372,6 +395,8 @@ export default function RentPage() {
               onSecondaryAction={handleBookFitting}
               emptyText="Không có trang phục phù hợp với bộ lọc thuê."
             />
+
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
           </div>
         </section>

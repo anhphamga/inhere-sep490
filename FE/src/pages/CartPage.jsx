@@ -180,7 +180,15 @@ function CartItemCard({ item, type, onRemove, onDecrease, onIncrease, subtotal }
                 )}
               </p>
             </div>
-            <button type="button" onClick={() => onRemove(item.id)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-rose-500 transition hover:bg-rose-50">
+            <button
+              type="button"
+              onClick={() => {
+                const confirmed = window.confirm('Bạn có chắc muốn xóa sản phẩm này khỏi giỏ hàng không?')
+                if (!confirmed) return
+                onRemove(item.id)
+              }}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-rose-500 transition hover:bg-rose-50"
+            >
               <Trash2 className="h-4 w-4" />
             </button>
           </div>

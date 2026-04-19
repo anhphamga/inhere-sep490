@@ -62,7 +62,7 @@ const getDisplaySizes = (product) => {
     return singleSize || 'Không có'
 }
 
-export default function ProductsList({ onSelectProduct }) {
+export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
     const location = useLocation()
     const [products, setProducts] = useState([])
     const [viewMode, setViewMode] = useState('list')
@@ -72,7 +72,7 @@ export default function ProductsList({ onSelectProduct }) {
     const [openCreateModal, setOpenCreateModal] = useState(false)
     const [importing, setImporting] = useState(false)
     const [exporting, setExporting] = useState(false)
-    const [currentPage, setCurrentPage] = useState(1)
+    const [currentPage, setCurrentPage] = useState(Math.max(1, Number(initialPage) || 1))
     const [deletingProductId, setDeletingProductId] = useState('')
     const [selectedProductIds, setSelectedProductIds] = useState([])
     const [categoryTree, setCategoryTree] = useState([])
@@ -164,7 +164,12 @@ export default function ProductsList({ onSelectProduct }) {
     const paginatedProductIds = paginatedProducts.map((product) => String(product._id || product.id)).filter(Boolean)
     const isAllPageSelected = paginatedProductIds.length > 0 && paginatedProductIds.every((id) => selectedProductIds.includes(id))
 
+    const didInitPageRef = useRef(false)
     useEffect(() => {
+        if (!didInitPageRef.current) {
+            didInitPageRef.current = true
+            return
+        }
         setCurrentPage(1)
     }, [location.search, filters])
 
@@ -446,7 +451,7 @@ export default function ProductsList({ onSelectProduct }) {
                                         <tr
                                             key={productId}
                                             className="hover:bg-slate-50/80 transition-colors cursor-pointer"
-                                            onClick={() => onSelectProduct(productId)}
+                                            onClick={() => onSelectProduct(productId, { page: safeCurrentPage })}
                                         >
                                             <td className="px-4 py-4" onClick={(event) => event.stopPropagation()}>
                                                 <input
@@ -512,7 +517,7 @@ export default function ProductsList({ onSelectProduct }) {
                     {paginatedProducts.map((product) => (
                         <div
                             key={product._id || product.id}
-                            onClick={() => onSelectProduct(product._id || product.id)}
+                            onClick={() => onSelectProduct(product._id || product.id, { page: safeCurrentPage })}
                             className="group relative bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-lg cursor-pointer"
                         >
                             <div className="relative aspect-3/4 overflow-hidden bg-slate-100">
@@ -584,7 +589,7 @@ export default function ProductsList({ onSelectProduct }) {
                     onCreated={async (createdId) => {
                         await loadProducts(filters)
                         if (createdId) {
-                            onSelectProduct(createdId)
+                            onSelectProduct(createdId, { page: safeCurrentPage })
                         }
                     }}
                 />

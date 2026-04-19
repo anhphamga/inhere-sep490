@@ -16,6 +16,20 @@ const forbidden = (res, message = 'Forbidden') => (
 
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
 
+const applyUserAuthContext = async (req, user) => {
+  req.user = {
+    id: user._id.toString(),
+    role: user.role,
+    email: user.email,
+    roleLevel: user.roleLevel,
+    directPermissions: user.directPermissions,
+    deniedPermissions: user.deniedPermissions,
+  };
+  req.access = await resolveUserAccess(user);
+  req.user.permissions = req.access.permissions;
+  req.user.access = req.access;
+};
+
 const requireAuth = async (req, res, next) => {
   try {
     const token = extractBearerToken(req.headers.authorization);
@@ -37,19 +51,38 @@ const requireAuth = async (req, res, next) => {
       });
     }
 
-    req.user = {
-      id: user._id.toString(),
-      role: user.role,
-      email: user.email,
-      roleLevel: user.roleLevel,
-      directPermissions: user.directPermissions,
-      deniedPermissions: user.deniedPermissions,
-    };
-    req.access = await resolveUserAccess(user);
-    req.user.permissions = req.access.permissions;
-    req.user.access = req.access;
+    await applyUserAuthContext(req, user);
 
-    next();
+    return next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
+  }
+};
+
+const attachOptionalAuth = async (req, res, next) => {
+  const token = extractBearerToken(req.headers.authorization);
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const payload = verifyAccessToken(token);
+    const user = await User.findById(payload.userId);
+
+    if (!user || user.status !== 'active') {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized'
+      });
+    }
+
+    await applyUserAuthContext(req, user);
+
+    return next();
   } catch (error) {
     return res.status(401).json({
       success: false,
@@ -131,6 +164,7 @@ const checkPermission = (permission) => authorizePermission(permission);
 
 module.exports = {
   requireAuth,
+  attachOptionalAuth,
   checkPermission,
   checkRole,
   requireOwner,

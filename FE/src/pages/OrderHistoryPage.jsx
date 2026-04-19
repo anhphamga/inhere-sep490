@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   Box,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import Header from '../components/common/Header'
 import { useAuth } from '../contexts/AuthContext'
+import { useBuyCart } from '../contexts/BuyCartContext'
 import { getMySaleOrdersApi } from '../services/order.service'
 import { getMyRentOrdersApi } from '../services/rent-order.service'
 import { UI_IMAGE_FALLBACKS } from '../constants/ui'
@@ -347,6 +348,10 @@ function normalizeBuyOrders(orders = []) {
         id: item._id,
         orderId: order._id,
         productId: item.productId?._id,
+        size: item.size || 'FREE SIZE',
+        color: item.color || 'Mặc định',
+        unitPrice: Number(item.unitPrice || 0),
+        conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
         image: getImageUrl(item.productId?.images),
         name: getProductName(item.productId),
         variant: `${item.size || 'FREE SIZE'} / ${item.color || 'Mặc định'}`,
@@ -573,7 +578,7 @@ function RentalProgress({ currentStep }) {
   )
 }
 
-function ActionButton({ actionKey, order }) {
+function ActionButton({ actionKey, order, onAction }) {
   const action = getActionConfig(actionKey, order?.type)
   const Icon = action.icon
   const className = `inline-flex min-h-[44px] items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition ${action.className}`
@@ -588,14 +593,14 @@ function ActionButton({ actionKey, order }) {
   }
 
   return (
-    <button type="button" className={className}>
+    <button type="button" className={className} onClick={() => onAction?.(order, actionKey)}>
       <Icon className="h-4 w-4" />
       {action.label}
     </button>
   )
 }
 
-function OrderCard({ order }) {
+function OrderCard({ order, onAction }) {
   const statusMeta = getStatusMeta(order.status)
   const typeMeta = TYPE_META[order.type]
   const financialRows = order.type === 'rent'
@@ -698,7 +703,7 @@ function OrderCard({ order }) {
 
             <div className="flex flex-wrap gap-3">
               {order.actions.map((actionKey) => (
-                <ActionButton key={actionKey} actionKey={actionKey} order={order} />
+                <ActionButton key={actionKey} actionKey={actionKey} order={order} onAction={onAction} />
               ))}
             </div>
           </div>
@@ -748,6 +753,8 @@ function ErrorState({ message }) {
 }
 
 export default function OrderHistoryPage() {
+  const navigate = useNavigate()
+  const { addItem: addBuyItem } = useBuyCart()
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [activeTab, setActiveTab] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -755,6 +762,7 @@ export default function OrderHistoryPage() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -810,6 +818,38 @@ export default function OrderHistoryPage() {
       return matchesTab && matchesStatus && matchesKeyword
     })
   }, [activeTab, orders, searchValue, statusFilter])
+
+  const handleOrderAction = (order, actionKey) => {
+    if (actionKey !== 'reorder') return
+    if (order?.type !== 'buy') return
+
+    const buyItems = Array.isArray(order?.items) ? order.items : []
+    if (!buyItems.length) return
+
+    buyItems.forEach((item) => {
+      if (!item?.productId) return
+      addBuyItem(
+        {
+          _id: item.productId,
+          name: item.name || 'Sản phẩm',
+          images: item.image ? [item.image] : [],
+          availableQuantity: Math.max(Number(item.quantity || 1), 1),
+          baseSalePrice: Number(item.unitPrice || 0),
+        },
+        {
+          color: item.color || 'Mặc định',
+          size: item.size || 'FREE SIZE',
+          salePrice: Number(item.unitPrice || 0),
+          quantity: Math.max(Number(item.quantity || 1), 1),
+          conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
+        }
+      )
+    })
+
+    setActionMessage('Đã thêm lại sản phẩm vào giỏ mua')
+    setTimeout(() => setActionMessage(''), 1800)
+    navigate('/cart')
+  }
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -877,11 +917,17 @@ export default function OrderHistoryPage() {
           {!loading && !error && filteredOrders.length === 0 ? <EmptyState /> : null}
           {!loading && !error && filteredOrders.length > 0
             ? filteredOrders.map((order) => (
-                <OrderCard key={`${order.type}-${order.id}`} order={order} />
+                <OrderCard key={`${order.type}-${order.id}`} order={order} onAction={handleOrderAction} />
               ))
             : null}
         </section>
       </main>
+
+      {actionMessage ? (
+        <div className="fixed right-4 top-20 z-50 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
+          {actionMessage}
+        </div>
+      ) : null}
     </div>
   )
 }

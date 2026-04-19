@@ -35,6 +35,11 @@ const productInstanceSchema = new mongoose.Schema({
     enum: ['Available', 'Reserved', 'Rented', 'Washing', 'Repair', 'Lost', 'Sold'],
     default: 'Available'
   },
+  soldOrderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SaleOrder',
+    default: null
+  },
   currentRentPrice: {
     type: Number,
     required: true

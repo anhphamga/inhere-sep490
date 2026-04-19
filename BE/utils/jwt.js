@@ -5,7 +5,7 @@ const getAccessTokenSecret = () => jwtAccessSecret;
 const getRefreshTokenSecret = () => jwtRefreshSecret;
 
 const signAccessToken = (payload) => {
-  return jwt.sign(payload, getAccessTokenSecret(), { expiresIn: '15m' });
+  return jwt.sign(payload, getAccessTokenSecret(), { expiresIn: '3h' });
 };
 
 const signRefreshToken = (payload) => {

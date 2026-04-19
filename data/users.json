@@ -1,0 +1,203 @@
+[{
+  "_id": {
+    "$oid": "69c632761e8b34d11535b86e"
+  },
+  "role": "owner",
+  "roleLevel": 0,
+  "directPermissions": [],
+  "deniedPermissions": [],
+  "name": "Pham Nguyen Tuan Anh (K16 HCM)",
+  "phone": null,
+  "email": "anhpntse161927@fpt.edu.vn",
+  "passwordHash": "$2b$10$WoI8.pnP8vTfycfYrld4Du8NW.sytYXjykT1YEIhSKmbeEavDv2OS",
+  "passwordResetToken": null,
+  "passwordResetExpires": null,
+  "authProvider": "google",
+  "status": "active",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocJ7JnOtrt9D6b3vBYz24YZ4Y_zy5oCLWHHk7167RdU7eyLcP54=s96-c",
+  "address": "",
+  "segment": "new_user",
+  "gender": null,
+  "dateOfBirth": null,
+  "createdAt": {
+    "$date": "2026-03-27T07:32:06.224Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-03T07:09:03.180Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69c632f01e8b34d11535b8bb"
+  },
+  "role": "customer",
+  "roleLevel": 0,
+  "directPermissions": [],
+  "deniedPermissions": [],
+  "name": "phạm Anh",
+  "phone": null,
+  "email": "anhcoi18052002@gmail.com",
+  "passwordHash": "$2b$10$.U94rTmZ7cvVO0OblitjxeAWqJj0HcJRNA2RiRBdOY.pe8.n2JRvO",
+  "passwordResetToken": null,
+  "passwordResetExpires": null,
+  "authProvider": "google",
+  "status": "active",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocJ40U7KpTLVjHWRTV3Tc6VYoVqyL3yF06Cw23xloXd7OUZfSA=s96-c",
+  "address": "",
+  "segment": "new_user",
+  "gender": null,
+  "dateOfBirth": null,
+  "createdAt": {
+    "$date": "2026-03-27T07:34:08.489Z"
+  },
+  "updatedAt": {
+    "$date": "2026-03-27T07:34:08.489Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69c634a71e8b34d11535ba79"
+  },
+  "role": "staff",
+  "roleLevel": 0,
+  "directPermissions": [],
+  "deniedPermissions": [],
+  "name": "anh Bibi",
+  "phone": "0366778764333",
+  "email": "bibi02022024@gmail.com",
+  "passwordHash": "$2b$10$Vp.th4WGgt1zNVvuNE9zHufDnyB3TAXmDBws53GxF5E4T1IJS0ili",
+  "passwordResetToken": null,
+  "passwordResetExpires": null,
+  "authProvider": "google",
+  "status": "active",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocKyHNnEZqQqlmTSjh53TpEguU2p9fzXyMhne3xqHCDY9cVJjw=s96-c",
+  "address": "",
+  "segment": "new_user",
+  "gender": "male",
+  "dateOfBirth": null,
+  "createdAt": {
+    "$date": "2026-03-27T07:41:27.325Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-14T03:10:10.157Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69ca23d7cb938565ebd6a51d"
+  },
+  "role": "customer",
+  "roleLevel": 0,
+  "directPermissions": [],
+  "deniedPermissions": [],
+  "name": "Huy Do",
+  "phone": null,
+  "email": "doquanghuy844@gmail.com",
+  "passwordHash": "$2b$10$wqtw8l.IqdPBtMJO3fBf4uSxXrIkBYwz5ryzii4RC07di4CkmKwlS",
+  "passwordResetToken": null,
+  "passwordResetExpires": null,
+  "authProvider": "google",
+  "status": "active",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocIRwMzQZM39EmBnWBaLp-ekpZ56fpefbWnkn9wSPpvbcwfVIA=s96-c",
+  "address": "",
+  "segment": "new_user",
+  "gender": null,
+  "dateOfBirth": null,
+  "createdAt": {
+    "$date": "2026-03-30T07:18:47.747Z"
+  },
+  "updatedAt": {
+    "$date": "2026-03-30T07:18:47.747Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69cf412a0e419ff7612ecc5a"
+  },
+  "role": "customer",
+  "roleLevel": 0,
+  "directPermissions": [],
+  "deniedPermissions": [],
+  "name": "bibi pham",
+  "phone": null,
+  "email": "bibi08082024@gmail.com",
+  "passwordHash": "$2b$10$dwToNJUpBUtHlbAsGmojDO.Sdnca83skBzinQypeWB4EQpOFpSASG",
+  "passwordResetToken": null,
+  "passwordResetExpires": null,
+  "authProvider": "google",
+  "status": "active",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocLZp4r5_s_JVD855KkHnjK1L1wKlhH8VtpsYzM0n77QOYrJ=s96-c",
+  "address": "",
+  "segment": "new_user",
+  "gender": null,
+  "dateOfBirth": null,
+  "createdAt": {
+    "$date": "2026-04-03T04:25:14.079Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-03T07:12:50.943Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69cf41dd0e419ff7612ecce0"
+  },
+  "role": "owner",
+  "roleLevel": 0,
+  "directPermissions": [],
+  "deniedPermissions": [],
+  "name": "hà moi",
+  "phone": "0268263778",
+  "email": "ha34nd@gmail.com",
+  "passwordHash": "$2b$10$3v8SLU2QPaWd1V.DedeyTuWMOoIfONoqSs/448gkoiOkMmdUhT6t2",
+  "passwordResetToken": null,
+  "passwordResetExpires": null,
+  "authProvider": "local",
+  "status": "active",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocIcfWM6NeaV2kY0obEiMQ1A4EIVsZs0KWvJvIf_iQAtEfcO_A=s96-c",
+  "address": "",
+  "segment": null,
+  "gender": "male",
+  "dateOfBirth": null,
+  "createdAt": {
+    "$date": "2026-04-03T04:28:13.091Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-03T07:12:04.000Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69ddfcc9ce20e0d0a3efc5c1"
+  },
+  "role": "customer",
+  "roleLevel": 0,
+  "directPermissions": [],
+  "deniedPermissions": [],
+  "name": "Pham Nguyen Tuan Anh",
+  "phone": "0366778764",
+  "email": "bibivideongan@gmail.com",
+  "passwordHash": "$2b$10$LJw5gl8xOW.AcneZzQ9uZ.XkZd20VvAo9d6j1CsvHR/gTqOh2ku5.",
+  "passwordResetToken": null,
+  "passwordResetExpires": null,
+  "authProvider": "local",
+  "status": "active",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocJ0vQWJVmUx7x7yhFMLG6dG02UgLGcddmJP-vBsGgwm4AHVNw=s96-c",
+  "address": "",
+  "segment": "new_user",
+  "gender": null,
+  "dateOfBirth": null,
+  "createdAt": {
+    "$date": "2026-04-14T08:37:29.704Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-14T08:43:25.683Z"
+  },
+  "__v": 0
+}]

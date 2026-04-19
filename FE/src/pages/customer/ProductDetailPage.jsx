@@ -374,24 +374,31 @@ export default function ProductDetailPage() {
     return Number(product?.baseSalePrice || 0);
   }, [selectedConditionOption, product?.baseSalePrice]);
 
-  // canSubmit: điều kiện cơ bản cho cả thuê lẫn mua (size + màu + còn hàng)
-  // Không yêu cầu condition vì thuê không cần chọn condition
-  const canSubmit = useMemo(() => {
+  // Biến thể (size/màu) — không gắn với “còn hàng thuê/mua”
+  const variantReady = useMemo(() => {
     if (!product) return false;
-    if (Number(product?.availableQuantity || 0) <= 0) return false;
     if (!selectedColor) return false;
     if (!isFreeSize && sizes.length > 0 && !selectedSize) return false;
     if (!isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) return false;
     return true;
   }, [product, selectedColor, selectedSize, isFreeSize, sizes, isVariantAvailable]);
 
+  /** Số instance còn có thể gán thuê (không tính Mất/Đã bán) — khớp API `rentableQuantity`. */
+  const rentableQuantity = useMemo(() => Number(product?.rentableQuantity ?? 0), [product?.rentableQuantity]);
+
+  const canSubmitRent = useMemo(() => {
+    if (!variantReady) return false;
+    if (rentableQuantity <= 0) return false;
+    return true;
+  }, [variantReady, rentableQuantity]);
+
   const canBuy = useMemo(() => {
-    if (!canSubmit) return false;
+    if (!variantReady) return false;
     if (Number(currentSalePrice || 0) <= 0) return false;
     if (Number(product?.availableQuantity || 0) <= 0) return false;
     if (conditionOptions.length > 0 && !selectedConditionOption) return false;
     return true;
-  }, [canSubmit, currentSalePrice, product?.availableQuantity, conditionOptions.length, selectedConditionOption]);
+  }, [variantReady, currentSalePrice, product?.availableQuantity, conditionOptions.length, selectedConditionOption]);
 
   useEffect(() => {
     if (!product?._id) return;
@@ -497,11 +504,11 @@ export default function ProductDetailPage() {
   }, []);
 
   const handleRent = async () => {
-    if (Number(product?.availableQuantity || 0) <= 0) {
-      showToast("Sản phẩm đã hết hàng, không thể mua hoặc thuê");
+    if (rentableQuantity <= 0) {
+      showToast("Không còn bản ghi nào có thể thuê (đã mất hoặc đã bán hết).");
       return;
     }
-    if (!canSubmit) {
+    if (!canSubmitRent) {
       showToast(t.toastError);
       return;
     }
@@ -563,7 +570,7 @@ export default function ProductDetailPage() {
       showToast("Sản phẩm đã hết hàng, không thể mua hoặc thuê");
       return;
     }
-    if (!canSubmit) {
+    if (!variantReady) {
       showToast(t.toastError);
       return;
     }
@@ -620,12 +627,14 @@ export default function ProductDetailPage() {
   };
 
   const badges = useMemo(() => {
-    const list = [Number(product?.availableQuantity || 0) > 0 ? "Có sẵn" : "Hết hàng"];
+    const canShowStock =
+      Number(product?.availableQuantity || 0) > 0 || Number(product?.rentableQuantity ?? 0) > 0;
+    const list = [canShowStock ? "Có sẵn" : "Hết hàng"];
     if (isFreeSize) list.push("Free size");
     if (product?.isBestSeller) list.push("Best seller");
     if (product?.isNew) list.push("Mới");
     return list;
-  }, [product?.availableQuantity, product?.isBestSeller, product?.isNew, isFreeSize]);
+  }, [product?.availableQuantity, product?.rentableQuantity, product?.isBestSeller, product?.isNew, isFreeSize]);
 
   return (
     <div className="min-h-screen bg-white pb-24 md:pb-10">
@@ -689,7 +698,8 @@ export default function ProductDetailPage() {
                       onRent={handleRent}
                       onBuy={handleBuy}
                       loadingAction={loadingAction}
-                      canSubmit={canSubmit}
+                      canSubmit={variantReady}
+                      canRent={canSubmitRent}
                       canBuy={canBuy}
                       productImage={
                         currentImagesByColor[selectedImageIndex] || currentImagesByColor[0] || product.imageUrl || ""

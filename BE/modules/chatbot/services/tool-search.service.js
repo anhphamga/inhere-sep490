@@ -4,7 +4,11 @@ const { searchUserService } = require('./tool-search/search-user.service');
 const { searchOrderService } = require('./tool-search/search-order.service');
 const { searchProductService } = require('./tool-search/search-product.service');
 
-const ensureActorCanSearch = ({ actor }) => {
+const ensureActorCanSearch = ({ actor, entity }) => {
+  if (entity === 'product') {
+    return;
+  }
+
   const config = getToolSearchConfig();
   const role = String(actor?.role || '').toLowerCase();
 
@@ -28,7 +32,7 @@ const ensureActorCanSearch = ({ actor }) => {
 };
 
 const searchToolData = async ({ entity, query, filters, actor }) => {
-  ensureActorCanSearch({ actor });
+  ensureActorCanSearch({ actor, entity });
 
   if (entity === 'user') {
     return searchUserService({ query, filters, actor });

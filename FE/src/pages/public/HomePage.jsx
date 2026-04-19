@@ -208,6 +208,10 @@ const Homepage = ({ initialSection = "" }) => {
   const [blogsError, setBlogsError] = useState("");
   const [categorySlideIndex, setCategorySlideIndex] = useState(0);
   const [categoryVisibleCount, setCategoryVisibleCount] = useState(3);
+  const featuredCategories = useMemo(() => {
+    if (!Array.isArray(categories)) return [];
+    return categories.filter((category) => Number(category?.count) > 0);
+  }, [categories]);
   const slideIntervalRef = useRef(null);
   const categorySlideIntervalRef = useRef(null);
   const accountMenuRef = useRef(null);
@@ -355,13 +359,15 @@ const Homepage = ({ initialSection = "" }) => {
       categorySlideIntervalRef.current = null;
     }
 
-    if (categories.length <= categoryVisibleCount) {
+    if (featuredCategories.length <= categoryVisibleCount) {
       setCategorySlideIndex(0);
       return;
     }
 
     categorySlideIntervalRef.current = setInterval(() => {
-      setCategorySlideIndex((prev) => (prev + 1) % categories.length);
+      setCategorySlideIndex((prev) =>
+        featuredCategories.length === 0 ? 0 : (prev + 1) % featuredCategories.length
+      );
     }, CATEGORY_SLIDE_MS);
 
     return () => {
@@ -370,7 +376,7 @@ const Homepage = ({ initialSection = "" }) => {
         categorySlideIntervalRef.current = null;
       }
     };
-  }, [categories.length, categoryVisibleCount]);
+  }, [featuredCategories.length, categoryVisibleCount]);
 
   useEffect(() => {
     let isMounted = true;
@@ -763,18 +769,18 @@ const Homepage = ({ initialSection = "" }) => {
       : fallbackBlogPosts;
 
   const displayedCategories = useMemo(() => {
-    if (!Array.isArray(categories) || categories.length === 0) {
+    if (!Array.isArray(featuredCategories) || featuredCategories.length === 0) {
       return [];
     }
-    if (categories.length <= categoryVisibleCount) {
-      return categories;
+    if (featuredCategories.length <= categoryVisibleCount) {
+      return featuredCategories;
     }
 
     return Array.from({ length: categoryVisibleCount }, (_, offset) => {
-      const index = (categorySlideIndex + offset) % categories.length;
-      return categories[index];
+      const index = (categorySlideIndex + offset) % featuredCategories.length;
+      return featuredCategories[index];
     });
-  }, [categories, categorySlideIndex, categoryVisibleCount]);
+  }, [featuredCategories, categorySlideIndex, categoryVisibleCount]);
 
   return (
     <>

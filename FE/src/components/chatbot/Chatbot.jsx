@@ -36,6 +36,25 @@ const ORDER_STATUS_LABELS = {
 const getOrderTypeLabel = (type) => ORDER_TYPE_LABELS[type] || 'Đơn hàng'
 const getOrderStatusLabel = (status) => ORDER_STATUS_LABELS[status] || status || '-'
 
+const getProductRemainingQuantity = (item = {}) => {
+  const availableQuantity = Number(item?.availableQuantity)
+  if (Number.isFinite(availableQuantity)) {
+    return availableQuantity
+  }
+
+  const stockCount = Number(item?.stockCount)
+  if (Number.isFinite(stockCount)) {
+    return stockCount
+  }
+
+  return 0
+}
+
+const getProductStockLabel = (item = {}) => {
+  const remaining = getProductRemainingQuantity(item)
+  return remaining > 0 ? `Còn ${remaining} sản phẩm` : 'Hết hàng'
+}
+
 const initialMessages = [
   {
     id: 'welcome-bot',
@@ -307,6 +326,9 @@ function Chatbot() {
                       )}
 
                       <div className='min-w-0'>
+                        <div className={`text-[11px] font-semibold ${getProductRemainingQuantity(item) > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {getProductStockLabel(item)}
+                        </div>
                         <div className='line-clamp-2 text-[13px] font-semibold text-slate-900'>{item.name || 'Sản phẩm'}</div>
                         <div className='mt-0.5 text-xs font-bold text-teal-700'>
                           {Number(item.price || 0).toLocaleString('vi-VN')} VND

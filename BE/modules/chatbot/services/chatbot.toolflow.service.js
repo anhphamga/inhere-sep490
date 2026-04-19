@@ -28,6 +28,28 @@ const normalizeSearchSemanticText = (value) => {
     .replace(/\s+/g, ' ')
     .trim();
 
+  // Expand compact million shorthand used in Vietnamese chats (e.g., 1m5 => 1.5m, 1tr5 => 1.5tr).
+  normalized = normalized.replace(/\b(\d+)\s*(m|tr|trieu)\s*(\d{1,3})\b/gi, (_, major, unit, minor) => {
+    const majorNumber = Number(major);
+    const minorDigits = String(minor || '').trim();
+
+    if (!Number.isFinite(majorNumber) || !minorDigits) {
+      return `${major} ${unit}`;
+    }
+
+    const minorNumber = Number(minorDigits);
+    if (!Number.isFinite(minorNumber)) {
+      return `${major} ${unit}`;
+    }
+
+    const divisor = minorDigits.length === 3
+      ? 1000
+      : Math.pow(10, minorDigits.length);
+    const merged = majorNumber + (minorNumber / divisor);
+
+    return `${String(merged).replace(/\.0+$/, '')} ${unit}`;
+  });
+
   // Normalize common shorthand/typos for money and color words.
   normalized = normalized
     .replace(/\b0vnd\b/g, '0 vnd')
@@ -276,20 +298,16 @@ const extractProductAttributeFiltersFromMessage = (message) => {
     result.color = colorMatched;
   }
 
-  if (
-    normalized.includes('con hang')
-    || normalized.includes('san co')
-    || normalized.includes('available')
-    || normalized.includes('in stock')
-  ) {
+  const hasInStockSignal = /(con\s+hang|san\s+co|con\s+ton|ton\s+kho|available|in\s+stock)/i.test(normalized)
+    || /khong\s+het\s+hang/i.test(normalized);
+  const hasOutOfStockSignal = /(het\s+hang|khong\s+con\s+hang|chay\s+hang|out\s+of\s+stock)/i.test(normalized)
+    && !/khong\s+het\s+hang/i.test(normalized);
+
+  if (hasInStockSignal && !hasOutOfStockSignal) {
     result.inStock = true;
   }
 
-  if (
-    normalized.includes('het hang')
-    || normalized.includes('out of stock')
-    || normalized.includes('khong con hang')
-  ) {
+  if (hasOutOfStockSignal) {
     result.inStock = false;
   }
 
@@ -481,6 +499,38 @@ const buildVoucherAnswer = async ({ actor }) => {
     usage: null,
     model: null,
     intent: 'VOUCHER',
+    toolData: null,
+    contexts: [],
+  };
+};
+
+const LOGIN_REQUIRED_FOR_PERSONAL_INFO_MESSAGE = 'Bạn nên đăng nhập để có thể tra cứu thông tin của mình.';
+
+const requiresLoginForIntent = (intent) => {
+  return intent === 'USER' || intent === 'ORDER' || intent === 'ORDER_DETAIL';
+};
+
+const buildLoginRequiredResponse = (intent) => {
+  if (intent === 'ORDER' || intent === 'ORDER_DETAIL') {
+    return {
+      type: 'ORDER',
+      message: LOGIN_REQUIRED_FOR_PERSONAL_INFO_MESSAGE,
+      answer: LOGIN_REQUIRED_FOR_PERSONAL_INFO_MESSAGE,
+      data: [],
+      usage: null,
+      model: null,
+      intent,
+      toolData: null,
+      contexts: [],
+    };
+  }
+
+  return {
+    type: 'TEXT',
+    answer: LOGIN_REQUIRED_FOR_PERSONAL_INFO_MESSAGE,
+    usage: null,
+    model: null,
+    intent,
     toolData: null,
     contexts: [],
   };
@@ -884,11 +934,26 @@ const buildToolPayload = ({ entity, message, requestId, topK, page = 1, forcedFi
   };
 };
 
+const resolveSessionRequestId = ({ payload, requestId }) => {
+  const candidate = String(payload?.sessionId || '').trim();
+  if (!candidate) {
+    return requestId;
+  }
+
+  const sanitized = candidate.replace(/[^a-zA-Z0-9:_-]/g, '').slice(0, 120);
+  return sanitized || requestId;
+};
+
 const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
   const { message, topK } = validateChatInput(payload);
   const intentInfo = detectChatIntent(message);
-  const sessionState = getChatSession({ actor, requestId });
+  const sessionRequestId = resolveSessionRequestId({ payload, requestId });
+  const sessionState = getChatSession({ actor, requestId: sessionRequestId });
   const isLoadMoreProducts = isProductLoadMoreRequest(message) && Boolean(sessionState.lastProductQuery);
+
+  if (!actor?.id && requiresLoginForIntent(intentInfo.intent)) {
+    return buildLoginRequiredResponse(intentInfo.intent);
+  }
 
   if (intentInfo.intent === 'KNOWLEDGE') {
     const rentalPolicyAnswer = getRentalPolicyKnowledgeAnswer(message);
@@ -943,7 +1008,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
 
       saveChatSession({
         actor,
-        requestId,
+        requestId: sessionRequestId,
         state: {
           ...sessionState,
           lastOrderIds: orderData.map((item) => item.id),
@@ -961,7 +1026,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
 
       saveChatSession({
         actor,
-        requestId,
+        requestId: sessionRequestId,
         state: {
           ...sessionState,
           lastOrderIds: orderData.map((item) => item.id),
@@ -1050,7 +1115,7 @@ const chatWithTools = async ({ payload = {}, actor = {}, requestId }) => {
 
     saveChatSession({
       actor,
-      requestId,
+      requestId: sessionRequestId,
       state: {
         ...sessionState,
         lastProductQuery: isLoadMoreProducts ? sessionState.lastProductQuery : message,

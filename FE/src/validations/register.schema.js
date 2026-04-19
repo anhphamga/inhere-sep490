@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { normalizePhone } from "../utils/validation/validation.rules";
 
 const PHONE_REGEX_VN = /^(?:0\d{9}|\+84\d{9})$/;

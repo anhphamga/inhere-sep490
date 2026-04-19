@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactQuill from 'react-quill';
-import DOMPurify from 'dompurify';
 import 'react-quill/dist/quill.snow.css';
+import { sanitizeBlogHtml } from '../../utils/sanitizeBlogHtml';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   createBlogApi,
@@ -54,10 +54,6 @@ const stripQuillHtml = (html) =>
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-const sanitizeHtml = (html) =>
-  DOMPurify.sanitize(String(html || ''), {
-    USE_PROFILES: { html: true },
-  });
 const normalizeTags = (value) => {
   const unique = new Set();
   String(value || '')
@@ -142,7 +138,7 @@ function BlogEditor({ blogId, onBack, onSaved }) {
         thumbnail: toText(source.thumbnail),
         metaTitle: normalizeSpaces(source.metaTitle),
         metaDescription: normalizeSpaces(source.metaDescription),
-        content: sanitizeHtml(source.content),
+        content: sanitizeBlogHtml(source.content),
       };
     },
     [form]
@@ -613,7 +609,7 @@ function BlogEditor({ blogId, onBack, onSaved }) {
             <p className="text-xs text-slate-500">{form.metaDescription || 'Meta description sẽ hiển thị tại đây.'}</p>
             <div
               className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(form.content) || '<p>Chưa có nội dung.</p>' }}
+              dangerouslySetInnerHTML={{ __html: sanitizeBlogHtml(form.content) || '<p>Chưa có nội dung.</p>' }}
             />
           </div>
         </div>

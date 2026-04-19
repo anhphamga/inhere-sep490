@@ -9,5 +9,6 @@ router.post('/guest-checkout', orderController.guestCheckout);
 router.get('/guest/:id', orderController.getGuestSaleOrderById);
 router.get('/my', authenticate, orderController.getMySaleOrders);
 router.get('/my/:id', authenticate, orderController.getMySaleOrderById);
+router.put('/my/:id/cancel', authenticate, orderController.cancelMySaleOrder);
 
 module.exports = router;

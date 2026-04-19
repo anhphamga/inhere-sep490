@@ -1,5 +1,6 @@
 const Product = require('../../../../model/Product.model');
 const ProductInstance = require('../../../../model/ProductInstance.model');
+const mongoose = require('mongoose');
 
 const normalizeText = (value) => {
   return String(value || '')
@@ -192,6 +193,8 @@ const resolveProductPrice = (doc) => {
 
 const cleanQueryForKeywords = (query) => {
   const normalized = normalizeQueryText(query)
+    .replace(/^(?:hay|vui\s+long|lam\s+on)\s+/g, ' ')
+    .replace(/\b\d+\s*(?:m|tr|trieu)\s*\d{1,3}\b/g, ' ')
     .replace(/\bo\s*(?:vnd|dong|d+)\b/g, ' ')
     .replace(/\b\d+(?:[.,]\d+)?\s*(?:k|nghin|ngan|trieu|tr|m|ty|t|vnd|dong|d+)?\b/g, ' ')
     .replace(/\s+/g, ' ')
@@ -202,6 +205,7 @@ const cleanQueryForKeywords = (query) => {
     'hang',
     'shop',
     'tim',
+    'hay',
     'kiem',
     'search',
     'loc',
@@ -210,6 +214,9 @@ const cleanQueryForKeywords = (query) => {
     'thi',
     'cho',
     'toi',
+    'con',
+    'het',
+    'khong',
     'cac',
     'nhung',
     'loai',
@@ -455,10 +462,24 @@ const getProductAvailabilityMap = async (productIds = []) => {
     return new Map();
   }
 
+  const idStrings = ids.map((id) => String(id));
+
+  const objectIds = ids
+    .map((id) => String(id))
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  if (!objectIds.length && !idStrings.length) {
+    return new Map();
+  }
+
   const rows = await ProductInstance.aggregate([
     {
       $match: {
-        productId: { $in: ids },
+        $or: [
+          ...(objectIds.length ? [{ productId: { $in: objectIds } }] : []),
+          ...(idStrings.length ? [{ productId: { $in: idStrings } }] : []),
+        ],
       },
     },
     {

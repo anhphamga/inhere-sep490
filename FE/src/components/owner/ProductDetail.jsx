@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { deleteOwnerProductApi, getOwnerProductDetailApi, updateOwnerProductApi } from '../../services/owner.service'
 import { numberFormatter, toArray } from '../../utils/owner.utils'
@@ -45,7 +46,9 @@ const buildVariantMatrix = (sizes = [], colors = [], seed = []) => {
     return rows
 }
 
-export default function ProductDetail({ productId, onBack }) {
+export default function ProductDetail({ productId, onBack, onSaved }) {
+    const navigate = useNavigate()
+    const location = useLocation()
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [actionError, setActionError] = useState('')
@@ -257,6 +260,19 @@ export default function ProductDetail({ productId, onBack }) {
                 isDraft,
             }
             await updateOwnerProductApi(productId, payload)
+            if (!isDraft) {
+                // Ensure save always returns to list page with previous pagination context.
+                const returnTo = location.state?.returnTo || '/owner/products'
+                const returnPage = Math.max(1, Number(location.state?.page) || 1)
+                if (typeof onSaved === 'function') {
+                    onSaved()
+                } else if (typeof onBack === 'function') {
+                    onBack()
+                } else {
+                    navigate(returnTo, { state: { page: returnPage } })
+                }
+                return
+            }
             await loadDetail()
         } catch (apiError) {
             setActionError(apiError?.response?.data?.message || apiError?.message || 'Không thỒ cập nhật sản phẩm.')
