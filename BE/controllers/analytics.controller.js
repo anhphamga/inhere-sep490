@@ -458,6 +458,428 @@ const getTopProducts = async (req, res) => {
     }
 };
 
+const buildDashboardDateRange = (req, res) => {
+    const toParam = req.query.to ? new Date(req.query.to) : new Date();
+    if (Number.isNaN(toParam.getTime())) {
+        res.status(400).json({
+            success: false,
+            message: 'to is invalid'
+        });
+        return null;
+    }
+
+    const end = new Date(toParam);
+    end.setHours(23, 59, 59, 999);
+
+    const fromParam = req.query.from ? new Date(req.query.from) : null;
+    if (fromParam && Number.isNaN(fromParam.getTime())) {
+        res.status(400).json({
+            success: false,
+            message: 'from is invalid'
+        });
+        return null;
+    }
+
+    const start = fromParam ? new Date(fromParam) : new Date(end);
+    if (!fromParam) {
+        start.setDate(end.getDate() - 6);
+    }
+    start.setHours(0, 0, 0, 0);
+
+    if (start > end) {
+        res.status(400).json({
+            success: false,
+            message: 'from must be less than or equal to to'
+        });
+        return null;
+    }
+
+    return { start, end };
+};
+
+const getProductDisplayName = (name) => {
+    if (typeof name === 'string') return name;
+    if (name && typeof name === 'object') {
+        return String(name.vi || name.en || '').trim();
+    }
+    return '';
+};
+
+const getOwnerTopProducts = async (req, res) => {
+    try {
+        const limit = 5;
+
+        const [topSaleRows, topRentRows] = await Promise.all([
+            SaleOrderItem.aggregate([
+                {
+                    $lookup: {
+                        from: 'saleorders',
+                        localField: 'orderId',
+                        foreignField: '_id',
+                        as: 'order'
+                    }
+                },
+                { $unwind: '$order' },
+                {
+                    $match: {
+                        'order.status': { $in: SALE_REVENUE_STATUSES }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$productId',
+                        totalSold: { $sum: '$quantity' }
+                    }
+                },
+                { $sort: { totalSold: -1 } },
+                { $limit: limit },
+                {
+                    $lookup: {
+                        from: 'products',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'product'
+                    }
+                },
+                { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+                {
+                    $project: {
+                        _id: 0,
+                        productId: '$_id',
+                        name: { $ifNull: ['$product.name', 'Sản phẩm không xác định'] },
+                        totalSold: 1
+                    }
+                }
+            ]),
+            RentOrderItem.aggregate([
+                {
+                    $lookup: {
+                        from: 'productinstances',
+                        localField: 'productInstanceId',
+                        foreignField: '_id',
+                        as: 'instance'
+                    }
+                },
+                { $unwind: '$instance' },
+                {
+                    $group: {
+                        _id: '$instance.productId',
+                        totalRented: { $sum: 1 }
+                    }
+                },
+                { $sort: { totalRented: -1 } },
+                { $limit: limit },
+                {
+                    $lookup: {
+                        from: 'products',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'product'
+                    }
+                },
+                { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+                {
+                    $project: {
+                        _id: 0,
+                        productId: '$_id',
+                        name: { $ifNull: ['$product.name', 'Sản phẩm không xác định'] },
+                        totalRented: 1
+                    }
+                }
+            ])
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Get owner top products successfully',
+            data: {
+                topSaleProducts: topSaleRows,
+                topRentProducts: topRentRows
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: 'Error getting owner top products',
+            error: error.message
+        });
+    }
+};
+
+const getInventoryAlerts = async (req, res) => {
+    try {
+        const rows = await Product.aggregate([
+            {
+                $lookup: {
+                    from: 'productinstances',
+                    let: { productId: '$_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$productId', '$$productId'] },
+                                lifecycleStatus: { $nin: ['Sold', 'Lost'] }
+                            }
+                        },
+                        { $count: 'quantity' }
+                    ],
+                    as: 'inventory'
+                }
+            },
+            {
+                $addFields: {
+                    quantity: { $ifNull: [{ $arrayElemAt: ['$inventory.quantity', 0] }, 0] }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    productId: '$_id',
+                    name: 1,
+                    quantity: 1
+                }
+            }
+        ]);
+
+        const normalized = rows.map((row) => ({
+            productId: row.productId,
+            name: getProductDisplayName(row.name) || 'Sản phẩm không xác định',
+            quantity: Number(row.quantity || 0)
+        }));
+
+        const lowStock = normalized
+            .filter((item) => item.quantity > 0 && item.quantity <= 3)
+            .sort((a, b) => a.quantity - b.quantity)
+            .map((item) => ({
+                productId: item.productId,
+                name: item.name,
+                quantity: item.quantity
+            }));
+
+        const outOfStock = normalized
+            .filter((item) => item.quantity === 0)
+            .map((item) => ({
+                productId: item.productId,
+                name: item.name
+            }));
+
+        return res.status(200).json({
+            success: true,
+            message: 'Get inventory alerts successfully',
+            lowStock,
+            outOfStock,
+            data: {
+                lowStock,
+                outOfStock
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: 'Error getting inventory alerts',
+            error: error.message
+        });
+    }
+};
+
+const getRestockSuggestions = async (req, res) => {
+    try {
+        const topLimit = Math.max(1, Math.min(Number(req.query.limit || 20), 100));
+        const lowStockThreshold = 3;
+
+        const topSoldRows = await SaleOrderItem.aggregate([
+            {
+                $lookup: {
+                    from: 'saleorders',
+                    localField: 'orderId',
+                    foreignField: '_id',
+                    as: 'order'
+                }
+            },
+            { $unwind: '$order' },
+            {
+                $match: {
+                    'order.status': { $in: SALE_REVENUE_STATUSES }
+                }
+            },
+            {
+                $group: {
+                    _id: '$productId',
+                    sold: { $sum: '$quantity' }
+                }
+            },
+            { $sort: { sold: -1 } },
+            { $limit: topLimit },
+            {
+                $lookup: {
+                    from: 'products',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'product'
+                }
+            },
+            { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+            {
+                $project: {
+                    _id: 0,
+                    productId: '$_id',
+                    sold: 1,
+                    name: '$product.name'
+                }
+            }
+        ]);
+
+        const productIds = topSoldRows.map((item) => item.productId).filter(Boolean);
+
+        const stockRows = productIds.length > 0
+            ? await ProductInstance.aggregate([
+                {
+                    $match: {
+                        productId: { $in: productIds },
+                        lifecycleStatus: { $nin: ['Sold', 'Lost'] }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$productId',
+                        currentStock: { $sum: 1 }
+                    }
+                }
+            ])
+            : [];
+
+        const stockMap = new Map(
+            stockRows.map((row) => [String(row._id), Number(row.currentStock || 0)])
+        );
+
+        const suggestions = topSoldRows
+            .map((row) => {
+                const sold = Number(row.sold || 0);
+                const currentStock = stockMap.get(String(row.productId)) ?? 0;
+                return {
+                    productId: row.productId,
+                    name: getProductDisplayName(row.name) || 'Sản phẩm không xác định',
+                    sold,
+                    currentStock,
+                    suggestedImport: Math.ceil(sold * 1.5)
+                };
+            })
+            .filter((item) => item.sold > 0 && item.currentStock <= lowStockThreshold);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Get restock suggestions successfully',
+            data: suggestions,
+            suggestions
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: 'Error getting restock suggestions',
+            error: error.message
+        });
+    }
+};
+
+const getOwnerDashboard = async (req, res) => {
+    try {
+        const range = buildDashboardDateRange(req, res);
+        if (!range) return;
+
+        const { start, end } = range;
+        const dateMatch = { createdAt: { $gte: start, $lte: end } };
+        const dayFormat = '%Y-%m-%d';
+
+        const saleRevenueMatch = buildSaleRevenueMatch(dateMatch);
+        const rentRevenueMatch = buildRentRevenueMatch(dateMatch);
+
+        const [saleRevenueRows, rentRevenueRows, saleOrders, rentOrders, newCustomers] = await Promise.all([
+            SaleOrder.aggregate([
+                { $match: saleRevenueMatch },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: dayFormat, date: '$createdAt' } },
+                        revenue: { $sum: '$totalAmount' }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]),
+            RentOrder.aggregate([
+                { $match: rentRevenueMatch },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: dayFormat, date: '$createdAt' } },
+                        revenue: { $sum: '$totalAmount' }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]),
+            SaleOrder.countDocuments({
+                ...dateMatch,
+                status: { $nin: ['Cancelled', 'Failed', 'Draft'] }
+            }),
+            RentOrder.countDocuments({
+                ...dateMatch,
+                status: { $ne: 'Cancelled' }
+            }),
+            User.countDocuments({
+                ...dateMatch,
+                role: 'customer'
+            })
+        ]);
+
+        const revenueMap = new Map();
+        saleRevenueRows.forEach((row) => {
+            revenueMap.set(row._id, {
+                date: row._id,
+                revenue: Number(row.revenue || 0)
+            });
+        });
+        rentRevenueRows.forEach((row) => {
+            if (!revenueMap.has(row._id)) {
+                revenueMap.set(row._id, {
+                    date: row._id,
+                    revenue: Number(row.revenue || 0)
+                });
+            } else {
+                const item = revenueMap.get(row._id);
+                item.revenue += Number(row.revenue || 0);
+            }
+        });
+
+        const revenueByDate = Array.from(revenueMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+        const revenue = revenueByDate.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
+        const orders = Number(saleOrders || 0) + Number(rentOrders || 0);
+        const conversionRate = newCustomers > 0
+            ? Number(((orders / newCustomers) * 100).toFixed(1))
+            : 0;
+
+        const payload = {
+            revenue,
+            orders,
+            newCustomers,
+            conversionRate,
+            saleOrders,
+            rentOrders,
+            revenueByDate,
+            from: start.toISOString().slice(0, 10),
+            to: end.toISOString().slice(0, 10)
+        };
+
+        return res.status(200).json({
+            success: true,
+            message: 'Get owner dashboard successfully',
+            ...payload,
+            data: payload
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: 'Error getting owner dashboard',
+            error: error.message
+        });
+    }
+};
+
 const getDashboardSummary = async (req, res) => {
     try {
         const [productCount, staffCount, customerCount] = await Promise.all([
@@ -490,5 +912,9 @@ module.exports = {
     getInventoryStats,
     getCustomerStats,
     getTopProducts,
+    getOwnerTopProducts,
+    getInventoryAlerts,
+    getRestockSuggestions,
+    getOwnerDashboard,
     getDashboardSummary
 };

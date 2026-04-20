@@ -11,11 +11,26 @@ const normalizeConditionLevel = (value) => {
   return CONDITION_LEVEL_ALIASES[raw] || raw;
 };
 
+const PRODUCT_INSTANCE_STATUSES = ['Available', 'Reserved', 'Rented', 'Sold', 'Lost'];
+const OPERATIONAL_INSTANCE_STATUSES = ['Washing', 'Repair'];
+const ALL_INSTANCE_STATUSES = [...PRODUCT_INSTANCE_STATUSES, ...OPERATIONAL_INSTANCE_STATUSES];
+
 const productInstanceSchema = new mongoose.Schema({
   productId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
     required: true
+  },
+  size: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  code: {
+    type: String,
+    trim: true,
+    sparse: true,
+    unique: true,
   },
   conditionLevel: {
     type: String,
@@ -32,8 +47,9 @@ const productInstanceSchema = new mongoose.Schema({
   },
   lifecycleStatus: {
     type: String,
-    enum: ['Available', 'Reserved', 'Rented', 'Washing', 'Repair', 'Lost', 'Sold'],
-    default: 'Available'
+    enum: ALL_INSTANCE_STATUSES,
+    default: 'Available',
+    alias: 'status'
   },
   soldOrderId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -53,7 +69,13 @@ const productInstanceSchema = new mongoose.Schema({
     default: ''
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-module.exports = mongoose.model('ProductInstance', productInstanceSchema);
+const ProductInstance = mongoose.model('ProductInstance', productInstanceSchema);
+
+module.exports = ProductInstance;
+module.exports.PRODUCT_INSTANCE_STATUSES = PRODUCT_INSTANCE_STATUSES;
+module.exports.ALL_INSTANCE_STATUSES = ALL_INSTANCE_STATUSES;

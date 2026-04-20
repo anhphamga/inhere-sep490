@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const RentOrder = require('../model/RentOrder.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const ProductInstance = require('../model/ProductInstance.model');
@@ -5,38 +6,48 @@ const Deposit = require('../model/Deposit.model');
 const Alert = require('../model/Alert.model');
 const { pendingDepositHoldMinutes, autoCancelIntervalMs } = require('../config/app.config');
 
-// Thời gian tối đa cho đơn PendingDeposit — đồng nhất với PENDING_DEPOSIT_HOLD_MINUTES
-// Mặc định 5 phút để dễ test; production nên đặt 30 hoặc cao hơn
 const AUTO_CANCEL_MINUTES = pendingDepositHoldMinutes;
-// Thời gian chạy cron (5 phút)
 const INTERVAL_MS = autoCancelIntervalMs;
 
 const cancelOrder = async (order) => {
+  const session = await mongoose.startSession();
   const orderId = order._id;
 
-  const items = await RentOrderItem.find({ orderId }).lean();
-  const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+  try {
+    session.startTransaction();
 
-  if (instanceIds.length > 0) {
-    await ProductInstance.updateMany(
-      { _id: { $in: instanceIds } },
-      { lifecycleStatus: 'Available' }
-    );
+    const items = await RentOrderItem.find({ orderId }).session(session).lean();
+    const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+
+    if (instanceIds.length > 0) {
+      await ProductInstance.updateMany(
+        { _id: { $in: instanceIds }, lifecycleStatus: 'Reserved' },
+        { lifecycleStatus: 'Available' },
+        { session }
+      );
+    }
+
+    await Deposit.updateMany({ orderId, status: 'Held' }, { status: 'Refunded' }, { session });
+
+    order.status = 'Cancelled';
+    await order.save({ session });
+
+    await Alert.create([{
+      type: 'Task',
+      targetType: 'RentOrder',
+      targetId: orderId,
+      status: 'New',
+      message: `Đơn ${orderId} bị hủy tự động do quá hạn đặt cọc`,
+      actionRequired: false
+    }], { session });
+
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    await session.endSession();
   }
-
-  await Deposit.updateMany({ orderId, status: 'Held' }, { status: 'Refunded' });
-
-  order.status = 'Cancelled';
-  await order.save();
-
-  await Alert.create({
-    type: 'Task',
-    targetType: 'RentOrder',
-    targetId: orderId,
-    status: 'New',
-    message: `Đơn ${orderId} bị hủy tự động do quá hạn đặt cọc`,
-    actionRequired: false
-  });
 };
 
 const runAutoCancel = async () => {

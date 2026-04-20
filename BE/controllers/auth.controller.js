@@ -84,6 +84,19 @@ const LOGIN_PORTAL = Object.freeze({
   CUSTOMER: 'customer',
   STAFF: 'staff'
 });
+const STAFF_INVITE_RESULT = Object.freeze({
+  ACCEPTED: 'accepted',
+  INVALID: 'invalid',
+  EXPIRED: 'expired',
+  ERROR: 'error'
+});
+
+const buildStaffInviteRedirectUrl = (result) => {
+  const allowedResult = Object.values(STAFF_INVITE_RESULT).includes(result)
+    ? result
+    : STAFF_INVITE_RESULT.ERROR;
+  return `${frontendUrl}/work/login?role=staff&invite=${encodeURIComponent(allowedResult)}`;
+};
 
 const normalizeLoginPortal = (portal) => {
   if (typeof portal !== 'string') {
@@ -258,7 +271,7 @@ const login = async (req, res) => {
     if (user.status === 'pending') {
       return res.status(403).json({
         success: false,
-        message: 'Tài khoản đang chờ owner duyệt'
+        message: 'Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email mời và bấm Accept.'
       });
     }
 
@@ -358,7 +371,7 @@ const googleLogin = async (req, res) => {
       if (user.status === 'pending') {
         return res.status(403).json({
           success: false,
-          message: 'Tài khoản đang chờ owner duyệt'
+          message: 'Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email mời và bấm Accept.'
         });
       }
 
@@ -618,6 +631,39 @@ const getCurrentUser = async (req, res) => {
   }
 };
 
+const acceptStaffInvite = async (req, res) => {
+  try {
+    const token = String(req.query?.token || '').trim();
+    if (!token) {
+      return res.redirect(buildStaffInviteRedirectUrl(STAFF_INVITE_RESULT.INVALID));
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const user = await User.findOne({
+      role: 'staff',
+      staffInviteToken: tokenHash
+    }).select('+staffInviteToken +staffInviteExpires');
+
+    if (!user) {
+      return res.redirect(buildStaffInviteRedirectUrl(STAFF_INVITE_RESULT.INVALID));
+    }
+
+    if (!user.staffInviteExpires || user.staffInviteExpires <= new Date()) {
+      return res.redirect(buildStaffInviteRedirectUrl(STAFF_INVITE_RESULT.EXPIRED));
+    }
+
+    user.status = 'active';
+    user.staffInviteToken = null;
+    user.staffInviteExpires = null;
+    user.staffInviteAcceptedAt = new Date();
+    await user.save();
+
+    return res.redirect(buildStaffInviteRedirectUrl(STAFF_INVITE_RESULT.ACCEPTED));
+  } catch (error) {
+    return res.redirect(buildStaffInviteRedirectUrl(STAFF_INVITE_RESULT.ERROR));
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -626,6 +672,7 @@ module.exports = {
   resetPassword,
   refresh,
   logout,
-  getCurrentUser
+  getCurrentUser,
+  acceptStaffInvite
 };
 

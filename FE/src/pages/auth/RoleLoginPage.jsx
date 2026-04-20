@@ -33,8 +33,16 @@ const normalizeLoginError = (apiError) => {
   if (normalized.includes('locked')) {
     return 'Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.';
   }
-  if (normalized.includes('cho owner duyet') || normalized.includes('chờ owner duyệt') || normalized.includes('pending')) {
-    return 'Tài khoản đang chờ owner duyệt.';
+  if (
+    normalized.includes('cho owner duyet')
+    || normalized.includes('chờ owner duyệt')
+    || normalized.includes('pending')
+    || normalized.includes('chua duoc kich hoat')
+    || normalized.includes('chưa được kích hoạt')
+    || normalized.includes('bam accept')
+    || normalized.includes('bấm accept')
+  ) {
+    return 'Tài khoản chưa kích hoạt. Vui lòng kiểm tra email mời và bấm Accept.';
   }
   return message || 'Đăng nhập thất bại.';
 };
@@ -64,6 +72,34 @@ export default function RoleLoginPage({ role }) {
     if (activeRole === 'staff' && from.startsWith('/staff')) return from;
     return meta.fallbackPath;
   }, [activeRole, location.state, meta.fallbackPath]);
+  const inviteStatus = String(searchParams.get('invite') || '').trim().toLowerCase();
+  const inviteMessage = useMemo(() => {
+    if (inviteStatus === 'accepted') {
+      return {
+        tone: 'success',
+        text: 'Xác nhận email thành công. Bạn có thể đăng nhập tài khoản Staff ngay bây giờ.'
+      };
+    }
+    if (inviteStatus === 'expired') {
+      return {
+        tone: 'error',
+        text: 'Link mời đã hết hạn. Vui lòng nhờ chủ shop gửi lại lời mời mới.'
+      };
+    }
+    if (inviteStatus === 'invalid') {
+      return {
+        tone: 'error',
+        text: 'Link mời không hợp lệ hoặc đã được sử dụng.'
+      };
+    }
+    if (inviteStatus === 'error') {
+      return {
+        tone: 'error',
+        text: 'Không thể xác nhận lời mời lúc này. Vui lòng thử lại sau.'
+      };
+    }
+    return null;
+  }, [inviteStatus]);
 
   const enforceRole = async (data) => {
     const userRole = normalizeRole(data?.user?.role);
@@ -200,6 +236,11 @@ export default function RoleLoginPage({ role }) {
 
             <h2 className="auth-title">{meta.title}</h2>
             <p className="auth-subtitle">Vui lòng đăng nhập bằng tài khoản được phân quyền.</p>
+            {activeRole === 'staff' && inviteMessage ? (
+              <div className={inviteMessage.tone === 'success' ? 'success-text' : 'error-text'}>
+                {inviteMessage.text}
+              </div>
+            ) : null}
 
             <form className="auth-form" onSubmit={handleSubmit}>
               <div className="auth-input-wrap">

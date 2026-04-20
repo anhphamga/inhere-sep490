@@ -85,8 +85,52 @@ const sendGuestVerificationEmail = async ({ to, code, expiresInMinutes }) => {
   });
 };
 
+const sendStaffInvitationEmail = async ({ to, name, inviterName, acceptLink, expiresInHours }) => {
+  const transporter = createTransporter();
+  const from = process.env.SMTP_FROM || `INHERE <${process.env.SMTP_USER}>`;
+  const displayName = name || 'ban';
+  const displayInviterName = inviterName || 'chu shop';
+
+  const subject = 'Thu moi tham gia tai khoan nhan su INHERE';
+  const text = [
+    `Xin chao ${displayName},`,
+    '',
+    `${displayInviterName} vua moi ban tham gia he thong nhan su INHERE.`,
+    `Bam link sau de chap nhan loi moi (het han sau ${expiresInHours} gio):`,
+    acceptLink,
+    '',
+    'Neu ban khong cho rang day la loi moi hop le, vui long bo qua email nay.'
+  ].join('\n');
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+      <h2>Thu moi tham gia nhan su INHERE</h2>
+      <p>Xin chao ${displayName},</p>
+      <p>${displayInviterName} vua moi ban tham gia he thong nhan su INHERE.</p>
+      <p>Vui long bam nut duoi day de chap nhan loi moi <strong>(het han sau ${expiresInHours} gio)</strong>.</p>
+      <p>
+        <a href="${acceptLink}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#1975d2;color:#ffffff;text-decoration:none;font-weight:700;">
+          Accept Invitation
+        </a>
+      </p>
+      <p>Hoac mo lien ket sau:</p>
+      <p><a href="${acceptLink}">${acceptLink}</a></p>
+      <p>Neu ban khong cho rang day la loi moi hop le, vui long bo qua email nay.</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+    html,
+  });
+};
+
 module.exports = {
   hasSmtpConfig,
   sendGuestVerificationEmail,
   sendResetPasswordEmail,
+  sendStaffInvitationEmail,
 };

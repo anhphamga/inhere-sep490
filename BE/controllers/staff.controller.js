@@ -3,8 +3,11 @@
  */
 
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const User = require('../model/User.model');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
+const { frontendUrl } = require('../config/app.config');
+const { hasSmtpConfig, sendStaffInvitationEmail } = require('../utils/mailer');
 const {
     ALL_PERMISSIONS,
     expandPermissionAliases,
@@ -14,6 +17,7 @@ const { clearCachedPermissions, resolveUserAccess } = require('../services/acces
 
 const MANAGED_ROLES = ['staff', 'owner'];
 const ALL_PERMISSION_SET = new Set(ALL_PERMISSIONS.map((permission) => normalizePermission(permission)));
+const STAFF_INVITE_EXPIRES_HOURS = Number(process.env.STAFF_INVITE_EXPIRES_HOURS || 48);
 
 const getPrimaryAdminEmail = () => String(process.env.OWNER_EMAIL || '').trim().toLowerCase();
 
@@ -205,6 +209,12 @@ const createStaff = async (req, res) => {
         }
 
         const passwordHash = await bcrypt.hash(password, 10);
+        const shouldSendInvite = normalizedRole === 'staff';
+        const inviteRawToken = shouldSendInvite ? crypto.randomBytes(32).toString('hex') : null;
+        const inviteTokenHash = inviteRawToken ? crypto.createHash('sha256').update(inviteRawToken).digest('hex') : null;
+        const inviteExpiresAt = inviteRawToken
+            ? new Date(Date.now() + STAFF_INVITE_EXPIRES_HOURS * 60 * 60 * 1000)
+            : null;
 
         const normalizedStatus = normalizedRole === 'staff'
             ? 'pending'
@@ -218,12 +228,59 @@ const createStaff = async (req, res) => {
             passwordHash,
             authProvider: 'local',
             status: normalizedStatus,
-            gender: normalizedGender || null
+            gender: normalizedGender || null,
+            staffInviteToken: inviteTokenHash,
+            staffInviteExpires: inviteExpiresAt,
+            staffInviteAcceptedAt: null
         });
+
+        if (!shouldSendInvite) {
+            return res.status(201).json({
+                success: true,
+                message: 'Tạo nhân sự thành công',
+                data: sanitizeStaff(staff)
+            });
+        }
+
+        const acceptLink = `${frontendUrl}/api/auth/staff-invite/accept?token=${encodeURIComponent(inviteRawToken)}`;
+
+        if (!hasSmtpConfig()) {
+            if (process.env.NODE_ENV === 'production') {
+                await User.findByIdAndDelete(staff._id);
+                return res.status(500).json({
+                    success: false,
+                    message: 'SMTP chưa được cấu hình trên server, không thể gửi thư mời.'
+                });
+            }
+
+            return res.status(201).json({
+                success: true,
+                message: 'Tạo nhân sự thành công. SMTP chưa cấu hình nên trả link mời để test ở môi trường dev.',
+                data: sanitizeStaff(staff),
+                inviteLink: acceptLink
+            });
+        }
+
+        try {
+            await sendStaffInvitationEmail({
+                to: normalizedEmail,
+                name: String(name).trim(),
+                inviterName: req.user?.name || 'Chủ shop',
+                acceptLink,
+                expiresInHours: STAFF_INVITE_EXPIRES_HOURS
+            });
+        } catch (mailError) {
+            await User.findByIdAndDelete(staff._id);
+            return res.status(500).json({
+                success: false,
+                message: 'Không gửi được email mời. Vui lòng kiểm tra cấu hình SMTP rồi thử lại.',
+                error: mailError.message
+            });
+        }
 
         return res.status(201).json({
             success: true,
-            message: 'Tạo nhân sự thành công',
+            message: 'Tạo nhân sự thành công. Email mời đã được gửi để nhân sự bấm Accept.',
             data: sanitizeStaff(staff)
         });
     } catch (error) {

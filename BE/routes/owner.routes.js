@@ -52,5 +52,9 @@ router.get('/analytics/inventory', requireAuth, requireOwner, analyticsControlle
 router.get('/analytics/customers', requireAuth, requireOwner, analyticsController.getCustomerStats);
 router.get('/analytics/top-products', requireAuth, requireOwner, analyticsController.getTopProducts);
 router.get('/analytics/summary', requireAuth, requireOwner, analyticsController.getDashboardSummary);
+router.get('/dashboard', requireAuth, requireOwner, analyticsController.getOwnerDashboard);
+router.get('/top-products', requireAuth, requireOwner, analyticsController.getOwnerTopProducts);
+router.get('/inventory-alerts', requireAuth, requireOwner, analyticsController.getInventoryAlerts);
+router.get('/restock-suggestions', requireAuth, requireOwner, analyticsController.getRestockSuggestions);
 
 module.exports = router;

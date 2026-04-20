@@ -22,9 +22,7 @@ export default function ProductActions({
 
   return (
     <>
-      {/* Desktop */}
       <div className="hidden space-y-3 md:block">
-        {/* Primary + Secondary CTA */}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -46,7 +44,6 @@ export default function ProductActions({
           </button>
         </div>
 
-        {/* Tertiary actions */}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -65,14 +62,12 @@ export default function ProductActions({
           </button>
         </div>
 
-        {/* Trust signals */}
         <div className="flex items-center gap-4 pt-1 text-xs text-slate-400">
           <span>✓ Miễn phí vận chuyển & đổi trả</span>
           <span>✓ Bao gồm giặt hấp</span>
         </div>
       </div>
 
-      {/* Mobile sticky bar */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
         <div className="mx-auto flex w-full max-w-lg items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -100,7 +95,6 @@ export default function ProductActions({
         </div>
       </div>
 
-      {/* Virtual Try-On Modal */}
       <VirtualTryOnModal
         isOpen={showTryOn}
         onClose={() => setShowTryOn(false)}

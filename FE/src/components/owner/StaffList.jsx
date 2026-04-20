@@ -4,7 +4,6 @@ import {
     createOwnerStaffApi,
     getOwnerStaffApi,
     getOwnerStaffDetailApi,
-    getOwnerStaffPermissionsApi,
     updateOwnerStaffRoleApi,
     updateOwnerStaffPermissionsApi,
     updateOwnerStaffStatusApi
@@ -30,7 +29,7 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
     const [detailLoading, setDetailLoading] = useState(false)
     const [selectedStaffDetail, setSelectedStaffDetail] = useState(null)
     const [showPermissionModal, setShowPermissionModal] = useState(false)
-    const [permissionLoading, setPermissionLoading] = useState(false)
+    const [permissionLoading] = useState(false)
     const [permissionSaving, setPermissionSaving] = useState(false)
     const [permissionError, setPermissionError] = useState('')
     const [permissionTarget, setPermissionTarget] = useState(null)
@@ -221,7 +220,7 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
             setSubmitting(true)
             setError('')
 
-            await createOwnerStaffApi({
+            const response = await createOwnerStaffApi({
                 name: formData.name.trim(),
                 email: formData.email.trim(),
                 phone: formData.phone.trim(),
@@ -234,9 +233,12 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
             resetCreateForm()
             setShowCreateForm(false)
             await loadStaff({ status: statusFilter, role: roleFilter })
+            const inviteLink = String(response?.inviteLink || '').trim()
             setToast({
                 type: 'success',
-                message: 'Tạo tài khoản nhân sự thành công'
+                message: inviteLink
+                    ? `Tạo tài khoản thành công. Link mời (dev): ${inviteLink}`
+                    : 'Tạo tài khoản thành công. Email mời đã được gửi cho nhân sự.'
             })
         } catch (apiError) {
             const message = apiError?.response?.data?.message || apiError?.message || 'Không tạo được staff mới'
@@ -301,41 +303,6 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
             })
         } finally {
             setUpdatingId('')
-        }
-    }
-
-    const handleOpenPermissionModal = async (member) => {
-        try {
-            setPermissionLoading(true)
-            setPermissionSaving(false)
-            setPermissionError('')
-            setPermissionKeyword('')
-            setPermissionTarget(member)
-            setShowPermissionModal(true)
-
-            const response = await getOwnerStaffPermissionsApi(member.id)
-            const permissionData = response?.data || {}
-            const allPermissions = Array.isArray(permissionData.allPermissions) ? permissionData.allPermissions : []
-            const directPermissions = new Set(Array.isArray(permissionData.directPermissions) ? permissionData.directPermissions : [])
-            const deniedPermissions = new Set(Array.isArray(permissionData.deniedPermissions) ? permissionData.deniedPermissions : [])
-
-            const nextModes = {}
-            allPermissions.forEach((permission) => {
-                if (deniedPermissions.has(permission)) {
-                    nextModes[permission] = 'deny'
-                } else if (directPermissions.has(permission)) {
-                    nextModes[permission] = 'allow'
-                } else {
-                    nextModes[permission] = 'default'
-                }
-            })
-
-            setPermissionCatalog(allPermissions)
-            setPermissionModes(nextModes)
-        } catch (apiError) {
-            setPermissionError(apiError?.response?.data?.message || apiError?.message || 'Không tải được danh sách quyền')
-        } finally {
-            setPermissionLoading(false)
         }
     }
 
@@ -512,6 +479,9 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
+                        <p className="mb-4 text-sm text-slate-500">
+                            Với vai trò Nhân viên, hệ thống sẽ gửi email mời và tài khoản chỉ kích hoạt sau khi bấm Accept trong mail.
+                        </p>
 
                         <form onSubmit={handleCreateStaff} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label className="text-sm text-slate-600">
@@ -584,11 +554,15 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
                                 <select
                                     value={formData.status}
                                     onChange={(event) => handleChangeFormField('status', event.target.value)}
+                                    disabled={formData.role === 'staff'}
                                     className="mt-1 w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1975d2]/50 outline-none"
                                 >
                                     <option value="active">Đang hoạt động</option>
                                     <option value="locked">Đang khóa</option>
                                 </select>
+                                {formData.role === 'staff' ? (
+                                    <span className="mt-1 block text-xs text-amber-600">Staff luôn bắt đầu ở trạng thái chờ xác nhận email</span>
+                                ) : null}
                             </label>
 
                             <label className="text-sm text-slate-600 md:col-span-2">

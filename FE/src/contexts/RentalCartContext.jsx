@@ -33,14 +33,18 @@ export const RentalCartProvider = ({ children }) => {
     if (Number(variant?.rentPrice || 0) <= 0) {
       return
     }
+    const hasSizes = Boolean(product?.hasSizes) || (Array.isArray(product?.sizes) && product.sizes.length > 0)
+    const normalizedSize = hasSizes ? (variant?.size || 'FREE SIZE') : ''
+
     const newItem = {
-      id: `${product._id}_${variant.color}_${variant.size}_${Date.now()}`,
+      id: `${product._id}_${variant.color || 'default'}_${normalizedSize || 'nosize'}_${Date.now()}`,
       productId: product._id,
       productInstanceId: variant.productInstanceId || null,
       name: product.name,
       image: product.images?.[0] || product.imageUrl || '',
-      color: variant.color,
-      size: variant.size,
+      color: variant.color || 'Default',
+      size: normalizedSize,
+      hasSizes,
       rentPrice: variant.rentPrice,
       baseSalePrice: product.baseSalePrice,
       rentStartDate: variant.rentStartDate || null,

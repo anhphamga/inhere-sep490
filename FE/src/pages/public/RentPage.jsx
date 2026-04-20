@@ -193,7 +193,11 @@ export default function RentPage() {
         : true;
       const bySize = filters.size
         ? normalizeText(
-            `${product?.size || ''} ${Array.isArray(product?.sizes) ? product.sizes.join(' ') : ''} ${
+            `${product?.size || ''} ${Array.isArray(product?.sizeOptions) ? product.sizeOptions.join(' ') : ''} ${
+              Array.isArray(product?.sizes)
+                ? product.sizes.map((row) => (typeof row === 'object' ? row?.size : row)).join(' ')
+                : ''
+            } ${
               Array.isArray(product?.colorVariants)
                 ? product.colorVariants.map((variant) => variant?.size || '').join(' ')
                 : ''

@@ -8,6 +8,10 @@ const {
   authorizePermission,
 } = require('../middleware/auth.middleware');
 
+// Import inventory routes
+const inventoryRoutes = require('./product.inventory.routes');
+router.use('/', inventoryRoutes);
+
 router.get(
   '/instances',
   authenticate,

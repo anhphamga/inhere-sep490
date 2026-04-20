@@ -10,6 +10,7 @@ router.post('/google-login', authController.googleLogin);
 router.post('/refresh', authController.refresh);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
+router.get('/staff-invite/accept', authController.acceptStaffInvite);
 router.post('/logout', authController.logout);
 router.get('/me', requireAuth, authController.getCurrentUser);
 

@@ -449,7 +449,7 @@ const runSaleCheckoutTransaction = async ({
   };
 
   if (shouldForceSaleCheckoutWithoutTransaction() || saleMongoTransactionsUnsupported) {
-    return runWithoutTransaction();
+    throw new Error('TRANSACTION_REQUIRED: sale checkout requires MongoDB transactions for inventory consistency');
   }
 
   const session = await mongoose.startSession();
@@ -494,7 +494,7 @@ const runSaleCheckoutTransaction = async ({
           );
         }
       }
-      return runWithoutTransaction();
+      throw new Error(`TRANSACTION_REQUIRED: ${error.message}`);
     }
 
     throw error;

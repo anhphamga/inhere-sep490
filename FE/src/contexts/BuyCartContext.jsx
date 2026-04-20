@@ -33,14 +33,18 @@ export const BuyCartProvider = ({ children }) => {
 
     const conditionLevel = variant.conditionLevel === 'Used' ? 'Used' : 'New'
 
+    const hasSizes = Boolean(product?.hasSizes) || (Array.isArray(product?.sizes) && product.sizes.length > 0)
+    const normalizedSize = hasSizes ? (variant.size || 'FREE SIZE') : ''
+
     const newItem = {
-      id: `${product._id}_${variant.color || 'default'}_${variant.size || 'default'}_${conditionLevel}`,
+      id: `${product._id}_${variant.color || 'default'}_${normalizedSize || 'nosize'}_${conditionLevel}`,
       productId: product._id,
       productInstanceId: variant.productInstanceId || null,
       name: product.name,
       image: product.images?.[0] || product.imageUrl || '',
       color: variant.color || 'Default',
-      size: variant.size || 'FREE SIZE',
+      size: normalizedSize,
+      hasSizes,
       salePrice: price,
       quantity,
       conditionLevel,

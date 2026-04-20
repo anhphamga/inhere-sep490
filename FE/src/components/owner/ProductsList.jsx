@@ -50,16 +50,55 @@ const toDisplayText = (value) => {
 }
 
 const getDisplaySizes = (product) => {
+    const fromStock = Array.isArray(product?.sizeStock)
+        ? product.sizeStock
+            .filter((row) => row && Number(row.quantity || 0) > 0)
+            .map((row) => toDisplayText(row.size))
+            .filter(Boolean)
+        : []
+
+    if (fromStock.length > 0) {
+        return [...new Set(fromStock)].join(', ')
+    }
+
     const fromSizes = toArray(product?.sizes)
-        .map((item) => toDisplayText(item))
+        .map((item) => toDisplayText(typeof item === 'object' ? item?.size : item))
         .filter(Boolean)
 
     if (fromSizes.length > 0) {
         return [...new Set(fromSizes)].join(', ')
     }
 
+    const fromOptions = toArray(product?.sizeOptions).map((item) => toDisplayText(item)).filter(Boolean)
+    if (fromOptions.length > 0) {
+        return [...new Set(fromOptions)].join(', ')
+    }
+
     const singleSize = toDisplayText(product?.size)
     return singleSize || 'Không có'
+}
+
+/** Tồn thực tế trong kho theo từng size (API owner: sizeStock), không tính đã bán */
+const renderOwnerSizeStock = (product) => {
+    const rows = Array.isArray(product?.sizeStock) ? product.sizeStock : []
+    if (rows.length > 0) {
+        return (
+            <div className="flex flex-col gap-0.5 text-sm text-slate-800">
+                {rows.map((row) => (
+                    <div key={`${row.size}-${row.quantity}`}>
+                        <span className="font-semibold text-slate-800">{row.size}</span>
+                        <span className="text-slate-500"> — </span>
+                        <span>{row.quantity}</span>
+                    </div>
+                ))}
+            </div>
+        )
+    }
+    const t = Number(product?.totalQuantity ?? 0)
+    if (t > 0) {
+        return <span className="text-sm text-slate-600">Tổng (ước tính): {t}</span>
+    }
+    return <span className="text-sm text-slate-400">—</span>
 }
 
 export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
@@ -128,7 +167,22 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
     }, [])
 
     const categoryOptions = useMemo(() => flattenCategoryNames(categoryTree), [categoryTree])
-    const sizeOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.size)).filter(Boolean))], [products])
+    const sizeOptions = useMemo(() => {
+        const set = new Set()
+        products.forEach((item) => {
+            toArray(item?.sizes).forEach((row) => {
+                const value = toDisplayText(typeof row === 'object' ? row?.size : row)
+                if (value) set.add(value)
+            })
+            toArray(item?.sizeOptions).forEach((size) => {
+                const value = toDisplayText(size)
+                if (value) set.add(value)
+            })
+            const fallback = toDisplayText(item.size)
+            if (fallback) set.add(fallback)
+        })
+        return Array.from(set)
+    }, [products])
     const colorOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.color)).filter(Boolean))], [products])
     const filteredProducts = useMemo(() => {
         const searchParams = new URLSearchParams(location.search)
@@ -431,7 +485,7 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Màu sắc</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá thuê</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá bán</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Số lượng</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Tồn trong kho (theo size)</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Thao tác</th>
                                 </tr>
@@ -441,7 +495,12 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
                                     const productId = product._id || product.id
                                     const totalQuantity = Number(product.totalQuantity || 0)
                                     const availableQuantity = Number(product.availableQuantity || 0)
-                                    const productStatus = availableQuantity > 0 ? 'Còn hàng' : 'Hết hàng'
+                                    const productStatus =
+                                        availableQuantity > 0
+                                            ? 'Còn bản trống'
+                                            : totalQuantity > 0
+                                              ? 'Đang phân bổ'
+                                              : 'Chưa có tồn'
                                     const productName = toDisplayText(product.name) || 'Không có'
                                     const productCategory = toDisplayText(product.category) || 'Không có'
                                     const productSize = getDisplaySizes(product)
@@ -478,9 +537,9 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
                                             <td className="px-6 py-4 text-sm">{productColor}</td>
                                             <td className="px-6 py-4 text-sm font-semibold">{currencyFormatter.format(Number(product.baseRentPrice || 0))}</td>
                                             <td className="px-6 py-4 text-sm font-semibold">{currencyFormatter.format(Number(product.baseSalePrice || 0))}</td>
-                                            <td className="px-6 py-4 text-sm">{totalQuantity}</td>
+                                            <td className="px-6 py-4 align-top">{renderOwnerSizeStock(product)}</td>
                                             <td className="px-6 py-4 text-sm">
-                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'Còn hàng' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'Còn bản trống' ? 'bg-green-100 text-green-700' : productStatus === 'Đang phân bổ' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                                                     {productStatus}
                                                 </span>
                                             </td>

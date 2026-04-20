@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Clock3, Sparkles, PackageCheck } from "lucide-react";
 
 const TABS = [
   { key: "description", label: "Mô tả" },
@@ -15,35 +14,33 @@ export default function ProductDescription({ description = "" }) {
 
   const displayText = useMemo(() => {
     if (!shouldCollapse || expanded) return safeText || "Chưa có mô tả.";
-    return safeText.slice(0, 280) + "\u2026";
+    return `${safeText.slice(0, 280)}...`;
   }, [expanded, safeText, shouldCollapse]);
 
   return (
     <section>
-      {/* Tab bar */}
       <div className="flex gap-6 border-b border-slate-200">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
-            className={`relative pb-3 text-sm font-semibold transition ${tab === t.key
+            className={`relative pb-3 text-sm font-semibold transition ${
+              tab === t.key
                 ? "text-slate-900 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-slate-900"
                 : "text-slate-400 hover:text-slate-600"
-              }`}
+            }`}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* Description tab */}
       {tab === "description" && (
         <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_320px]">
-          {/* Left: Description text */}
           <div>
             <h3 className="text-xl font-bold text-slate-900">Về sản phẩm</h3>
-            <p className={`mt-3 whitespace-pre-line text-[15px] leading-7 text-slate-600`}>
+            <p className="mt-3 whitespace-pre-line text-[15px] leading-7 text-slate-600">
               {displayText}
             </p>
             {shouldCollapse && (
@@ -57,7 +54,6 @@ export default function ProductDescription({ description = "" }) {
             )}
           </div>
 
-          {/* Right: How renting works */}
           <div>
             <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Cách thuê hoạt động</h4>
             <ol className="mt-4 space-y-4">
@@ -87,15 +83,13 @@ export default function ProductDescription({ description = "" }) {
         </div>
       )}
 
-      {/* Policy tab */}
       {tab === "policy" && (
         <div className="mt-6 max-w-2xl space-y-3 text-[15px] leading-7 text-slate-600">
           <p>Thời gian thuê mặc định là 4 ngày. Bạn sẽ nhận được đơn hàng trước ngày sự kiện 2 ngày và cần gửi trả vào ngày sau sự kiện.</p>
-          <p>Không cần giặt — dịch vụ giặt hấp chuyên nghiệp đã bao gồm trong giá thuê.</p>
+          <p>Không cần giặt, dịch vụ giặt hấp chuyên nghiệp đã bao gồm trong giá thuê.</p>
         </div>
       )}
 
-      {/* Size tab */}
       {tab === "size" && (
         <div className="mt-6 max-w-2xl space-y-3 text-[15px] leading-7 text-slate-600">
           <p>Vui lòng tham khảo bảng kích thước để chọn size phù hợp. Nếu bạn không chắc chắn, hãy đặt lịch thử đồ tại cửa hàng.</p>

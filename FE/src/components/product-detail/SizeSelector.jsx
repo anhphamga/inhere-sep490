@@ -37,10 +37,11 @@ export default function SizeSelector({
               type="button"
               onClick={() => !disabled && onSelect?.(size)}
               disabled={disabled}
-              className={`inline-flex h-10 min-w-[56px] items-center justify-center rounded-lg border px-4 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${active
+              className={`inline-flex h-10 min-w-[56px] items-center justify-center rounded-lg border px-4 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                active
                   ? "border-slate-900 bg-slate-900 text-white"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                } ${disabled ? "cursor-not-allowed opacity-30" : ""}`}
+              } ${disabled ? "cursor-not-allowed opacity-30" : ""}`}
               aria-pressed={active}
               aria-label={`Chọn size ${size}`}
             >

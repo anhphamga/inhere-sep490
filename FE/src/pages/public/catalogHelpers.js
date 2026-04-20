@@ -160,7 +160,9 @@ export const collectVariantOptions = (products = []) => {
   products.forEach((product) => {
     if (Array.isArray(product?.sizes)) {
       product.sizes.forEach((size) => {
-        const value = String(size || '').trim();
+        const value = typeof size === 'object'
+          ? String(size?.size || '').trim()
+          : String(size || '').trim();
         if (value) sizeSet.add(value);
       });
     }
@@ -175,8 +177,13 @@ export const collectVariantOptions = (products = []) => {
     }
 
     const fallbackColor = String(product?.color || '').trim();
+    const fallbackSizeOptions = Array.isArray(product?.sizeOptions) ? product.sizeOptions : [];
     const fallbackSize = String(product?.size || '').trim();
     if (fallbackColor) colorSet.add(fallbackColor);
+    fallbackSizeOptions.forEach((item) => {
+      const value = String(item || '').trim();
+      if (value) sizeSet.add(value);
+    });
     if (fallbackSize) sizeSet.add(fallbackSize);
   });
 

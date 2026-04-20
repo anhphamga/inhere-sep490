@@ -52,20 +52,6 @@ const I18N = {
   },
 };
 
-const SWATCH_CLASS_MAP = {
-  den: "bg-neutral-900",
-  do: "bg-red-600",
-  vang: "bg-yellow-400",
-  xanh: "bg-blue-600",
-  xanhduong: "bg-blue-700",
-  xanhla: "bg-green-600",
-  trang: "bg-white",
-  hong: "bg-pink-400",
-  tim: "bg-purple-600",
-  nau: "bg-amber-700",
-  xam: "bg-neutral-500",
-};
-
 const normalize = (value = "") =>
   String(value || "")
     .toLowerCase()
@@ -83,7 +69,7 @@ const uniq = (list = []) => Array.from(new Set(list.filter(Boolean)));
 
 const isFreeSizeValue = (value = "") => {
   const n = normalize(value);
-  return n === "freesize" || n === "free" || n === "onesize" || n === "motco";
+  return n === "freesize" || n === "free" || n === "onesize" || n === "one" || n === "motco";
 };
 
 const formatCurrency = (value, lang = "vi") => {
@@ -160,7 +146,12 @@ export default function ProductDetailPage() {
         const response = await fetch(`/api/products/${id}/available-instances`);
         const payload = response.ok ? await response.json() : { data: [] };
         if (!mounted) return;
-        setAvailableInstances(Array.isArray(payload?.data) ? payload.data : []);
+        const instances = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.data?.instances)
+            ? payload.data.instances
+            : [];
+        setAvailableInstances(instances);
       } catch {
         if (mounted) setAvailableInstances([]);
       }
@@ -178,29 +169,68 @@ export default function ProductDetailPage() {
     return [];
   }, [product]);
 
+  // CRITICAL: Derive sizes from availableInstances ONLY, never from product.sizes
   const sizes = useMemo(() => {
-    if (!product) return [];
-    if (Array.isArray(product.sizes) && product.sizes.length > 0) return uniq(product.sizes.map(String));
-    return uniq(parseList(product.size));
-  }, [product]);
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
+      return [];
+    }
+    const sizesSet = new Set();
+    availableInstances.forEach((instance) => {
+      const size = String(instance?.size || "").trim().toUpperCase();
+      if (size && !isFreeSizeValue(size)) {
+        sizesSet.add(size);
+      }
+    });
+    return Array.from(sizesSet).sort();
+  }, [availableInstances]);
 
+  // Check if product has FREE SIZE instances
   const isFreeSize = useMemo(() => {
-    if (sizes.length !== 1) return false;
-    return isFreeSizeValue(sizes[0]);
-  }, [sizes]);
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
+      return false;
+    }
+    const hasFreeSize = availableInstances.some((instance) => {
+      const size = String(instance?.size || "").trim().toUpperCase();
+      return isFreeSizeValue(size);
+    });
+    return hasFreeSize;
+  }, [availableInstances]);
 
+  const hasSizes = useMemo(() => {
+    return sizes.length > 0 || isFreeSize;
+  }, [isFreeSize, sizes.length]);
+
+  // Extract colors from both product data and available instances
   const colors = useMemo(() => {
-    if (!product) return [];
-    const fromVariants = Array.isArray(product.colorVariants)
-      ? product.colorVariants
-        .map((variant) => String(variant?.name || variant?.color || "").trim())
-        .filter(Boolean)
-      : [];
-    if (fromVariants.length > 0) return uniq(fromVariants);
-    const fromString = uniq(parseList(product.color));
-    if (fromString.length > 0) return fromString;
-    return ["Default"];
-  }, [product]);
+    const colorsSet = new Set();
+    
+    // First priority: colors from available instances
+    if (Array.isArray(availableInstances) && availableInstances.length > 0) {
+      availableInstances.forEach((instance) => {
+        const color = String(instance?.color || "").trim();
+        if (color) colorsSet.add(color);
+      });
+    }
+    
+    // Fallback: colors from product data
+    if (colorsSet.size === 0) {
+      const fromString = uniq(parseList(product?.color || ""));
+      fromString.forEach((color) => colorsSet.add(color));
+    }
+    
+    if (colorsSet.size === 0) {
+      const fromVariants = Array.isArray(product?.colorVariants)
+        ? product.colorVariants.map((variant) => String(variant?.name || variant?.color || "").trim()).filter(Boolean)
+        : [];
+      fromVariants.forEach((color) => colorsSet.add(color));
+    }
+    
+    if (colorsSet.size === 0) {
+      colorsSet.add("Default");
+    }
+    
+    return Array.from(colorsSet).sort();
+  }, [product, availableInstances]);
 
   const imagesByColor = useMemo(() => {
     const map = {};
@@ -226,19 +256,32 @@ export default function ProductDetailPage() {
     return map;
   }, [product, colors, baseImages]);
 
+  // Check if a specific size is available in the instances
+  const isSizeAvailable = useCallback((size) => {
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
+      return false;
+    }
+    const normalizedSize = String(size || "").trim().toUpperCase();
+    return availableInstances.some((instance) => {
+      const instanceSize = String(instance?.size || "").trim().toUpperCase();
+      return instanceSize === normalizedSize;
+    });
+  }, [availableInstances]);
+
   const hasVariantPricing = useMemo(() => {
     const pricing = product?.variantRentPrices;
     return Boolean(pricing && typeof pricing === "object" && Object.keys(pricing).length > 0);
   }, [product]);
 
   const isVariantAvailable = useCallback((size, color) => {
+    if (!hasSizes) return true;
     if (!hasVariantPricing) return true;
     if (isFreeSize) {
       return product?.variantRentPrices?.[`FREE SIZE__${color}`] != null || product?.variantRentPrices?.[`Free Size__${color}`] != null;
     }
     if (!size || !color) return false;
     return product?.variantRentPrices?.[`${size}__${color}`] != null;
-  }, [hasVariantPricing, isFreeSize, product?.variantRentPrices]);
+  }, [hasVariantPricing, hasSizes, isFreeSize, product?.variantRentPrices]);
 
   useEffect(() => {
     if (!colors.length) return;
@@ -247,23 +290,27 @@ export default function ProductDetailPage() {
       return;
     }
 
-    if (!isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) {
+    if (hasSizes && !isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) {
       const fallback = sizes.find((size) => isVariantAvailable(size, selectedColor));
       if (fallback) setSelectedSize(fallback);
     }
-  }, [colors, selectedColor, selectedSize, sizes, isFreeSize, isVariantAvailable]);
+  }, [colors, selectedColor, selectedSize, sizes, isFreeSize, isVariantAvailable, hasSizes]);
 
   useEffect(() => {
-    if (!sizes.length) return;
+    if (!hasSizes || !sizes.length) {
+      setSelectedSize("");
+      return;
+    }
     if (isFreeSize) {
       setSelectedSize("FREE SIZE");
       return;
     }
 
-    if (!selectedSize || !sizes.includes(selectedSize)) {
-      setSelectedSize(sizes[0]);
+    // Validate that selected size exists in available instances
+    if (!selectedSize || !isSizeAvailable(selectedSize)) {
+      setSelectedSize(sizes[0] || "");
     }
-  }, [sizes, selectedSize, isFreeSize]);
+  }, [sizes, isFreeSize, hasSizes, isSizeAvailable, selectedSize]);
 
   useEffect(() => {
     setSelectedImageIndex(0);
@@ -378,13 +425,16 @@ export default function ProductDetailPage() {
   const variantReady = useMemo(() => {
     if (!product) return false;
     if (!selectedColor) return false;
-    if (!isFreeSize && sizes.length > 0 && !selectedSize) return false;
-    if (!isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) return false;
+    if (hasSizes && !isFreeSize && sizes.length > 0 && !selectedSize) return false;
+    if (hasSizes && !isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) return false;
     return true;
-  }, [product, selectedColor, selectedSize, isFreeSize, sizes, isVariantAvailable]);
+  }, [product, selectedColor, selectedSize, isFreeSize, sizes, isVariantAvailable, hasSizes]);
 
-  /** Số instance còn có thể gán thuê (không tính Mất/Đã bán) — khớp API `rentableQuantity`. */
-  const rentableQuantity = useMemo(() => Number(product?.rentableQuantity ?? 0), [product?.rentableQuantity]);
+  // Check rentable quantity based on ACTUAL available instances
+  const rentableQuantity = useMemo(() => {
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) return 0;
+    return availableInstances.length;
+  }, [availableInstances]);
 
   const canSubmitRent = useMemo(() => {
     if (!variantReady) return false;
@@ -392,13 +442,14 @@ export default function ProductDetailPage() {
     return true;
   }, [variantReady, rentableQuantity]);
 
+  // Check if product is available for purchase based on ACTUAL instances
   const canBuy = useMemo(() => {
     if (!variantReady) return false;
     if (Number(currentSalePrice || 0) <= 0) return false;
-    if (Number(product?.availableQuantity || 0) <= 0) return false;
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) return false;
     if (conditionOptions.length > 0 && !selectedConditionOption) return false;
     return true;
-  }, [variantReady, currentSalePrice, product?.availableQuantity, conditionOptions.length, selectedConditionOption]);
+  }, [variantReady, currentSalePrice, availableInstances, conditionOptions.length, selectedConditionOption]);
 
   useEffect(() => {
     if (!product?._id) return;
@@ -546,9 +597,9 @@ export default function ProductDetailPage() {
       const endDateTime = rentEndDate && rentEndTime ? `${rentEndDate}T${rentEndTime}:00` : rentEndDate;
 
       // Thêm vào giỏ thuê – hệ thống tự assign instance (ưu tiên Used)
-      addItem(product, {
+        addItem(product, {
         color: selectedColor,
-        size: selectedSize,
+        size: hasSizes ? selectedSize : '',
         rentPrice: currentRentPrice,
         productInstanceId: null,
         rentStartDate: startDateTime,
@@ -566,7 +617,8 @@ export default function ProductDetailPage() {
   };
 
   const handleBuy = async () => {
-    if (Number(product?.availableQuantity || 0) <= 0) {
+    // Check if product is actually in stock based on availableInstances
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
       showToast("Sản phẩm đã hết hàng, không thể mua hoặc thuê");
       return;
     }
@@ -582,7 +634,7 @@ export default function ProductDetailPage() {
     try {
       addBuyItem(product, {
         color: selectedColor,
-        size: selectedSize,
+        size: hasSizes ? selectedSize : '',
         salePrice: currentSalePrice,
         productInstanceId: selectedConditionOption?.instanceId || null,
         conditionLevel: selectedConditionOption?.level || 'New',
@@ -620,21 +672,15 @@ export default function ProductDetailPage() {
     showToast(result.added ? t.toastFavoriteAdded : t.toastFavoriteRemoved);
   };
 
-  const getSwatchClass = (color) => {
-    const key = normalize(color);
-    const match = Object.keys(SWATCH_CLASS_MAP).find((item) => key.includes(item));
-    return match ? SWATCH_CLASS_MAP[match] : "bg-neutral-300";
-  };
-
   const badges = useMemo(() => {
-    const canShowStock =
-      Number(product?.availableQuantity || 0) > 0 || Number(product?.rentableQuantity ?? 0) > 0;
-    const list = [canShowStock ? "Có sẵn" : "Hết hàng"];
+    // Check stock based on ACTUAL available instances, not product.availableQuantity
+    const actuallyInStock = Array.isArray(availableInstances) && availableInstances.length > 0;
+    const list = [actuallyInStock ? "Có sẵn" : "Hết hàng"];
     if (isFreeSize) list.push("Free size");
     if (product?.isBestSeller) list.push("Best seller");
     if (product?.isNew) list.push("Mới");
     return list;
-  }, [product?.availableQuantity, product?.rentableQuantity, product?.isBestSeller, product?.isNew, isFreeSize]);
+  }, [availableInstances, product?.isBestSeller, product?.isNew, isFreeSize]);
 
   return (
     <div className="min-h-screen bg-white pb-24 md:pb-10">
@@ -676,18 +722,15 @@ export default function ProductDetailPage() {
                   salePriceText={formatCurrency(currentSalePrice, lang)}
                   variantContent={
                     <VariantSelector
-                      colors={colors}
                       sizes={sizes}
+                      hasSizes={hasSizes}
                       conditionOptions={conditionOptions}
                       selectedConditionKey={selectedConditionOption?.key || ""}
                       onConditionChange={setSelectedConditionKey}
                       selectedColor={selectedColor}
                       selectedSize={selectedSize}
-                      onColorChange={setSelectedColor}
                       onSizeChange={setSelectedSize}
-                      getSwatchClass={getSwatchClass}
-                      isColorDisabled={(color) => !isFreeSize && selectedSize ? !isVariantAvailable(selectedSize, color) : false}
-                      isSizeDisabled={(size) => selectedColor ? !isVariantAvailable(size, selectedColor) : false}
+                      isSizeDisabled={(size) => !isSizeAvailable(size) || (selectedColor ? !isVariantAvailable(size, selectedColor) : false)}
                       isFreeSize={isFreeSize}
                     />
                   }

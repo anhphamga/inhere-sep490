@@ -14,7 +14,6 @@ const bcrypt = require('bcryptjs');
 const { writeAuditLog } = require('../services/auditLog.service');
 const {
     computeExpectedDeposit,
-    handleNoShow,
     validateDeposit,
     validatePickup,
     validateReturn,
@@ -131,6 +130,76 @@ const MAX_RENTAL_DAYS = parseInt(process.env.MAX_RENTAL_DAYS || '30', 10);
 
 /** Chỉ chặn tuyệt đối: mất / đã bán. Các trạng thái Rented, Washing, Repair… vẫn có thể đặt thuê tương lai nếu không overlap RentOrderItem. */
 const INSTANCE_STATUSES_BLOCKING_RENT = ['Lost', 'Sold'];
+
+const uniqueInstanceIds = (ids = []) => (
+    Array.from(new Set(ids.filter(Boolean).map((id) => id.toString())))
+);
+
+const transitionProductInstances = async ({
+    instanceIds = [],
+    from,
+    to,
+    txOptions = {},
+    conflictMessage = 'Sản phẩm không còn khả dụng.',
+    allowAlreadyTo = false,
+}) => {
+    const ids = uniqueInstanceIds(instanceIds);
+    if (ids.length === 0) return { matched: 0, modified: 0 };
+
+    const result = await ProductInstance.updateMany(
+        {
+            _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            lifecycleStatus: from,
+        },
+        { lifecycleStatus: to },
+        txOptions
+    );
+
+    const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+    if (modified === ids.length) return { matched: Number(result.matchedCount ?? result.n ?? modified), modified };
+
+    if (allowAlreadyTo) {
+        const desiredCount = await ProductInstance.countDocuments({
+            _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            lifecycleStatus: to,
+        }).session(txOptions.session || null);
+        if (desiredCount === ids.length) {
+            return { matched: ids.length, modified };
+        }
+    }
+
+    throw new Error(conflictMessage);
+};
+
+const reserveAvailableInstances = (instanceIds, txOptions = {}) => transitionProductInstances({
+    instanceIds,
+    from: 'Available',
+    to: 'Reserved',
+    txOptions,
+    conflictMessage: 'Có sản phẩm không còn Available để giữ chỗ.',
+});
+
+const markReservedInstancesRented = (instanceIds, txOptions = {}) => transitionProductInstances({
+    instanceIds,
+    from: 'Reserved',
+    to: 'Rented',
+    txOptions,
+    conflictMessage: 'Có sản phẩm không còn ở trạng thái Reserved để xác nhận thuê.',
+    allowAlreadyTo: true,
+});
+
+const releaseReservedOrRentedInstances = async (instanceIds, txOptions = {}) => {
+    const ids = uniqueInstanceIds(instanceIds);
+    if (ids.length === 0) return;
+    await ProductInstance.updateMany(
+        {
+            _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            lifecycleStatus: { $in: ['Reserved', 'Rented'] },
+        },
+        { lifecycleStatus: 'Available' },
+        txOptions
+    );
+};
 
 /**
  * @param {*} instanceId
@@ -309,23 +378,14 @@ const snapshotOrderForAudit = (order) => ({
  * Nếu có, khởi tạo session + transaction.
  */
 const startTransactionIfAvailable = async () => {
-    let session = null;
-    let useTransaction = false;
+    const session = await mongoose.startSession();
     try {
-        const isMaster = await mongoose.connection.db.admin().command({ ismaster: 1 });
-        if (isMaster?.setName) {
-            session = await mongoose.startSession();
-            try {
-                session.startTransaction();
-                useTransaction = true;
-            } catch (err) {
-                console.warn('Transaction not supported in current deployment:', err.message);
-            }
-        }
+        session.startTransaction();
+        return { session, useTransaction: true };
     } catch (err) {
-        console.warn('Cannot check replica set status; proceeding without transaction:', err.message);
+        await session.endSession();
+        throw new Error(`MongoDB transaction is required for inventory consistency: ${err.message}`);
     }
-    return { session, useTransaction };
 };
 
 /**
@@ -467,7 +527,7 @@ const resolveRentInstances = async (items, defaultStart, defaultEnd, session, us
 
         const isInstanceRentable = async (inst) => {
             if (!inst) return false;
-            if (['Lost', 'Sold'].includes(inst.lifecycleStatus)) return false;
+            if (inst.lifecycleStatus !== 'Available') return false;
             return isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
         };
 
@@ -484,7 +544,7 @@ const resolveRentInstances = async (items, defaultStart, defaultEnd, session, us
         const candidatesQuery = ProductInstance.find({
                 productId: item.productId,
                 _id: { $nin: Array.from(lockedInstanceIds) },
-                lifecycleStatus: { $nin: ['Lost', 'Sold'] }
+                lifecycleStatus: 'Available'
             }).sort({ conditionScore: 1 });
             const candidates = useTransaction ? await candidatesQuery.session(session) : await candidatesQuery;
             for (const cand of candidates) {
@@ -507,33 +567,15 @@ const resolveRentInstances = async (items, defaultStart, defaultEnd, session, us
  * Đánh dấu Reserved cho các instance thuộc đơn nếu ngày thuê nằm trong ngưỡng HOURS_BEFORE_RESERVED.
  * Dùng chung cho payDeposit, staffCollectDeposit, confirmRentOrder.
  */
-const reserveInstancesIfDueSoon = async (orderId, rentStartDate, txOptions = {}) => {
-    const items = await RentOrderItem.find({ orderId }).lean();
-    const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
-    if (instanceIds.length === 0) return;
-
-    const now = new Date();
-    const orderStart = new Date(rentStartDate);
-    const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
-    const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
-
-    if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
-        await ProductInstance.updateMany(
-            { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-            { lifecycleStatus: 'Reserved' },
-            txOptions
-        );
-    }
-};
-
 const findRentOrderByIdempotencyKey = async (idempotencyKey) => {
     if (!idempotencyKey) return null;
     return RentOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
 };
 
 exports.createRentOrder = async (req, res) => {
-    const { session, useTransaction } = await startTransactionIfAvailable();
-    const txOptions = useTransaction ? { session } : {};
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     let idempotencyKey = null;
 
     try {
@@ -585,10 +627,12 @@ exports.createRentOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Giá thuê không hợp lệ, vui lòng thử lại.' });
         }
 
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         const resolvedItems = await resolveRentInstances(items, rentStartDate, rentEndDate, session, useTransaction);
 
-        // Không set Reserved khi PendingDeposit (chưa cọc): giữ chỗ qua RentOrderItem + availability.
-        // Reserved chỉ sau khi cọc (payDeposit / PayOS / reserveInstancesIfDueSoon).
+        // Reserved immediately when the rent order is created.
 
         // 3. Tính toán tiền nong (Giữ nguyên logic cực tốt của bạn)
         const computedTotalAmount = resolvedItems.reduce(
@@ -603,6 +647,11 @@ exports.createRentOrder = async (req, res) => {
         });
 
         if (voucherApplication.error) {
+            if (session) {
+                if (useTransaction) await session.abortTransaction();
+                await session.endSession();
+                session = null;
+            }
             return res.status(400).json(voucherApplication.error);
         }
 
@@ -654,6 +703,11 @@ exports.createRentOrder = async (req, res) => {
             useTransaction ? { session } : {}
         );
 
+        await reserveAvailableInstances(
+            resolvedItems.map((item) => item.instance._id),
+            txOptions
+        );
+
         if (voucherApplication.voucher?._id) {
             if (useTransaction) {
                 await Voucher.findByIdAndUpdate(
@@ -674,6 +728,7 @@ exports.createRentOrder = async (req, res) => {
                 await session.commitTransaction();
             }
             await session.endSession();
+            session = null;
         }
 
         // Đoạn này lấy detail ngoài session vì data đã được commit
@@ -802,6 +857,9 @@ exports.getRentOrderById = async (req, res) => {
 };
 
 exports.payDeposit = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const { method = 'Cash' } = req.body;
@@ -840,7 +898,12 @@ exports.payDeposit = async (req, res) => {
 
         // Re-check availability để chống double-booking (2 user đặt cùng lúc)
         // excludeOrderId = id → bỏ qua chính đơn này khi check tránh tự block
-        const orderItems = await RentOrderItem.find({ orderId: id }).lean();
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const orderItemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) orderItemsQuery.session(session);
+        const orderItems = await orderItemsQuery;
         for (const item of orderItems) {
             const available = await isInstanceAvailableForPeriod(
                 item.productInstanceId,
@@ -860,13 +923,15 @@ exports.payDeposit = async (req, res) => {
                         updatedAt: new Date(),
                     },
                 ];
-                await order.save();
+                await order.save(txOptions);
                 const conflictInstanceIds = orderItems.map((i) => i.productInstanceId).filter(Boolean);
                 if (conflictInstanceIds.length > 0) {
-                    await ProductInstance.updateMany(
-                        { _id: { $in: conflictInstanceIds }, lifecycleStatus: 'Reserved' },
-                        { lifecycleStatus: 'Available' }
-                    );
+                    await releaseReservedOrRentedInstances(conflictInstanceIds, txOptions);
+                }
+                if (session) {
+                    if (useTransaction) await session.commitTransaction();
+                    await session.endSession();
+                    session = null;
                 }
                 return res.status(409).json({
                     success: false,
@@ -875,15 +940,15 @@ exports.payDeposit = async (req, res) => {
             }
         }
 
-        const deposit = await Deposit.create({
+        const [deposit] = await Deposit.create([{
             orderId: id,
             amount: order.depositAmount,
             method,
             status: 'Held',
             paidAt: new Date()
-        });
+        }], txOptions);
 
-        const payment = await Payment.create({
+        const [payment] = await Payment.create([{
             orderType: ORDER_TYPE.RENT,
             orderId: id,
             amount: order.depositAmount,
@@ -892,13 +957,20 @@ exports.payDeposit = async (req, res) => {
             purpose: 'Deposit',
             transactionCode: `DEP_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             paidAt: new Date()
-        });
+        }], txOptions);
 
         const before = snapshotOrderForAudit(order);
         order.status = 'Deposited';
-        await order.save();
+        await order.save(txOptions);
 
-        await reserveInstancesIfDueSoon(id, order.rentStartDate);
+        const instanceIds = orderItems.map((i) => i.productInstanceId).filter(Boolean);
+        await markReservedInstancesRented(instanceIds, txOptions);
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
 
         await writeAuditLog({
             req,
@@ -926,6 +998,13 @@ exports.payDeposit = async (req, res) => {
             }
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Pay deposit error:', error);
         return res.status(500).json({
             success: false,
@@ -936,6 +1015,9 @@ exports.payDeposit = async (req, res) => {
 };
 
 exports.cancelRentOrder = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const userId = req.user?.id;
@@ -959,19 +1041,30 @@ exports.cancelRentOrder = async (req, res) => {
             });
         }
 
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         const before = snapshotOrderForAudit(order);
         order.status = 'Cancelled';
-        await order.save();
+        await order.save(txOptions);
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const itemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) itemsQuery.session(session);
+        const items = await itemsQuery;
         const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
         if (instanceIds.length > 0) {
-            await ProductInstance.updateMany({ _id: { $in: instanceIds } }, { lifecycleStatus: 'Available' });
+            await releaseReservedOrRentedInstances(instanceIds, txOptions);
         }
 
         // Hoàn cọc khi hủy ở bất kỳ trạng thái nào đã đặt cọc
         if (['Deposited', 'Confirmed', 'WaitingPickup'].includes(previousStatus)) {
-            await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Refunded' });
+            await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Refunded' }, txOptions);
+        }
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
         }
 
         await auditOrderChange(req, 'orders_rent.order.cancel', order._id, before, snapshotOrderForAudit(order));
@@ -982,6 +1075,13 @@ exports.cancelRentOrder = async (req, res) => {
             data: await fetchOrderDetail(id)
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Cancel rent order error:', error);
         return res.status(500).json({
             success: false,
@@ -1049,6 +1149,9 @@ exports.getAllRentOrders = async (req, res) => {
  * Dùng khi: walk-in PayOS bị hủy, staff chuyển sang thu tiền mặt thay thế.
  */
 exports.staffCollectDeposit = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const { method = 'Cash' } = req.body;
@@ -1065,15 +1168,22 @@ exports.staffCollectDeposit = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Đơn này đã có đặt cọc' });
         }
 
-        await Deposit.create({
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const orderItemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) orderItemsQuery.session(session);
+        const orderItems = await orderItemsQuery;
+
+        await Deposit.create([{
             orderId: id,
             amount: order.depositAmount,
             method,
             status: 'Held',
             paidAt: new Date()
-        });
+        }], txOptions);
 
-        await Payment.create({
+        await Payment.create([{
             orderType: ORDER_TYPE.RENT,
             orderId: id,
             amount: order.depositAmount,
@@ -1082,13 +1192,19 @@ exports.staffCollectDeposit = async (req, res) => {
             purpose: 'Deposit',
             transactionCode: `DEP_STAFF_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             paidAt: new Date()
-        });
+        }], txOptions);
 
         const before = snapshotOrderForAudit(order);
         order.status = 'Deposited';
-        await order.save();
+        await order.save(txOptions);
 
-        await reserveInstancesIfDueSoon(id, order.rentStartDate);
+        await markReservedInstancesRented(orderItems.map((i) => i.productInstanceId).filter(Boolean), txOptions);
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
 
         await auditOrderChange(req, 'orders_rent.deposit.staff_collect', order._id, before, snapshotOrderForAudit(order));
 
@@ -1099,12 +1215,22 @@ exports.staffCollectDeposit = async (req, res) => {
             data: detail
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Staff collect deposit error:', error);
         return res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
     }
 };
 
 exports.confirmRentOrder = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const staffId = req.user?.id;
@@ -1121,13 +1247,25 @@ exports.confirmRentOrder = async (req, res) => {
             });
         }
 
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         const before = snapshotOrderForAudit(order);
         order.staffId = staffId;
         order.status = 'Confirmed';
         order.confirmedAt = new Date();
-        await order.save();
+        await order.save(txOptions);
 
-        await reserveInstancesIfDueSoon(id, order.rentStartDate);
+        const itemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) itemsQuery.session(session);
+        const items = await itemsQuery;
+        await markReservedInstancesRented(items.map((i) => i.productInstanceId).filter(Boolean), txOptions);
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
 
         await auditOrderChange(req, 'orders_rent.order.confirm', order._id, before, snapshotOrderForAudit(order));
 
@@ -1137,6 +1275,13 @@ exports.confirmRentOrder = async (req, res) => {
             data: await fetchOrderDetail(id)
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Confirm rent order error:', error);
         return res.status(500).json({
             success: false,
@@ -1154,8 +1299,9 @@ const isOwnerOrStaff = (req, order) => {
 };
 
 exports.confirmPickup = async (req, res) => {
-    const { session, useTransaction } = await startTransactionIfAvailable();
-    const txOptions = useTransaction ? { session } : {};
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
 
     try {
         const { id } = req.params;
@@ -1218,6 +1364,9 @@ exports.confirmPickup = async (req, res) => {
         }
 
         // 1) Lưu thế chấp
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         await Collateral.create([
             {
                 orderId: id,
@@ -1241,15 +1390,11 @@ exports.confirmPickup = async (req, res) => {
         order.pickupAt = new Date();
         await order.save(txOptions);
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const items = await RentOrderItem.find({ orderId: id }).session(session).lean();
         const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
 
         if (instanceIds.length > 0) {
-            await ProductInstance.updateMany(
-                { _id: { $in: instanceIds } },
-                { lifecycleStatus: 'Rented' },
-                txOptions
-            );
+            await markReservedInstancesRented(instanceIds, txOptions);
 
             const historyDocs = instanceIds.map((instanceId) => ({
                 productInstanceId: instanceId,
@@ -1266,6 +1411,7 @@ exports.confirmPickup = async (req, res) => {
         if (session) {
             if (useTransaction) await session.commitTransaction();
             await session.endSession();
+            session = null;
         }
 
         return res.json({
@@ -1353,8 +1499,9 @@ exports.markWaitingReturn = async (req, res) => {
 };
 
 exports.confirmReturn = async (req, res) => {
-    const { session, useTransaction } = await startTransactionIfAvailable();
-    const txOptions = useTransaction ? { session } : {};
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
 
     try {
         const { id } = req.params;
@@ -1440,6 +1587,9 @@ exports.confirmReturn = async (req, res) => {
                 ? 'Dirty'
                 : 'Normal';
 
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         const returnRecord = (await ReturnRecord.create(
             [
                 {
@@ -1467,12 +1617,13 @@ exports.confirmReturn = async (req, res) => {
             if (!instanceId) continue;
 
             const targetLifecycle = item.condition === 'Damaged' ? 'Repair' : 'Washing';
-            const beforeInstance = await ProductInstance.findById(instanceId).lean();
+            const beforeInstance = await ProductInstance.findById(instanceId).session(session).lean();
             await ProductInstance.updateOne(
                 { _id: instanceId },
-                { lifecycleStatus: targetLifecycle }
+                { lifecycleStatus: targetLifecycle },
+                txOptions
             );
-            const afterInstance = await ProductInstance.findById(instanceId).lean();
+            const afterInstance = await ProductInstance.findById(instanceId).session(session).lean();
 
             await writeAuditLog({
                 req,
@@ -1495,7 +1646,7 @@ exports.confirmReturn = async (req, res) => {
             await InventoryHistory.findOneAndUpdate(
                 { productInstanceId: instanceId, status: 'Rented', endDate: null },
                 { endDate: new Date() },
-                {}
+                txOptions
             );
         }
 
@@ -1504,7 +1655,7 @@ exports.confirmReturn = async (req, res) => {
         const stillRentingCount = await ProductInstance.countDocuments({
             _id: { $in: allInstanceIds },
             lifecycleStatus: 'Rented'
-        });
+        }).session(session);
         const returnedCount = totalItems - stillRentingCount;
 
         order.lateDays = lateDays;
@@ -1538,6 +1689,7 @@ exports.confirmReturn = async (req, res) => {
         if (session) {
             if (useTransaction) await session.commitTransaction();
             await session.endSession();
+            session = null;
         }
 
         return res.json({
@@ -1641,6 +1793,10 @@ exports.completeRentOrder = async (req, res) => {
 };
 
 exports.markNoShow = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
+
     try {
         const { id } = req.params;
 
@@ -1657,25 +1813,40 @@ exports.markNoShow = async (req, res) => {
         }
 
         const before = snapshotOrderForAudit(order);
-        await handleNoShow(order);
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const heldDeposits = await Deposit.find({ orderId: order._id, status: 'Held' }).session(session);
+        order.status = 'NoShow';
+        order.noShowAt = new Date();
+        order.depositForfeited = true;
+        await order.save(txOptions);
+
+        await Promise.all(heldDeposits.map((deposit) => {
+            deposit.status = 'Forfeited';
+            return deposit.save(txOptions);
+        }));
+
+        const items = await RentOrderItem.find({ orderId: id }).session(session).lean();
         const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
         if (instanceIds.length > 0) {
-            await ProductInstance.updateMany(
-                { _id: { $in: instanceIds }, lifecycleStatus: { $in: ['Reserved', 'Available'] } },
-                { lifecycleStatus: 'Available' }
-            );
+            await releaseReservedOrRentedInstances(instanceIds, txOptions);
         }
 
-        await Alert.create({
+        await Alert.create([{
             type: 'NoShow',
             targetType: 'RentOrder',
             targetId: order._id,
             status: 'New',
             message: `Đơn ${order._id} đã đặt cọc nhưng khách không đến nhận đồ`,
             actionRequired: true
-        });
+        }], txOptions);
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
 
         await auditOrderChange(req, 'orders_rent.no_show.mark', order._id, before, snapshotOrderForAudit(order));
 
@@ -1685,6 +1856,10 @@ exports.markNoShow = async (req, res) => {
             data: await fetchOrderDetail(id)
         });
     } catch (error) {
+        if (session) {
+            if (useTransaction) await session.abortTransaction();
+            await session.endSession();
+        }
         console.error('Mark no-show error:', error);
         return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
     }
@@ -1774,8 +1949,9 @@ exports.searchCustomers = async (req, res) => {
  * Đơn được tạo ở trạng thái Deposited ngay (cọc thu trực tiếp bằng tiền mặt).
  */
 exports.createWalkInOrder = async (req, res) => {
-    const { session, useTransaction } = await startTransactionIfAvailable();
-    const txOptions = useTransaction ? { session } : {};
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
 
     try {
         const staffId = req.user?.id;
@@ -1802,6 +1978,9 @@ exports.createWalkInOrder = async (req, res) => {
         if (walkInRentalDays > MAX_RENTAL_DAYS) {
             return res.status(400).json({ success: false, message: `Thời gian thuê tối đa là ${MAX_RENTAL_DAYS} ngày` });
         }
+
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
 
         const resolvedItems = await resolveRentInstances(items, rentStartDate, rentEndDate, session, useTransaction);
 
@@ -1856,6 +2035,11 @@ exports.createWalkInOrder = async (req, res) => {
 
         // Với Cash: ghi nhận thu cọc ngay
         // Với PayOS: không tạo bản ghi thanh toán — sẽ do webhook PayOS tạo sau khi khách thanh toán
+        await reserveAvailableInstances(
+            resolvedItems.map((item) => item.instance._id),
+            txOptions
+        );
+
         if (!isPayOS) {
             await Deposit.create([{
                 orderId: rentOrder._id,
@@ -1877,14 +2061,18 @@ exports.createWalkInOrder = async (req, res) => {
             }], txOptions);
         }
 
-        // Chỉ reserve sau khi đã thu cọc (Cash → Deposited). PayOS PendingDeposit: chờ thanh toán, không Reserved.
+        // Inventory was already Reserved at order creation; cash walk-in immediately moves it to Rented.
         if (!isPayOS) {
-            await reserveInstancesIfDueSoon(rentOrder._id, rentStartDate, txOptions);
+            await markReservedInstancesRented(
+                resolvedItems.map((item) => item.instance._id),
+                txOptions
+            );
         }
 
         if (session) {
             if (useTransaction) await session.commitTransaction();
             await session.endSession();
+            session = null;
         }
 
         const detail = await fetchOrderDetail(rentOrder._id);

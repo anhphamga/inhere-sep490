@@ -11,6 +11,11 @@ const {
   normalizeLocalizedInput,
   hasLocalizedText,
 } = require('../utils/i18n');
+const {
+  createSizeInstances,
+  createSimpleInstances,
+} = require('../services/productInstance.service');
+const { reconcileInstancesToSizeRows } = require('../services/productInstance.sync.service');
 
 const CONDITION_LEVEL_ALIASES = {
   Good: 'New',
@@ -232,19 +237,54 @@ const resolveProductCategory = (product = {}, lang = 'vi') => {
   return resolveLocalizedField(product, 'category', lang);
 };
 
-const resolveProductSizes = (product = {}) => {
-  if (Array.isArray(product?.sizes) && product.sizes.length > 0) {
-    return normalizeSizes(product.sizes);
-  }
+const normalizeSizeRows = (values) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const result = [];
+
+  source.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const size = normalizeSizeToken(item.size);
+    if (!size) return;
+    const key = size.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({
+      size,
+      quantity: Math.max(toIntegerOrNaN(item.quantity), 0) || 0,
+    });
+  });
+
+  return result;
+};
+
+const resolveProductSizeRows = (product = {}, quantity = {}) => {
+  const currentRows = normalizeSizeRows(product?.sizes);
+  if (currentRows.length > 0) return currentRows;
 
   const sizesFromVariants = getLegacyVariantList(product)
     .map((variant) => normalizeSizeToken(variant?.size))
     .filter(Boolean);
-  if (sizesFromVariants.length > 0) {
-    return normalizeSizes(sizesFromVariants);
+  const legacySizes = normalizeSizes([
+    ...sizesFromVariants,
+    ...(Array.isArray(product?.sizes) ? product.sizes : []),
+    product?.size,
+  ]);
+  if (legacySizes.length > 0) {
+    const fallbackQty = Math.max(
+      toIntegerOrNaN(quantity?.totalQuantity),
+      toIntegerOrNaN(product?.quantity),
+      0
+    ) || 0;
+    const perSize = Math.floor(fallbackQty / legacySizes.length);
+    const remain = fallbackQty % legacySizes.length;
+    return legacySizes.map((size, index) => ({
+      size,
+      quantity: perSize + (index < remain ? 1 : 0),
+    }));
   }
 
-  return normalizeSizes([product?.size]);
+  return [];
 };
 
 const resolveProductColorVariants = (product = {}) => {
@@ -357,6 +397,19 @@ const normalizeVariantMatrix = (values) => {
   return result;
 };
 
+const resolveHasSizes = (product = {}, sizeRows = []) => {
+  if (typeof product?.hasSizes === 'boolean') return product.hasSizes;
+  return sizeRows.length > 0;
+};
+
+const resolveStandaloneQuantity = (product = {}, quantity = {}) => {
+  const fromPayload = toIntegerOrNaN(product?.quantity);
+  if (Number.isInteger(fromPayload) && fromPayload >= 0) return fromPayload;
+  const fromComputed = toIntegerOrNaN(quantity?.totalQuantity);
+  if (Number.isInteger(fromComputed) && fromComputed >= 0) return fromComputed;
+  return 0;
+};
+
 const applyCategoryFilter = (filter = {}, rawCategory = '') => {
   const category = normalizeText(rawCategory);
   if (!category) return filter;
@@ -378,13 +431,25 @@ const applyCategoryFilter = (filter = {}, rawCategory = '') => {
 };
 
 const normalizePayload = (body = {}) => {
-  const rawSizes = parseJsonLike(body.sizes, Array.isArray(body.sizes) ? body.sizes : [body.size]);
-  const sizes = normalizeSizes(rawSizes);
-
   const rawColorVariants = parseJsonLike(body.colorVariants, []);
   const colorVariants = normalizeColorVariants(rawColorVariants);
   const colorNames = colorVariants.map((item) => item.name);
   const primaryColor = normalizeText(body.color) || colorNames[0] || '';
+
+  const rawSizeRows = parseJsonLike(body.sizes, body.sizes);
+  let sizeRows = normalizeSizeRows(rawSizeRows);
+  if (sizeRows.length === 0) {
+    const fallbackSizes = normalizeSizes(parseJsonLike(body.sizes, Array.isArray(body.sizes) ? body.sizes : [body.size]));
+    sizeRows = fallbackSizes.map((size) => ({ size, quantity: 0 }));
+  }
+
+  const hasSizesRaw = body.hasSizes;
+  const hasSizesRawText = String(hasSizesRaw).toLowerCase();
+  const explicitHasSizes = hasSizesRaw === true || hasSizesRawText === 'true';
+  const explicitNoSizes = hasSizesRaw === false || hasSizesRawText === 'false';
+  const hasSizes = explicitNoSizes ? false : (explicitHasSizes || sizeRows.length > 0);
+
+  const standaloneQuantity = Math.max(toIntegerOrNaN(body.quantity), 0) || 0;
 
   const mergedImages = normalizeImages([
     ...normalizeImages(parseJsonLike(body.images, [])),
@@ -404,13 +469,14 @@ const normalizePayload = (body = {}) => {
       child: categoryChild,
       ancestors: categoryAncestors,
     },
-    size: normalizeText(body.size) || sizes[0] || '',
-    sizes,
+    hasSizes,
+    sizes: hasSizes ? sizeRows : [],
+    quantity: hasSizes ? 0 : standaloneQuantity,
     color: primaryColor,
-    colorVariants,
+    colorVariants, // deprecated input support
     pricingMode: normalizeText(body.pricingMode) === 'per_variant' ? 'per_variant' : 'common',
     commonRentPrice: Math.max(toNumber(body.commonRentPrice, toNumber(body.baseRentPrice, 0)), 0),
-    variantMatrix: normalizeVariantMatrix(parseJsonLike(body.variantMatrix, [])),
+    variantMatrix: normalizeVariantMatrix(parseJsonLike(body.variantMatrix, [])), // deprecated input support
     isDraft: Boolean(body.isDraft === true || String(body.isDraft).toLowerCase() === 'true'),
     description: normalizeLocalizedInput(body, 'description'),
     images: mergedImages,
@@ -439,13 +505,26 @@ const ensureOwnerProductRequired = (payload) => {
     return null;
   }
 
-  if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
-    return 'name, category, size, color are required';
+  if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
+    return 'name, category, color are required';
   }
 
-  const uniqueSizes = new Set((payload.sizes || []).map((item) => normalizeSizeToken(item)));
-  if (uniqueSizes.size !== (payload.sizes || []).length) {
-    return 'sizes must not contain duplicates';
+  if (payload.hasSizes) {
+    if (!Array.isArray(payload.sizes) || payload.sizes.length === 0) {
+      return 'sizes are required when hasSizes=true';
+    }
+    const uniqueSizes = new Set((payload.sizes || []).map((item) => normalizeSizeToken(item?.size)));
+    if (uniqueSizes.size !== (payload.sizes || []).length) {
+      return 'sizes must not contain duplicates';
+    }
+    const hasInvalidSizeQty = (payload.sizes || []).some((item) => !Number.isInteger(item?.quantity) || item.quantity < 0);
+    if (hasInvalidSizeQty) {
+      return 'sizes.quantity must be integer >= 0';
+    }
+  } else {
+    if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
+      return 'quantity must be integer >= 0 when hasSizes=false';
+    }
   }
 
   const colorNames = (payload.colorVariants || []).map((item) => normalizeColorName(item.name).toLowerCase()).filter(Boolean);
@@ -478,12 +557,18 @@ const toProductImageUrl = (product) => collectProductImages(product)[0] || '';
 const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
   const prices = resolveProductPrices(product);
   const category = resolveProductCategory(product, lang);
-  const sizes = resolveProductSizes(product);
-  const colorVariants = resolveProductColorVariants(product);
-  const variantMatrix = resolveVariantMatrix(product);
   const images = collectProductImages(product);
-  const primaryColor = normalizeColorName(product?.color) || colorVariants[0]?.name || '';
+  const sizeRows = resolveProductSizeRows(product, quantity);
+  const hasSizes = resolveHasSizes(product, sizeRows);
+  const sizeTokens = sizeRows.map((item) => item.size);
+  const colorVariants = resolveProductColorVariants(product);
+  const primaryColor = normalizeColorName(product?.color) || colorVariants[0]?.name || 'Default';
+  const deprecatedVariantMatrix = resolveVariantMatrix(product);
   const variantRentPrices = resolveVariantRentPrices(product);
+  const rawQuantity = resolveStandaloneQuantity(product, quantity);
+  const resolvedQuantity = hasSizes
+    ? sizeRows.reduce((sum, item) => sum + Math.max(Number(item?.quantity || 0), 0), 0)
+    : rawQuantity;
 
   return {
     id: product._id,
@@ -491,13 +576,16 @@ const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
     name: resolveLocalizedField(product, 'name', lang),
     category,
     categoryPath: product.categoryPath || toObject(product.category) || { parent: '', child: '', ancestors: [] },
-    size: normalizeText(product.size) || sizes[0] || '',
-    sizes,
+    size: sizeTokens[0] || '',
+    hasSizes,
+    sizes: hasSizes ? sizeRows : [],
+    sizeOptions: sizeTokens,
+    quantity: hasSizes ? 0 : resolvedQuantity,
     color: primaryColor,
-    colorVariants,
-    pricingMode: product.pricingMode || (variantMatrix.length > 0 ? 'per_variant' : 'common'),
+    colorVariants: colorVariants.length > 0 ? colorVariants : [{ name: primaryColor, images }], // deprecated
+    pricingMode: product.pricingMode || (deprecatedVariantMatrix.length > 0 ? 'per_variant' : 'common'),
     commonRentPrice: prices.commonRentPrice,
-    variantMatrix,
+    variantMatrix: deprecatedVariantMatrix, // deprecated
     variantRentPrices,
     isDraft: Boolean(product.isDraft),
     description: resolveLocalizedField(product, 'description', lang),
@@ -510,11 +598,15 @@ const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
     likeCount: product.likeCount || 0,
     averageRating: Math.max(Number(product.averageRating || 0), 0),
     reviewCount: Math.max(Number(product.reviewCount || 0), 0),
-    totalQuantity: quantity.totalQuantity || 0,
-    availableQuantity: quantity.availableQuantity || 0,
+    totalQuantity: Number.isFinite(Number(quantity.totalQuantity))
+      ? Math.max(Number(quantity.totalQuantity), resolvedQuantity)
+      : resolvedQuantity,
+    availableQuantity: Number.isFinite(Number(quantity.availableQuantity))
+      ? Math.max(Number(quantity.availableQuantity), resolvedQuantity)
+      : resolvedQuantity,
     rentableQuantity: Number.isFinite(Number(quantity.rentableQuantity))
-      ? Number(quantity.rentableQuantity)
-      : 0,
+      ? Math.max(Number(quantity.rentableQuantity), resolvedQuantity)
+      : resolvedQuantity,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
   };
@@ -555,13 +647,15 @@ const createInstances = async ({ productId, quantity, baseRentPrice, baseSalePri
   await ProductInstance.insertMany(docs);
 };
 
-const getQuantityMap = async (productIds = []) => {
+const getQuantityMap = async (productIds = [], options = {}) => {
   if (!Array.isArray(productIds) || productIds.length === 0) return new Map();
+  const excludeSold = Boolean(options.excludeSold);
 
   const rows = await ProductInstance.aggregate([
     {
       $match: {
         productId: { $in: productIds },
+        ...(excludeSold ? { lifecycleStatus: { $ne: 'Sold' } } : {}),
       },
     },
     {
@@ -594,6 +688,51 @@ const getQuantityMap = async (productIds = []) => {
   );
 };
 
+/** Tồn kho thực tế theo size (ProductInstance, không tính Sold) — dùng màn owner */
+const getOwnerSizeStockMap = async (productIds = []) => {
+  if (!Array.isArray(productIds) || productIds.length === 0) return new Map();
+
+  const rows = await ProductInstance.aggregate([
+    {
+      $match: {
+        productId: { $in: productIds },
+        lifecycleStatus: { $ne: 'Sold' },
+      },
+    },
+    {
+      $addFields: {
+        normSize: {
+          $let: {
+            vars: {
+              t: { $trim: { input: { $toString: { $ifNull: ['$size', ''] } } } },
+            },
+            in: {
+              $cond: [{ $eq: ['$$t', ''] }, 'ONE', { $toUpper: '$$t' }],
+            },
+          },
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { productId: '$productId', size: '$normSize' },
+        quantity: { $sum: 1 },
+      },
+    },
+    { $sort: { '_id.size': 1 } },
+  ]);
+
+  const map = new Map();
+  rows.forEach((row) => {
+    const pid = String(row._id.productId);
+    const size = row._id.size || 'ONE';
+    if (!map.has(pid)) map.set(pid, []);
+    map.get(pid).push({ size, quantity: row.quantity || 0 });
+  });
+
+  return map;
+};
+
 const getProducts = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
@@ -620,8 +759,8 @@ const getProducts = async (req, res) => {
             { 'category.vi': { $regex: regex } },
             { 'category.en': { $regex: regex } },
             { color: { $regex: regex } },
-            { size: { $regex: regex } },
-            { sizes: { $elemMatch: { $regex: regex } } },
+            { size: { $regex: regex } }, // deprecated
+            { 'sizes.size': { $regex: regex } },
             { 'colorVariants.name': { $regex: regex } },
           ],
         },
@@ -675,7 +814,9 @@ const listOwnerProducts = async (req, res) => {
     const lifecycleStatus = normalizeText(req.query.lifecycleStatus);
 
     if (category) Object.assign(filter, applyCategoryFilter({}, category));
-    if (size) filter.size = size;
+    if (size) {
+      filter.$or = [{ size }, { sizes: { $elemMatch: { size } } }, { 'sizes.size': size }];
+    }
     if (color) filter.color = color;
 
     if (lifecycleStatus) {
@@ -684,8 +825,22 @@ const listOwnerProducts = async (req, res) => {
     }
 
     const products = await Product.find(filter).sort({ createdAt: -1 }).lean();
-    const quantityMap = await getQuantityMap(products.map((item) => item._id));
-    const data = products.map((item) => sanitizeProduct(item, quantityMap.get(String(item._id)), lang));
+    const productIds = products.map((item) => item._id);
+    const quantityMap = await getQuantityMap(productIds, { excludeSold: true });
+    const sizeStockMap = await getOwnerSizeStockMap(productIds);
+    const data = products.map((item) => {
+      const id = String(item._id);
+      const quantity = quantityMap.get(id) || {
+        totalQuantity: 0,
+        availableQuantity: 0,
+        rentableQuantity: 0,
+      };
+      const base = sanitizeProduct(item, quantity, lang);
+      return {
+        ...base,
+        sizeStock: sizeStockMap.get(id) || [],
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -713,19 +868,31 @@ const getOwnerProductDetail = async (req, res) => {
       });
     }
 
+    // SINGLE SOURCE OF TRUTH: ProductInstance
     const instances = await ProductInstance.find({ productId: product._id }).sort({ createdAt: -1 }).lean();
-    const totalQuantity = instances.length;
-    const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
-    const rentableQuantity = countRentableInstances(instances);
+    
+    // Compute sizes from instances (NOT from product.sizes)
+    const { groupInstancesBySize, getInventoryTotals } = require('./product.inventory.helper');
+    const computedSizes = groupInstancesBySize(instances, { excludeStatuses: ['Sold'] });
+    const totals = getInventoryTotals(instances, { excludeStatuses: ['Sold'] });
+    const managedInstances = instances.filter((instance) => instance?.lifecycleStatus !== 'Sold');
 
     return res.status(200).json({
       success: true,
       data: {
-        product: sanitizeProduct(product, { totalQuantity, availableQuantity, rentableQuantity }, lang),
-        instances,
-        totalQuantity,
-        availableQuantity,
-        rentableQuantity,
+        product: sanitizeProduct(product, { 
+          totalQuantity: totals.total, 
+          availableQuantity: totals.available, 
+          rentableQuantity: totals.rentable 
+        }, lang),
+        // COMPUTED FROM INSTANCES - Don't use product.sizes.quantity anymore
+        sizes: computedSizes,
+        instances: managedInstances,
+        // All totals derived from instances
+        totalQuantity: totals.total,
+        availableQuantity: totals.available,
+        rentableQuantity: totals.rentable,
+        inventory: totals, // Full breakdown
       },
     });
   } catch (error) {
@@ -955,10 +1122,10 @@ const getSimilarProducts = async (req, res) => {
 const createProduct = async (req, res) => {
   try {
     const payload = normalizePayload(req.body);
-    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
+    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
       return res.status(400).json({
         success: false,
-        message: 'name, category, size, color are required',
+        message: 'name, category, color are required',
       });
     }
 
@@ -980,21 +1147,12 @@ const createOwnerProduct = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
     const payload = normalizePayload(req.body);
-    const quantityRaw = req.body?.quantity;
-    const quantity = toIntegerOrNaN(quantityRaw);
 
     const validationError = ensureOwnerProductRequired(payload);
     if (validationError) {
       return res.status(400).json({
         success: false,
         message: validationError,
-      });
-    }
-
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'quantity must be a positive integer',
       });
     }
 
@@ -1011,20 +1169,39 @@ const createOwnerProduct = async (req, res) => {
     }
 
     const created = await Product.create(payload);
-    await createInstances({
-      productId: created._id,
-      quantity,
-      baseRentPrice: created.baseRentPrice,
-      baseSalePrice: created.baseSalePrice,
-    });
+    const pid = created._id;
+
+    try {
+      if (!payload.isDraft) {
+        if (payload.hasSizes && Array.isArray(payload.sizes) && payload.sizes.length > 0) {
+          await createSizeInstances({
+            productId: pid,
+            sizes: payload.sizes,
+            baseRentPrice: payload.baseRentPrice,
+            baseSalePrice: payload.baseSalePrice,
+          });
+        } else if (!payload.hasSizes && payload.quantity > 0) {
+          await createSimpleInstances({
+            productId: pid,
+            quantity: payload.quantity,
+            baseRentPrice: payload.baseRentPrice,
+            baseSalePrice: payload.baseSalePrice,
+          });
+        }
+      }
+    } catch (syncErr) {
+      const syncError = syncErr?.message || String(syncErr);
+      await Product.findByIdAndDelete(pid);
+      return res.status(500).json({
+        success: false,
+        message: 'Error creating product inventory',
+        error: syncError,
+      });
+    }
 
     return res.status(201).json({
       success: true,
-      data: sanitizeProduct(created.toObject(), {
-        totalQuantity: quantity,
-        availableQuantity: quantity,
-        rentableQuantity: quantity,
-      }, lang),
+      data: sanitizeProduct(created.toObject(), {}, lang),
     });
   } catch (error) {
     return res.status(500).json({
@@ -1038,10 +1215,10 @@ const createOwnerProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const payload = normalizePayload(req.body);
-    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
+    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
       return res.status(400).json({
         success: false,
-        message: 'name, category, size, color are required',
+        message: 'name, category, color are required',
       });
     }
 
@@ -1072,22 +1249,12 @@ const updateOwnerProduct = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
     const payload = normalizePayload(req.body);
-    const quantityRaw = req.body?.quantity;
-    const shouldAddQuantity = quantityRaw !== undefined && quantityRaw !== null && quantityRaw !== '';
-    const addQuantity = shouldAddQuantity ? toIntegerOrNaN(quantityRaw) : 0;
 
     const validationError = ensureOwnerProductRequired(payload);
     if (validationError) {
       return res.status(400).json({
         success: false,
         message: validationError,
-      });
-    }
-
-    if (shouldAddQuantity && (!Number.isInteger(addQuantity) || addQuantity < 0)) {
-      return res.status(400).json({
-        success: false,
-        message: 'quantity must be an integer >= 0',
       });
     }
 
@@ -1119,27 +1286,36 @@ const updateOwnerProduct = async (req, res) => {
       runValidators: true,
     });
 
-    if (addQuantity > 0) {
-      await createInstances({
-        productId: updated._id,
-        quantity: addQuantity,
-        baseRentPrice: updated.baseRentPrice,
-        baseSalePrice: updated.baseSalePrice,
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
       });
     }
 
-    const instances = await ProductInstance.find({ productId: updated._id }).lean();
-    const totalQuantity = instances.length;
-    const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
-    const rentableQuantity = countRentableInstances(instances);
+    try {
+      if (!nextPayload.isDraft && payload.hasSizes && Array.isArray(payload.sizes) && payload.sizes.length > 0) {
+        await reconcileInstancesToSizeRows(updated._id, existing.sizes, nextPayload.sizes);
+      }
+    } catch (syncErr) {
+      const syncError = syncErr?.message || String(syncErr);
+      return res.status(500).json({
+        success: false,
+        message: 'Error updating product inventory',
+        error: syncError,
+      });
+    }
+
+    const quantityMap = await getQuantityMap([updated._id], { excludeSold: true });
+    const quantityFromInstances = quantityMap.get(String(updated._id)) || {};
 
     return res.status(200).json({
       success: true,
       data: {
-        product: sanitizeProduct(updated.toObject(), { totalQuantity, availableQuantity, rentableQuantity }, lang),
-        totalQuantity,
-        availableQuantity,
-        rentableQuantity,
+        product: sanitizeProduct(updated.toObject(), quantityFromInstances, lang),
+        totalQuantity: quantityFromInstances.totalQuantity || updated.quantity || 0,
+        availableQuantity: quantityFromInstances.availableQuantity || updated.quantity || 0,
+        rentableQuantity: quantityFromInstances.rentableQuantity || updated.quantity || 0,
       },
     });
   } catch (error) {
@@ -1381,7 +1557,7 @@ const importOwnerProducts = async (req, res) => {
     }
 
     const headerIndex = new Map(headers.map((item, index) => [item, index]));
-    const requiredHeaders = ['name', 'category', 'size', 'color'];
+    const requiredHeaders = ['name', 'category', 'color'];
     const missingHeaders = requiredHeaders.filter((key) => !headerIndex.has(key));
     if (missingHeaders.length > 0) {
       return res.status(400).json({
@@ -1416,11 +1592,21 @@ const importOwnerProducts = async (req, res) => {
         continue;
       }
 
+      const parsedQuantity = Math.max(
+        toIntegerOrNaN(parseImportNumber(getCell(row, 'quantity'), Number.NaN)),
+        0
+      );
+      const hasSizeCell = Boolean(String(size || '').trim());
+      const hasSizes = hasSizeCell;
+
       const payload = normalizePayload({
         name,
         category,
+        hasSizes,
         size,
+        sizes: hasSizes ? [{ size, quantity: Number.isNaN(parsedQuantity) ? 0 : parsedQuantity }] : [],
         color,
+        quantity: !hasSizes && !Number.isNaN(parsedQuantity) ? parsedQuantity : 0,
         baseRentPrice: parseImportNumber(getCell(row, 'baserentprice'), 0),
         baseSalePrice: parseImportNumber(getCell(row, 'basesaleprice'), 0),
         depositAmount: parseImportNumber(getCell(row, 'depositamount'), 0),
@@ -1443,7 +1629,6 @@ const importOwnerProducts = async (req, res) => {
         product = await Product.findOne({
           name: payload.name,
           category: payload.category,
-          size: payload.size,
           color: payload.color,
         });
       }
@@ -1461,30 +1646,16 @@ const importOwnerProducts = async (req, res) => {
       if (totalQuantityText !== '') {
         const targetQuantity = Math.max(toIntegerOrNaN(parseImportNumber(totalQuantityText, Number.NaN)), 0);
         if (!Number.isNaN(targetQuantity)) {
-          const currentTotal = await ProductInstance.countDocuments({ productId: product._id });
-          if (targetQuantity > currentTotal) {
-            await createInstances({
-              productId: product._id,
-              quantity: targetQuantity - currentTotal,
-              baseRentPrice: product.baseRentPrice,
-              baseSalePrice: product.baseSalePrice,
-            });
-          } else if (targetQuantity < currentTotal) {
-            const removeNeeded = currentTotal - targetQuantity;
-            const removableInstances = await ProductInstance.find({
-              productId: product._id,
-              lifecycleStatus: 'Available',
-            })
-              .sort({ createdAt: -1 })
-              .limit(removeNeeded)
-              .select('_id')
-              .lean();
-
-            const removableIds = removableInstances.map((item) => item._id);
-            if (removableIds.length > 0) {
-              await ProductInstance.deleteMany({ _id: { $in: removableIds } });
-            }
+          if (product.hasSizes && Array.isArray(product.sizes) && product.sizes.length > 0) {
+            const firstSize = product.sizes[0];
+            firstSize.quantity = targetQuantity;
+            product.sizes = [firstSize];
+          } else {
+            product.quantity = targetQuantity;
+            product.sizes = [];
+            product.hasSizes = false;
           }
+          await product.save();
         }
       }
     }
@@ -1519,11 +1690,15 @@ const exportOwnerProducts = async (req, res) => {
     const color = normalizeText(req.query.color);
 
     if (category) Object.assign(filter, applyCategoryFilter({}, category));
-    if (size) filter.size = size;
+    if (size) {
+      filter.$or = [{ size }, { sizes: { $elemMatch: { size } } }, { 'sizes.size': size }];
+    }
     if (color) filter.color = color;
 
     const products = await Product.find(filter).sort({ createdAt: -1 }).lean();
-    const quantityMap = includeInstances ? await getQuantityMap(products.map((item) => item._id)) : new Map();
+    const quantityMap = includeInstances
+      ? await getQuantityMap(products.map((item) => item._id), { excludeSold: true })
+      : new Map();
 
     const header = [
       'id',
@@ -1541,17 +1716,22 @@ const exportOwnerProducts = async (req, res) => {
 
     const rows = products.map((product) => {
       const quantity = quantityMap.get(String(product._id)) || {};
+      const normalizedRows = normalizeSizeRows(product?.sizes);
+      const rowSize = normalizedRows[0]?.size || normalizeText(product.size) || '';
+      const rowQuantity = normalizedRows.length > 0
+        ? normalizedRows.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+        : Math.max(toIntegerOrNaN(product.quantity), 0) || 0;
       return [
         String(product._id),
         resolveLocalizedField(product, 'name', lang),
         resolveLocalizedField(product, 'category', lang),
-        product.size || '',
+        rowSize,
         product.color || '',
         product.baseRentPrice || 0,
         product.baseSalePrice || 0,
         product.depositAmount || 0,
         product.buyoutValue || 0,
-        includeInstances ? quantity.totalQuantity || 0 : '',
+        includeInstances ? quantity.totalQuantity || rowQuantity : rowQuantity,
         includeInstances ? quantity.availableQuantity || 0 : '',
       ];
     });
@@ -1895,6 +2075,7 @@ const deleteProductInstance = async (req, res) => {
 };
 
 // Lấy danh sách instance còn available (dùng cho customer thuê)
+// CRITICAL: Sizes/Colors/Conditions MUST be derived from ProductInstance ONLY
 const getAvailableInstances = async (req, res) => {
   try {
     const { productId } = req.params;
@@ -1920,9 +2101,35 @@ const getAvailableInstances = async (req, res) => {
       .populate('productId', 'name images')
       .sort({ conditionScore: -1 });
 
+    // EXTRACT SIZES, COLORS, CONDITIONS FROM INSTANCES ONLY
+    const sizesSet = new Set();
+    const colorsSet = new Set();
+    const conditionsSet = new Set();
+
+    instances.forEach((instance) => {
+      const size = String(instance?.size || '').trim().toUpperCase();
+      const color = String(instance?.color || '').trim();
+      const conditionLevel = String(instance?.conditionLevel || '').trim();
+
+      if (size) sizesSet.add(size);
+      if (color) colorsSet.add(color);
+      if (conditionLevel) conditionsSet.add(conditionLevel);
+    });
+
+    // Sort for consistency
+    const sizes = Array.from(sizesSet).sort();
+    const colors = Array.from(colorsSet).sort();
+    const conditions = Array.from(conditionsSet).sort();
+
     res.json({
       success: true,
-      data: instances
+      data: {
+        instances,
+        sizes,
+        colors,
+        conditions,
+        totalAvailable: instances.length
+      }
     });
   } catch (error) {
     console.error('Get available instances error:', error);

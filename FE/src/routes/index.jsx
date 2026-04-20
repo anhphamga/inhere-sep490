@@ -31,7 +31,8 @@ import OwnerShiftsScreen from '../pages/owner/OwnerShiftsScreen'
 import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen'
 import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen'
 import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen'
-import OwnerInventoryScreen from '../pages/owner/OwnerInventoryScreen'
+import InventoryDashboardPage from '../pages/owner/InventoryDashboardPage'
+import InventoryProductDetailPage from '../pages/owner/InventoryProductDetailPage'
 import OwnerReviewsScreen from '../pages/owner/OwnerReviewsScreen'
 import OwnerBlogsScreen from '../pages/owner/OwnerBlogsScreen'
 // Rental pages
@@ -87,7 +88,9 @@ const AppRoutes = () => {
                     <Route path="products" element={<OwnerProductsScreen />} />
                     <Route path="categories" element={<OwnerCategoriesScreen />} />
                     <Route path="products/:productId" element={<OwnerProductDetailScreen />} />
-                    <Route path="inventory" element={<OwnerInventoryScreen />} />
+                    <Route path="inventory" element={<InventoryDashboardPage />} />
+                    <Route path="inventory/:productId" element={<InventoryProductDetailPage />} />
+                    <Route path="inventory-dashboard" element={<Navigate to="/owner/inventory" replace />} />
                     <Route path="staff" element={<OwnerStaffScreen />} />
                     <Route path="shifts" element={<OwnerShiftsScreen />} />
                     <Route path="staff-calendar" element={<OwnerShiftsScreen />} />

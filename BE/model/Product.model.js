@@ -39,24 +39,20 @@ const productSchema = new mongoose.Schema({
       default: []
     }
   },
-  size: {
-    type: String,
-    required: true
+  hasSizes: {
+    type: Boolean,
+    default: false
   },
   sizes: {
-    type: [String],
+    type: [{
+      size: { type: String, required: true },
+      quantity: { type: Number, default: 0, min: 0 }
+    }],
     default: []
   },
   color: {
     type: String,
     required: true
-  },
-  colorVariants: {
-    type: [{
-      name: { type: String, required: true },
-      images: { type: [String], default: [] }
-    }],
-    default: []
   },
   pricingMode: {
     type: String,
@@ -68,14 +64,18 @@ const productSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  quantity: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  // Deprecated placeholders for backward compatibility on older documents.
+  colorVariants: {
+    type: mongoose.Schema.Types.Mixed,
+    default: undefined
+  },
   variantMatrix: {
-    type: [{
-      size: { type: String, required: true },
-      color: { type: String, required: true },
-      rentPrice: { type: Number, default: 0, min: 0 },
-      salePrice: { type: Number, default: 0, min: 0 },
-      quantity: { type: Number, default: 0, min: 0 }
-    }],
+    type: mongoose.Schema.Types.Mixed,
     default: []
   },
   isDraft: {

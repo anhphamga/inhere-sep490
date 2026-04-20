@@ -18,6 +18,11 @@ export const getOwnerDashboardSummaryApi = async () => {
     return response.data
 }
 
+export const getOwnerDashboardApi = async (params = {}) => {
+    const response = await axiosClient.get('/owner/dashboard', { params })
+    return response.data
+}
+
 export const getOwnerRevenueAnalyticsApi = async (params = {}) => {
     const response = await axiosClient.get('/owner/analytics/revenue', { params })
     return response.data
@@ -35,6 +40,21 @@ export const getOwnerCustomerStatsApi = async (params = {}) => {
 
 export const getOwnerTopProductsApi = async (params = {}) => {
     const response = await axiosClient.get('/owner/analytics/top-products', { params })
+    return response.data
+}
+
+export const getOwnerTopProductsSummaryApi = async () => {
+    const response = await axiosClient.get('/owner/top-products')
+    return response.data
+}
+
+export const getOwnerInventoryAlertsApi = async () => {
+    const response = await axiosClient.get('/owner/inventory-alerts')
+    return response.data
+}
+
+export const getOwnerRestockSuggestionsApi = async (params = {}) => {
+    const response = await axiosClient.get('/owner/restock-suggestions', { params })
     return response.data
 }
 
@@ -73,6 +93,11 @@ export const getOwnerProductDetailApi = async (productId) => {
     return response.data
 }
 
+export const getProductInstancesApi = async (productId, params = {}) => {
+    const response = await axiosClient.get(`/products/${productId}/instances`, { params })
+    return response.data
+}
+
 export const createOwnerProductApi = async (payload) => {
     const imageFiles = Array.isArray(payload?.imageFiles) ? payload.imageFiles : []
     const instances = Array.isArray(payload?.instances) ? payload.instances : []
@@ -85,8 +110,8 @@ export const createOwnerProductApi = async (payload) => {
             'category',
             'categoryParent',
             'categoryChild',
-            'size',
             'sizes',
+            'hasSizes',
             'color',
             'colorVariants',
             'quantity',
@@ -137,8 +162,8 @@ export const updateOwnerProductApi = async (productId, payload) => {
             'category',
             'categoryParent',
             'categoryChild',
-            'size',
             'sizes',
+            'hasSizes',
             'color',
             'colorVariants',
             'quantity',

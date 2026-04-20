@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { getRentOrderByIdApi, payDepositApi, cancelRentOrderApi, confirmPickupApi, confirmReturnApi, finalizeRentOrderApi } from '../services/rent-order.service'
 import { createDepositPaymentLinkApi } from '../services/payment.service'
@@ -39,7 +39,6 @@ const statusColors = {
 
 export default function RentalDetailPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { isAuthenticated, loading: authLoading, user } = useAuth()
 
   const isStaffOrOwner = ['owner', 'staff'].includes(String(user?.role || '').toLowerCase())
