@@ -27,7 +27,6 @@ import OwnerProductsScreen from '../pages/owner/OwnerProductsScreen'
 import OwnerCategoriesScreen from '../pages/owner/OwnerCategoriesScreen'
 import OwnerPromotionsScreen from '../pages/owner/OwnerPromotionsScreen'
 import OwnerReportsScreen from '../pages/owner/OwnerReportsScreen'
-import OwnerShiftsScreen from '../pages/owner/OwnerShiftsScreen'
 import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen'
 import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen'
 import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen'
@@ -92,8 +91,6 @@ const AppRoutes = () => {
                     <Route path="inventory/:productId" element={<InventoryProductDetailPage />} />
                     <Route path="inventory-dashboard" element={<Navigate to="/owner/inventory" replace />} />
                     <Route path="staff" element={<OwnerStaffScreen />} />
-                    <Route path="shifts" element={<OwnerShiftsScreen />} />
-                    <Route path="staff-calendar" element={<OwnerShiftsScreen />} />
                     <Route path="staff-analytics" element={<OwnerAnalyticsScreen />} />
                     <Route path="orders" element={<OwnerOrdersScreen />} />
                     <Route path="rent-orders" element={<OwnerRentOrdersScreen />} />

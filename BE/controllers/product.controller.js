@@ -16,6 +16,8 @@ const {
   createSimpleInstances,
 } = require('../services/productInstance.service');
 const { reconcileInstancesToSizeRows } = require('../services/productInstance.sync.service');
+const { importProductsFromFileBuffer } = require('../services/productImport.service');
+const { notifyLowStockForProducts } = require('../services/alert.dispatcher.service');
 
 const CONDITION_LEVEL_ALIASES = {
   Good: 'New',
@@ -46,7 +48,7 @@ const toIntegerOrNaN = (value) => {
   return Number.isInteger(n) ? n : Number.NaN;
 };
 
-/** Instance còn trong kho thuê (backend có thể gán theo ngày), không tính mất/đã bán. */
+/** Instance cÃƒÂ²n trong kho thuÃƒÂª (backend cÃƒÂ³ thÃ¡Â»Æ’ gÃƒÂ¡n theo ngÃƒÂ y), khÃƒÂ´ng tÃƒÂ­nh mÃ¡ÂºÂ¥t/Ã„â€˜ÃƒÂ£ bÃƒÂ¡n. */
 const INSTANCE_STATUS_RENT_EXCLUDED = new Set(['Lost', 'Sold']);
 const countRentableInstances = (instances = []) =>
   instances.filter((item) => !INSTANCE_STATUS_RENT_EXCLUDED.has(item.lifecycleStatus)).length;
@@ -63,13 +65,13 @@ const normalizeText = (value) => String(value || '').trim();
 const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const VIETNAMESE_CHAR_GROUPS = {
-  a: 'aàáạảãâầấậẩẫăằắặẳẵ',
-  e: 'eèéẹẻẽêềếệểễ',
-  i: 'iìíịỉĩ',
-  o: 'oòóọỏõôồốộổỗơờớợởỡ',
-  u: 'uùúụủũưừứựửữ',
-  y: 'yỳýỵỷỹ',
-  d: 'dđ',
+  a: 'aÃƒÂ ÃƒÂ¡Ã¡ÂºÂ¡Ã¡ÂºÂ£ÃƒÂ£ÃƒÂ¢Ã¡ÂºÂ§Ã¡ÂºÂ¥Ã¡ÂºÂ­Ã¡ÂºÂ©Ã¡ÂºÂ«Ã„Æ’Ã¡ÂºÂ±Ã¡ÂºÂ¯Ã¡ÂºÂ·Ã¡ÂºÂ³Ã¡ÂºÂµ',
+  e: 'eÃƒÂ¨ÃƒÂ©Ã¡ÂºÂ¹Ã¡ÂºÂ»Ã¡ÂºÂ½ÃƒÂªÃ¡Â»ÂÃ¡ÂºÂ¿Ã¡Â»â€¡Ã¡Â»Æ’Ã¡Â»â€¦',
+  i: 'iÃƒÂ¬ÃƒÂ­Ã¡Â»â€¹Ã¡Â»â€°Ã„Â©',
+  o: 'oÃƒÂ²ÃƒÂ³Ã¡Â»ÂÃ¡Â»ÂÃƒÂµÃƒÂ´Ã¡Â»â€œÃ¡Â»â€˜Ã¡Â»â„¢Ã¡Â»â€¢Ã¡Â»â€”Ã†Â¡Ã¡Â»ÂÃ¡Â»â€ºÃ¡Â»Â£Ã¡Â»Å¸Ã¡Â»Â¡',
+  u: 'uÃƒÂ¹ÃƒÂºÃ¡Â»Â¥Ã¡Â»Â§Ã…Â©Ã†Â°Ã¡Â»Â«Ã¡Â»Â©Ã¡Â»Â±Ã¡Â»Â­Ã¡Â»Â¯',
+  y: 'yÃ¡Â»Â³ÃƒÂ½Ã¡Â»ÂµÃ¡Â»Â·Ã¡Â»Â¹',
+  d: 'dÃ„â€˜',
 };
 
 const VIETNAMESE_CHAR_TO_GROUP = Object.entries(VIETNAMESE_CHAR_GROUPS).reduce((acc, [, chars]) => {
@@ -688,7 +690,7 @@ const getQuantityMap = async (productIds = [], options = {}) => {
   );
 };
 
-/** Tồn kho thực tế theo size (ProductInstance, không tính Sold) — dùng màn owner */
+/** TÃ¡Â»â€œn kho thÃ¡Â»Â±c tÃ¡ÂºÂ¿ theo size (ProductInstance, khÃƒÂ´ng tÃƒÂ­nh Sold) Ã¢â‚¬â€ dÃƒÂ¹ng mÃƒÂ n owner */
 const getOwnerSizeStockMap = async (productIds = []) => {
   if (!Array.isArray(productIds) || productIds.length === 0) return new Map();
 
@@ -1199,6 +1201,7 @@ const createOwnerProduct = async (req, res) => {
       });
     }
 
+    await notifyLowStockForProducts([pid]);
     return res.status(201).json({
       success: true,
       data: sanitizeProduct(created.toObject(), {}, lang),
@@ -1308,7 +1311,7 @@ const updateOwnerProduct = async (req, res) => {
 
     const quantityMap = await getQuantityMap([updated._id], { excludeSold: true });
     const quantityFromInstances = quantityMap.get(String(updated._id)) || {};
-
+    await notifyLowStockForProducts([updated._id]);
     return res.status(200).json({
       success: true,
       data: {
@@ -1418,268 +1421,49 @@ const deleteOwnerProduct = async (req, res) => {
   }
 };
 
-const IMPORT_ID_PATTERN = /^[a-f\d]{24}$/i;
-
-const parseCsvLine = (line = '') => {
-  const result = [];
-  let token = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        token += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === ',' && !inQuotes) {
-      result.push(token);
-      token = '';
-      continue;
-    }
-
-    token += char;
-  }
-
-  result.push(token);
-  return result.map((value) => String(value || '').trim());
-};
-
-const parseCsvContent = (content = '') => {
-  const rows = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const char = content[index];
-    const next = content[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if ((char === '\n' || char === '\r') && !inQuotes) {
-      if (current.trim().length > 0) {
-        rows.push(parseCsvLine(current));
-      }
-      current = '';
-      if (char === '\r' && next === '\n') {
-        index += 1;
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.trim().length > 0) {
-    rows.push(parseCsvLine(current));
-  }
-
-  if (rows.length === 0) {
-    return { headers: [], records: [] };
-  }
-
-  const headers = rows[0].map((item) => String(item || '').trim().toLowerCase());
-  const records = rows.slice(1);
-  return { headers, records };
-};
-
-const parseImportNumber = (value, fallback = 0) => {
-  if (value === null || value === undefined || value === '') {
-    return fallback;
-  }
-
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : fallback;
-  }
-
-  let raw = String(value).trim();
-  if (!raw) {
-    return fallback;
-  }
-
-  raw = raw.replace(/[^\d,.\-]/g, '');
-  if (!raw) {
-    return fallback;
-  }
-
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw)) {
-    raw = raw.replace(/\./g, '').replace(',', '.');
-  } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw)) {
-    raw = raw.replace(/,/g, '');
-  } else {
-    raw = raw.replace(',', '.');
-  }
-
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
 const importOwnerProducts = async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu file import',
+        message: 'Vui long chon file Excel/CSV de import.',
       });
     }
 
     const originalName = String(req.file.originalname || '').toLowerCase();
-    const isCsv = originalName.endsWith('.csv') || String(req.file.mimetype || '').includes('csv');
-    if (!isCsv) {
+    const isSupportedFile = (
+      originalName.endsWith('.csv')
+      || originalName.endsWith('.xlsx')
+      || originalName.endsWith('.xls')
+    );
+    if (!isSupportedFile) {
       return res.status(400).json({
         success: false,
-        message: 'Hiện tại chỉ hỗ trợ import CSV (hãy dùng file export từ hệ thống).',
+        message: 'Chi ho tro file dinh dang Excel/CSV.',
       });
     }
 
-    const csvText = req.file.buffer.toString('utf8').replace(/^\uFEFF/, '');
-    const { headers, records } = parseCsvContent(csvText);
-    if (headers.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'File CSV rỗng hoặc sai định dạng',
-      });
-    }
-
-    const headerIndex = new Map(headers.map((item, index) => [item, index]));
-    const requiredHeaders = ['name', 'category', 'color'];
-    const missingHeaders = requiredHeaders.filter((key) => !headerIndex.has(key));
-    if (missingHeaders.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Thiếu cột bắt buộc: ${missingHeaders.join(', ')}`,
-      });
-    }
-
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
-    const errors = [];
-
-    const getCell = (row, key) => {
-      const index = headerIndex.get(key);
-      if (index === undefined) return '';
-      return String(row[index] || '').trim();
-    };
-
-    for (let rowIndex = 0; rowIndex < records.length; rowIndex += 1) {
-      const row = records[rowIndex];
-      const lineNumber = rowIndex + 2;
-
-      const name = getCell(row, 'name');
-      const category = getCell(row, 'category');
-      const size = getCell(row, 'size');
-      const color = getCell(row, 'color');
-      const sourceId = getCell(row, 'id');
-
-      if (!name && !category && !size && !color) {
-        skipped += 1;
-        continue;
-      }
-
-      const parsedQuantity = Math.max(
-        toIntegerOrNaN(parseImportNumber(getCell(row, 'quantity'), Number.NaN)),
-        0
-      );
-      const hasSizeCell = Boolean(String(size || '').trim());
-      const hasSizes = hasSizeCell;
-
-      const payload = normalizePayload({
-        name,
-        category,
-        hasSizes,
-        size,
-        sizes: hasSizes ? [{ size, quantity: Number.isNaN(parsedQuantity) ? 0 : parsedQuantity }] : [],
-        color,
-        quantity: !hasSizes && !Number.isNaN(parsedQuantity) ? parsedQuantity : 0,
-        baseRentPrice: parseImportNumber(getCell(row, 'baserentprice'), 0),
-        baseSalePrice: parseImportNumber(getCell(row, 'basesaleprice'), 0),
-        depositAmount: parseImportNumber(getCell(row, 'depositamount'), 0),
-        buyoutValue: parseImportNumber(getCell(row, 'buyoutvalue'), 0),
-      });
-
-      const validationError = ensureOwnerProductRequired(payload);
-      if (validationError) {
-        errors.push({ line: lineNumber, message: validationError });
-        skipped += 1;
-        continue;
-      }
-
-      let product = null;
-      if (sourceId && IMPORT_ID_PATTERN.test(sourceId)) {
-        product = await Product.findById(sourceId);
-      }
-
-      if (!product) {
-        product = await Product.findOne({
-          name: payload.name,
-          category: payload.category,
-          color: payload.color,
-        });
-      }
-
-      if (product) {
-        Object.assign(product, payload);
-        await product.save();
-        updated += 1;
-      } else {
-        product = await Product.create(payload);
-        created += 1;
-      }
-
-      const totalQuantityText = getCell(row, 'totalquantity');
-      if (totalQuantityText !== '') {
-        const targetQuantity = Math.max(toIntegerOrNaN(parseImportNumber(totalQuantityText, Number.NaN)), 0);
-        if (!Number.isNaN(targetQuantity)) {
-          if (product.hasSizes && Array.isArray(product.sizes) && product.sizes.length > 0) {
-            const firstSize = product.sizes[0];
-            firstSize.quantity = targetQuantity;
-            product.sizes = [firstSize];
-          } else {
-            product.quantity = targetQuantity;
-            product.sizes = [];
-            product.hasSizes = false;
-          }
-          await product.save();
-        }
-      }
-    }
+    const result = await importProductsFromFileBuffer({
+      buffer: req.file.buffer,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+    });
 
     return res.status(200).json({
       success: true,
-      message: 'Import sản phẩm thành công',
-      data: {
-        created,
-        updated,
-        skipped,
-        totalRows: records.length,
-        errors,
-      },
+      message: 'Import completed',
+      successCount: result.successCount,
+      failedCount: result.failedCount,
+      errors: result.errors,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi import sản phẩm',
+      message: 'Khong the import san pham luc nay.',
       error: error.message,
     });
   }
 };
-
 const exportOwnerProducts = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
@@ -1758,10 +1542,10 @@ const exportOwnerProducts = async (req, res) => {
 };
 
 // ============================================
-// PRODUCT INSTANCE APIs (Quản lý tồn kho)
+// PRODUCT INSTANCE APIs (QuÃ¡ÂºÂ£n lÃƒÂ½ tÃ¡Â»â€œn kho)
 // ============================================
 
-// Lấy danh sách ProductInstance với filter
+// LÃ¡ÂºÂ¥y danh sÃƒÂ¡ch ProductInstance vÃ¡Â»â€ºi filter
 const getProductInstances = async (req, res) => {
   try {
     const {
@@ -1784,7 +1568,7 @@ const getProductInstances = async (req, res) => {
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
         return res.status(400).json({
           success: false,
-          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+          message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
         });
       }
       filter.conditionLevel = normalizedLevel;
@@ -1834,13 +1618,13 @@ const getProductInstances = async (req, res) => {
     console.error('Get product instances error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy danh sách sản phẩm',
+      message: 'LÃ¡Â»â€”i khi lÃ¡ÂºÂ¥y danh sÃƒÂ¡ch sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Lấy chi tiết một ProductInstance
+// LÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t mÃ¡Â»â„¢t ProductInstance
 const getProductInstanceById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1851,7 +1635,7 @@ const getProductInstanceById = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
       });
     }
 
@@ -1863,13 +1647,13 @@ const getProductInstanceById = async (req, res) => {
     console.error('Get product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy chi tiết sản phẩm',
+      message: 'LÃ¡Â»â€”i khi lÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Cập nhật ProductInstance (giá, trạng thái, tình trạng)
+// CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t ProductInstance (giÃƒÂ¡, trÃ¡ÂºÂ¡ng thÃƒÂ¡i, tÃƒÂ¬nh trÃ¡ÂºÂ¡ng)
 const updateProductInstance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1888,11 +1672,11 @@ const updateProductInstance = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
       });
     }
 
-    // Cập nhật các trường được gửi lên
+    // CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t cÃƒÂ¡c trÃ†Â°Ã¡Â»Âng Ã„â€˜Ã†Â°Ã¡Â»Â£c gÃ¡Â»Â­i lÃƒÂªn
     const before = instance.toObject();
 
     if ((conditionLevel !== undefined || conditionScore !== undefined) && !canUpdateCondition) {
@@ -1907,7 +1691,7 @@ const updateProductInstance = async (req, res) => {
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
         return res.status(400).json({
           success: false,
-          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+          message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
         });
       }
       instance.conditionLevel = normalizedLevel;
@@ -1917,7 +1701,7 @@ const updateProductInstance = async (req, res) => {
       if (!ALLOWED_CONDITION_SCORES.has(normalizedScore)) {
         return res.status(400).json({
           success: false,
-          message: 'Điểm tình trạng chỉ chấp nhận 0, 25, 50, 75 hoặc 100'
+          message: 'Ã„ÂiÃ¡Â»Æ’m tÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n 0, 25, 50, 75 hoÃ¡ÂºÂ·c 100'
         });
       }
       instance.conditionScore = normalizedScore;
@@ -1929,7 +1713,7 @@ const updateProductInstance = async (req, res) => {
 
     await instance.save();
 
-    // Populate để trả về
+    // Populate Ã„â€˜Ã¡Â»Æ’ trÃ¡ÂºÂ£ vÃ¡Â»Â
     const updatedInstance = await ProductInstance.findById(id)
       .populate('productId', 'name images category');
 
@@ -1959,20 +1743,20 @@ const updateProductInstance = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Cập nhật sản phẩm thành công',
+      message: 'CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng',
       data: updatedInstance
     });
   } catch (error) {
     console.error('Update product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi cập nhật sản phẩm',
+      message: 'LÃ¡Â»â€”i khi cÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Tạo mới ProductInstance
+// TÃ¡ÂºÂ¡o mÃ¡Â»â€ºi ProductInstance
 const createProductInstance = async (req, res) => {
   try {
     const {
@@ -1986,7 +1770,7 @@ const createProductInstance = async (req, res) => {
     if (!productId || !currentRentPrice || !currentSalePrice) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng cung cấp đầy đủ thông tin'
+        message: 'Vui lÃƒÂ²ng cung cÃ¡ÂºÂ¥p Ã„â€˜Ã¡ÂºÂ§y Ã„â€˜Ã¡Â»Â§ thÃƒÂ´ng tin'
       });
     }
 
@@ -1994,7 +1778,7 @@ const createProductInstance = async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm cha'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m cha'
       });
     }
 
@@ -2002,7 +1786,7 @@ const createProductInstance = async (req, res) => {
     if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
       return res.status(400).json({
         success: false,
-        message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
       });
     }
 
@@ -2023,20 +1807,20 @@ const createProductInstance = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Tạo sản phẩm thành công',
+      message: 'TÃ¡ÂºÂ¡o sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng',
       data: populatedInstance
     });
   } catch (error) {
     console.error('Create product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi tạo sản phẩm',
+      message: 'LÃ¡Â»â€”i khi tÃ¡ÂºÂ¡o sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Xóa ProductInstance
+// XÃƒÂ³a ProductInstance
 const deleteProductInstance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2046,15 +1830,15 @@ const deleteProductInstance = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
       });
     }
 
-    // Chỉ cho phép xóa nếu sản phẩm đang ở trạng thái Available
+    // ChÃ¡Â»â€° cho phÃƒÂ©p xÃƒÂ³a nÃ¡ÂºÂ¿u sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m Ã„â€˜ang Ã¡Â»Å¸ trÃ¡ÂºÂ¡ng thÃƒÂ¡i Available
     if (instance.lifecycleStatus !== 'Available') {
       return res.status(400).json({
         success: false,
-        message: 'Không thể xóa sản phẩm đang được thuê hoặc đang xử lý'
+        message: 'KhÃƒÂ´ng thÃ¡Â»Æ’ xÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m Ã„â€˜ang Ã„â€˜Ã†Â°Ã¡Â»Â£c thuÃƒÂª hoÃ¡ÂºÂ·c Ã„â€˜ang xÃ¡Â»Â­ lÃƒÂ½'
       });
     }
 
@@ -2062,19 +1846,19 @@ const deleteProductInstance = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Xóa sản phẩm thành công'
+      message: 'XÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng'
     });
   } catch (error) {
     console.error('Delete product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi xóa sản phẩm',
+      message: 'LÃ¡Â»â€”i khi xÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Lấy danh sách instance còn available (dùng cho customer thuê)
+// LÃ¡ÂºÂ¥y danh sÃƒÂ¡ch instance cÃƒÂ²n available (dÃƒÂ¹ng cho customer thuÃƒÂª)
 // CRITICAL: Sizes/Colors/Conditions MUST be derived from ProductInstance ONLY
 const getAvailableInstances = async (req, res) => {
   try {
@@ -2091,7 +1875,7 @@ const getAvailableInstances = async (req, res) => {
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
         return res.status(400).json({
           success: false,
-          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+          message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
         });
       }
       filter.conditionLevel = normalizedLevel;
@@ -2135,7 +1919,7 @@ const getAvailableInstances = async (req, res) => {
     console.error('Get available instances error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy danh sách sản phẩm có sẵn',
+      message: 'LÃ¡Â»â€”i khi lÃ¡ÂºÂ¥y danh sÃƒÂ¡ch sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m cÃƒÂ³ sÃ¡ÂºÂµn',
       error: error.message
     });
   }
@@ -2167,3 +1951,4 @@ module.exports = {
   deleteProductInstance,
   getAvailableInstances,
 };
+

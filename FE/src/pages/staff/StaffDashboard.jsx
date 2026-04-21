@@ -11,7 +11,6 @@ import {
 import { getAllRentOrdersApi } from '../../services/rent-order.service'
 import { getOwnerOrdersApi } from '../../services/owner.service'
 import { getAdminReviewStatsSummaryApi } from '../../services/review.service'
-import { getMyShiftOptionsApi } from '../../services/staff-shift.service'
 
 const TIME_FILTERS = [
   { value: 'today', label: 'Hôm nay' },
@@ -317,12 +316,7 @@ const getAverageBookingResponseMinutes = (bookings = []) => {
   return Math.round(total / validDurations.length)
 }
 
-const buildShiftPerformance = (ordersInRange, bookingsInRange, shifts, now, reviewStats) => {
-  const todayKey = formatDateKey(now)
-  const todayShift = shifts.find((shift) => String(shift?.workDate || '') === todayKey && Boolean(shift?.isRegistered))
-    || shifts.find((shift) => String(shift?.workDate || '') === todayKey)
-    || null
-
+const buildShiftPerformance = (ordersInRange, bookingsInRange, reviewStats) => {
   const completedTasks = ordersInRange.filter((order) => SUCCESS_ORDER_STATUSES.includes(String(order?.status || ''))).length
     + bookingsInRange.filter((booking) => ['confirmed', 'rejected'].includes(String(booking?.status || '').toLowerCase())).length
 
@@ -337,14 +331,14 @@ const buildShiftPerformance = (ordersInRange, bookingsInRange, shifts, now, revi
   const averageRating = toNullableNumber(reviewStats?.averageRating)
 
   return {
-    shiftName: todayShift?.name || 'Ca làm hôm nay',
-    owner: todayShift?.isRegistered ? `Đã đăng ký: ${todayShift?.code || todayShift?.name || 'Ca hiện tại'}` : 'Chưa đăng ký ca hôm nay',
+    shiftName: 'Hieu suat van hanh hom nay',
+    owner: 'Tong hop tu don hang va booking',
     completedTasks,
     targetTasks,
     onTimeRate,
     avgProcessMinutes: getAverageBookingResponseMinutes(bookingsInRange),
     customerSatisfaction: averageRating,
-    route: STAFF_SHIFT_ROUTES.shifts,
+    route: STAFF_SHIFT_ROUTES.rentOrders,
   }
 }
 
@@ -486,19 +480,17 @@ export default function StaffDashboard() {
     setErrorMessage('')
 
     try {
-      const [{ start, end, now }, allRentOrders, allSaleOrders, allBookings, shiftsResult, reviewStatsResult] = await Promise.all([
+      const [{ start, end, now }, allRentOrders, allSaleOrders, allBookings, reviewStatsResult] = await Promise.all([
         Promise.resolve(getTimeFilterRange(timeFilter)),
         fetchAllRentOrders(),
         fetchAllSaleOrders(),
         fetchAllStaffBookings(),
-        getMyShiftOptionsApi({ page: 1, limit: 100 }),
         getAdminReviewStatsSummaryApi(),
       ])
 
       const orders = toArray(allRentOrders)
       const saleOrders = toArray(allSaleOrders)
       const bookings = toArray(allBookings)
-      const shifts = toArray(shiftsResult?.data)
       const reviewStats = reviewStatsResult?.data || {}
 
       const ordersInRange = orders.filter((order) => isWithinRange(order?.createdAt || order?.updatedAt, start, end))
@@ -529,7 +521,7 @@ export default function StaffDashboard() {
 
       const timeline = buildTimelineItems(orders, start, end)
       const inventory = buildInventorySummary(orders)
-      const shiftPerformance = buildShiftPerformance(ordersInRange, bookingsInRange, shifts, now, reviewStats)
+      const shiftPerformance = buildShiftPerformance(ordersInRange, bookingsInRange, reviewStats)
 
       const payload = { quickStats, urgent, timeline, inventory, shiftPerformance }
       const hasAnyData = Boolean(
@@ -774,3 +766,4 @@ export default function StaffDashboard() {
     </div>
   )
 }
+

@@ -440,13 +440,15 @@ export default function StaffList({ onViewCalendar, onViewAnalytics }) {
                         <option value="owner">Chủ shop</option>
                     </select>
 
-                    <button
-                        onClick={onViewCalendar}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-                    >
-                        <Calendar className="w-4 h-4" />
-                        Xem lịch ca
-                    </button>
+                    {typeof onViewCalendar === 'function' ? (
+                        <button
+                            onClick={onViewCalendar}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                        >
+                            <Calendar className="w-4 h-4" />
+                            Thống kê nhân sự
+                        </button>
+                    ) : null}
 
                     <button
                         onClick={onViewAnalytics}

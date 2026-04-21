@@ -3,7 +3,8 @@ const RentOrder = require('../model/RentOrder.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const Deposit = require('../model/Deposit.model');
-const Alert = require('../model/Alert.model');
+const { createAlert } = require('../services/alert.service');
+const { ALERT_TYPES, ALERT_TARGET_TYPES } = require('../constants/alert.constants');
 const { pendingDepositHoldMinutes, autoCancelIntervalMs } = require('../config/app.config');
 
 const AUTO_CANCEL_MINUTES = pendingDepositHoldMinutes;
@@ -32,14 +33,16 @@ const cancelOrder = async (order) => {
     order.status = 'Cancelled';
     await order.save({ session });
 
-    await Alert.create([{
-      type: 'Task',
-      targetType: 'RentOrder',
+    await createAlert({
+      type: ALERT_TYPES.TASK,
+      targetType: ALERT_TARGET_TYPES.RENT_ORDER,
       targetId: orderId,
-      status: 'New',
-      message: `Đơn ${orderId} bị hủy tự động do quá hạn đặt cọc`,
-      actionRequired: false
-    }], { session });
+      title: 'Don bi huy tu dong',
+      message: `Don ${orderId} bi huy tu dong do qua han dat coc`,
+      actionRequired: false,
+      groupKey: `rent-order-autocancel:${orderId}`,
+      data: { orderId, reason: 'pending_deposit_timeout' },
+    }, { session });
 
     await session.commitTransaction();
   } catch (error) {

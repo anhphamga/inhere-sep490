@@ -22,6 +22,12 @@ const STATUS_OPTIONS = [
 ]
 
 const typeLabelMap = {
+  OrderNew: 'Đơn mới',
+  OrderCancelled: 'Đơn hủy',
+  RentPickupSoon: 'Sắp đến lịch pickup',
+  StockLow: 'Tồn kho thấp',
+  VoucherExpiring: 'Voucher sắp hết hạn',
+  System: 'Hệ thống',
   PickupSoon: 'Sắp đến giờ lấy đồ',
   ReturnSoon: 'Sắp đến giờ trả đồ',
   Late: 'Trễ hạn',

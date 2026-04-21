@@ -57,5 +57,4 @@ export const STAFF_SHIFT_ROUTES = {
   returnOrders: '/staff/return',
   saleOrders: '/staff/sale-order',
   bookings: '/staff/bookings',
-  shifts: '/staff/shifts',
 }

@@ -6,7 +6,7 @@ const OwnerStaffScreen = () => {
 
     return (
         <StaffList
-            onViewCalendar={() => navigate('/owner/shifts')}
+            onViewCalendar={() => navigate('/owner/staff-analytics')}
             onViewAnalytics={() => navigate('/owner/staff-analytics')}
         />
     )

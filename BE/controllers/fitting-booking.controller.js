@@ -1,4 +1,4 @@
-const FittingBooking = require('../model/FittingBooking.model');
+const FittingBooking = require('../model/Booking.model');
 
 const ALLOWED_STATUSES = new Set(['Pending', 'Confirmed', 'Rescheduled', 'Cancelled', 'Completed', 'NoShow']);
 

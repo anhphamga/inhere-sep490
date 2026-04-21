@@ -110,6 +110,7 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
     const [filters, setFilters] = useState(initialFilters)
     const [openCreateModal, setOpenCreateModal] = useState(false)
     const [importing, setImporting] = useState(false)
+    const [importReport, setImportReport] = useState(null)
     const [exporting, setExporting] = useState(false)
     const [currentPage, setCurrentPage] = useState(Math.max(1, Number(initialPage) || 1))
     const [deletingProductId, setDeletingProductId] = useState('')
@@ -268,6 +269,34 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
         importInputRef.current?.click()
     }
 
+    const downloadCsvTemplate = (mode = 'no-size') => {
+        const fileName = mode === 'with-size'
+            ? 'owner_product_import_template_with_size.csv'
+            : 'owner_product_import_template.csv'
+
+        const csvContent = mode === 'with-size'
+            ? [
+                'name,price,category,S,M,L,color,description',
+                '"Ao dai truyen thong",300000,"Ao Dai",2,3,1,"Do","Mau template co size"',
+                '"Ao dai su kien",450000,"Ao Dai",0,2,4,"Xanh","Mau template co size"',
+            ].join('\n')
+            : [
+                'name,price,category,quantity,color,description',
+                '"Ao dai truyen thong",300000,"Ao Dai",8,"Do","Mau template khong size"',
+                '"Ao dai su kien",450000,"Ao Dai",5,"Xanh","Mau template khong size"',
+            ].join('\n')
+
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', fileName)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+    }
+
     const handleImportProducts = async (event) => {
         const file = event.target.files?.[0]
         if (!file) {
@@ -277,9 +306,16 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
         try {
             setImporting(true)
             setError('')
-            await importOwnerProductsApi(file)
+            const response = await importOwnerProductsApi(file)
+            setImportReport({
+                successCount: Number(response?.successCount || 0),
+                failedCount: Number(response?.failedCount || 0),
+                errors: Array.isArray(response?.errors) ? response.errors : [],
+                message: response?.message || 'Import completed',
+            })
             await loadProducts(filters)
         } catch (apiError) {
+            setImportReport(null)
             setError(apiError?.response?.data?.message || apiError?.message || 'Không thể nhập danh sách sản phẩm.')
         } finally {
             setImporting(false)
@@ -426,7 +462,7 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
                         <input
                             ref={importInputRef}
                             type="file"
-                            accept=".csv,.xlsx,.xls"
+                            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                             className="hidden"
                             onChange={handleImportProducts}
                         />
@@ -438,7 +474,25 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
                             disabled={importing}
                         >
                             <Upload className="w-4 h-4" />
-                            {importing ? 'Đang nhập...' : 'Nhập CSV'}
+                            {importing ? 'Đang nhập...' : 'Nhập Excel'}
+                        </button>
+
+                        <button
+                            type="button"
+                            className="h-10 flex items-center gap-2 px-4 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all"
+                            onClick={() => downloadCsvTemplate('no-size')}
+                        >
+                            <Download className="w-4 h-4" />
+                            Mẫu CSV
+                        </button>
+
+                        <button
+                            type="button"
+                            className="h-10 flex items-center gap-2 px-4 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all"
+                            onClick={() => downloadCsvTemplate('with-size')}
+                        >
+                            <Download className="w-4 h-4" />
+                            Mẫu CSV (S,M,L)
                         </button>
 
                         <button
@@ -448,7 +502,7 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
                             disabled={exporting}
                         >
                             <Download className="w-4 h-4" />
-                            {exporting ? 'Đang xuất...' : 'Xuất CSV'}
+                            {exporting ? 'Đang xuất...' : 'Xuất Excel'}
                         </button>
 
                         <button
@@ -464,6 +518,21 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
             </div>
 
             {error ? <div className="owner-alert">{error}</div> : null}
+            {importReport ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <p className="font-semibold">{importReport.message}</p>
+                    <p className="mt-1">Thành công: {importReport.successCount} | Thất bại: {importReport.failedCount}</p>
+                    {importReport.errors.length > 0 ? (
+                        <ul className="mt-2 max-h-36 list-disc overflow-auto pl-5 text-xs text-rose-700">
+                            {importReport.errors.slice(0, 50).map((item, index) => (
+                                <li key={`import-error-${index}`}>
+                                    Dòng {item?.row || 'N/A'}: {item?.message || 'Lỗi không xác định'}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : null}
+                </div>
+            ) : null}
 
             {viewMode === 'list' ? (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

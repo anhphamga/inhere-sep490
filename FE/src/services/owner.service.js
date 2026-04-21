@@ -274,26 +274,6 @@ export const updateOwnerCustomerStatusApi = async (customerId, status) => {
     return response.data
 }
 
-export const getOwnerShiftsApi = async (params) => {
-    const response = await axiosClient.get('/owner/shifts', { params })
-    return response.data
-}
-
-export const createOwnerShiftApi = async (payload) => {
-    const response = await axiosClient.post('/owner/shifts', payload)
-    return response.data
-}
-
-export const updateOwnerShiftApi = async (shiftId, payload) => {
-    const response = await axiosClient.put(`/owner/shifts/${shiftId}`, payload)
-    return response.data
-}
-
-export const deleteOwnerShiftApi = async (shiftId) => {
-    const response = await axiosClient.delete(`/owner/shifts/${shiftId}`)
-    return response.data
-}
-
 export const importOwnerProductsApi = async (file) => {
     const formData = new FormData()
     formData.append('file', file)

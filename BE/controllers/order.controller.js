@@ -32,6 +32,11 @@ const {
   REVIEWABLE_SALE_STATUSES,
   getReviewedMapForOrders,
 } = require('../services/review.service');
+const {
+  notifySaleOrderCreated,
+  notifySaleOrderCancelled,
+  notifyLowStockForProducts,
+} = require('../services/alert.dispatcher.service');
 const { ORDER_TYPE } = require('../constants/order.constants');
 const { frontendUrl } = require('../config/app.config');
 const {
@@ -872,7 +877,10 @@ exports.guestCheckout = async (req, res) => {
         address: normalizedAddress,
       },
     });
-
+    await Promise.allSettled([
+      notifySaleOrderCreated(saleOrder),
+      notifyLowStockForProducts(uniqueProductIds),
+    ]);
     return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
   } catch (error) {
     if (idempotencyKey && isDuplicateIdempotencyError(error)) {
@@ -1015,7 +1023,10 @@ exports.checkout = async (req, res) => {
         address: normalizedAddress,
       },
     });
-
+    await Promise.allSettled([
+      notifySaleOrderCreated(saleOrder),
+      notifyLowStockForProducts(uniqueProductIds),
+    ]);
     return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
   } catch (error) {
     if (idempotencyKey && isDuplicateIdempotencyError(error)) {
@@ -1350,7 +1361,7 @@ exports.cancelMySaleOrder = async (req, res) => {
       updatedAt: new Date(),
     });
     await order.save();
-
+    await notifySaleOrderCancelled(order, 'customer_cancel');
     const [populated] = await attachSaleOrderItems([
       await SaleOrder.findById(id)
         .populate('customerId', 'name phone email')
@@ -1445,7 +1456,9 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
       });
     }
     await order.save();
-
+    if (normalizedStatus === 'Cancelled') {
+      await notifySaleOrderCancelled(order, 'owner_or_staff_cancel');
+    }
     const [populated] = await attachSaleOrderItems([
       await SaleOrder.findById(id)
         .populate('customerId', 'name phone email')

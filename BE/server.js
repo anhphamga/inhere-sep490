@@ -1,4 +1,5 @@
 const path = require('path');
+const http = require('http');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
@@ -6,9 +7,11 @@ const connectDB = require('./config/db');
 const seedOwnerAccount = require('./utils/seedOwner');
 const { startAutoCancelJob } = require('./utils/autoCancelPendingOrders');
 const { startAutoReserveJob } = require('./utils/autoReserveInstances');
+const { startAlertJobs } = require('./utils/alertJobs');
 const { syncDefaultRoles } = require('./services/accessControl.service');
 
 const app = express();
+const server = http.createServer(app);
 
 // Middleware
 app.use(cors());
@@ -51,8 +54,9 @@ const bootstrap = async () => {
 
     // Bật cron job tự động đổi ProductInstance → Reserved khi sắp đến ngày thuê
     startAutoReserveJob();
+    startAlertJobs();
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
   } catch (error) {

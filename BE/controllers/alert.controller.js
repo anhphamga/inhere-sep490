@@ -1,158 +1,64 @@
-const Alert = require('../model/Alert.model');
-
-const ALLOWED_STATUSES = new Set(['New', 'Seen', 'Done']);
+const {
+  createAlert,
+  getAlerts,
+  updateAlertStatus,
+  markAllAlertsAsSeen,
+  deleteAlert,
+} = require('../services/alert.service');
+const { ALERT_STATUS } = require('../constants/alert.constants');
 
 const listAlerts = async (req, res) => {
   try {
-    const { status, targetType, page = 1, limit = 20 } = req.query;
-    const query = {};
-
-    if (status && ALLOWED_STATUSES.has(status)) query.status = status;
-    if (targetType) query.targetType = targetType;
-
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const [items, total] = await Promise.all([
-      Alert.find(query)
-        .populate('handledBy', 'name email role')
-        .populate('createdBy', 'name email role')
-        .populate('activityLogs.actor', 'name email role')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .lean(),
-      Alert.countDocuments(query),
-    ]);
-
+    const result = await getAlerts(req.query || {});
     return res.status(200).json({
       success: true,
-      data: items,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / Number(limit)),
-      },
+      data: result.data,
+      unreadCount: result.unreadCount,
+      pagination: result.pagination,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Không thể tải danh sách thông báo',
+      message: 'Khong the tai danh sach thong bao.',
       error: error.message,
     });
   }
 };
 
-const createAlert = async (req, res) => {
+const createAlertController = async (req, res) => {
   try {
-    const { type, targetType, targetId, message = '', actionRequired = false } = req.body;
-
-    if (!type || !targetType || !targetId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Thiếu dữ liệu bắt buộc: type, targetType, targetId',
-      });
-    }
-
-    const actorId = req.user?.id || null;
-    const actorRole = String(req.user?.role || '');
-
-    const created = await Alert.create({
-      type,
-      targetType,
-      targetId,
-      message,
-      actionRequired: Boolean(actionRequired),
-      status: 'New',
-      createdBy: actorId,
-      activityLogs: [
-        {
-          action: 'CREATED',
-          actor: actorId,
-          actorRole,
-          note: 'Tạo thông báo',
-          fromStatus: '',
-          toStatus: 'New',
-          at: new Date(),
-        },
-      ],
+    const created = await createAlert(req.body || {}, {
+      actorId: req.user?.id || null,
+      actorRole: req.user?.role || '',
     });
-
     return res.status(201).json({
       success: true,
       data: created,
     });
   } catch (error) {
-    return res.status(500).json({
+    const isValidationError = ['INVALID_ALERT_TARGET'].includes(String(error?.message || ''));
+    return res.status(isValidationError ? 400 : 500).json({
       success: false,
-      message: 'Không thể tạo thông báo',
+      message: isValidationError ? 'Thieu targetType/targetId hop le.' : 'Khong the tao thong bao.',
       error: error.message,
     });
   }
 };
 
-const updateAlertStatus = async (req, res) => {
+const markAlertAsRead = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!ALLOWED_STATUSES.has(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Trạng thái phải là New, Seen hoặc Done',
-      });
-    }
-
-    const existing = await Alert.findById(id).lean();
-    if (!existing) {
+    const updated = await updateAlertStatus({
+      alertId: req.params.id,
+      status: ALERT_STATUS.SEEN,
+      actorId: req.user?.id || null,
+      actorRole: req.user?.role || '',
+    });
+    if (!updated) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy thông báo',
+        message: 'Khong tim thay thong bao.',
       });
     }
-
-    if (existing.status === status) {
-      const current = await Alert.findById(id)
-        .populate('handledBy', 'name email role')
-        .populate('createdBy', 'name email role')
-        .populate('activityLogs.actor', 'name email role')
-        .lean();
-
-      return res.status(200).json({
-        success: true,
-        data: current,
-      });
-    }
-
-    const actorId = req.user?.id || null;
-    const actorRole = String(req.user?.role || '');
-
-    const payload = {
-      status,
-      handledBy: req.user?.id || null,
-      handledAt: new Date(),
-      $push: {
-        activityLogs: {
-          action: 'STATUS_CHANGED',
-          actor: actorId,
-          actorRole,
-          note: `Cập nhật trạng thái từ ${existing.status} sang ${status}`,
-          fromStatus: existing.status || '',
-          toStatus: status,
-          at: new Date(),
-        },
-      },
-    };
-
-    const updated = await Alert.findByIdAndUpdate(id, payload, {
-      new: true,
-      runValidators: true,
-    })
-      .populate('handledBy', 'name email role')
-      .populate('createdBy', 'name email role')
-      .populate('activityLogs.actor', 'name email role')
-      .lean();
-
     return res.status(200).json({
       success: true,
       data: updated,
@@ -160,7 +66,77 @@ const updateAlertStatus = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Không thể cập nhật thông báo',
+      message: 'Khong the cap nhat thong bao.',
+      error: error.message,
+    });
+  }
+};
+
+const updateAlertStatusController = async (req, res) => {
+  try {
+    const status = String(req.body?.status || '');
+    const updated = await updateAlertStatus({
+      alertId: req.params.id,
+      status,
+      actorId: req.user?.id || null,
+      actorRole: req.user?.role || '',
+    });
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Khong tim thay thong bao.',
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: updated,
+    });
+  } catch (error) {
+    const isStatusError = String(error?.message || '') === 'INVALID_ALERT_STATUS';
+    return res.status(isStatusError ? 400 : 500).json({
+      success: false,
+      message: isStatusError ? 'Trang thai phai la New, Seen hoac Done.' : 'Khong the cap nhat thong bao.',
+      error: error.message,
+    });
+  }
+};
+
+const markAllAsRead = async (req, res) => {
+  try {
+    const modifiedCount = await markAllAlertsAsSeen({
+      actorId: req.user?.id || null,
+      actorRole: req.user?.role || '',
+    });
+    return res.status(200).json({
+      success: true,
+      modifiedCount,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Khong the danh dau da xem tat ca thong bao.',
+      error: error.message,
+    });
+  }
+};
+
+const removeAlert = async (req, res) => {
+  try {
+    const deleted = await deleteAlert(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: 'Khong tim thay thong bao.',
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: 'Xoa thong bao thanh cong.',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Khong the xoa thong bao.',
       error: error.message,
     });
   }
@@ -168,6 +144,9 @@ const updateAlertStatus = async (req, res) => {
 
 module.exports = {
   listAlerts,
-  createAlert,
-  updateAlertStatus,
+  createAlert: createAlertController,
+  markAlertAsRead,
+  updateAlertStatus: updateAlertStatusController,
+  markAllAsRead,
+  removeAlert,
 };

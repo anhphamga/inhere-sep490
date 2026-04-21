@@ -1,8 +1,7 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BadgeCheck,
-  Bell,
   Check,
   ChevronRight,
   LayoutDashboard,
@@ -13,7 +12,6 @@ import {
   PanelRight,
   ReceiptText,
   BarChart3,
-  CalendarClock,
   Search,
   Settings,
   Shirt,
@@ -24,7 +22,6 @@ import {
 import { cn } from '../../utils/ui.utils'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTranslate } from '../../hooks/useTranslate'
-import { getAlertsApi } from '../../services/alert.service'
 import '../../style/features/owner/owner.css'
 
 const navItems = [
@@ -34,11 +31,10 @@ const navItems = [
   { to: '/owner/categories', labelKey: 'sidebar.categories', icon: Folder },
   { to: '/owner/inventory', labelKey: 'sidebar.inventory', icon: Package },
   { to: '/owner/staff', labelKey: 'sidebar.staff', icon: BadgeCheck },
-  { to: '/owner/shifts', labelKey: 'sidebar.shifts', icon: CalendarClock },
   { to: '/owner/orders', labelKey: 'sidebar.orders', icon: ReceiptText },
-  { to: '/owner/rent-orders', label: 'Quản lý đơn thuê', icon: Package },
-  { to: '/owner/blogs', label: 'Quản lý blog', icon: MessageSquareText },
-  { to: '/owner/reviews', label: 'Quản lý đánh giá', icon: MessageSquareText },
+  { to: '/owner/rent-orders', label: 'Quan ly don thue', icon: Package },
+  { to: '/owner/blogs', label: 'Quan ly blog', icon: MessageSquareText },
+  { to: '/owner/reviews', label: 'Quan ly danh gia', icon: MessageSquareText },
   { to: '/owner/promotions', labelKey: 'sidebar.vouchers', icon: Megaphone },
   { to: '/owner/reports', labelKey: 'sidebar.analytics', icon: BarChart3 },
 ]
@@ -50,12 +46,10 @@ const pageTitleMap = {
   categories: 'pageTitles.categories',
   inventory: 'pageTitles.inventory',
   staff: 'pageTitles.staffManagement',
-  'staff-calendar': 'pageTitles.staffCalendar',
   'staff-analytics': 'pageTitles.staffAnalytics',
-  shifts: 'pageTitles.shiftManagement',
   orders: 'pageTitles.rentOrders',
-  'rent-orders': 'Quản lý đơn thuê',
-  blogs: 'Quản lý blog',
+  'rent-orders': 'Quan ly don thue',
+  blogs: 'Quan ly blog',
   promotions: 'pageTitles.vouchers',
   reviews: 'pageTitles.reviews',
   alerts: 'pageTitles.alerts',
@@ -84,25 +78,6 @@ const OwnerLayout = () => {
   const [accentColor, setAccentColor] = useState('blue')
   const [ownerMenuOpen, setOwnerMenuOpen] = useState(false)
   const [ownerSearchValue, setOwnerSearchValue] = useState('')
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [notifications, setNotifications] = useState([])
-  const [notificationsLoading, setNotificationsLoading] = useState(false)
-  const [notificationsError, setNotificationsError] = useState('')
-  const notificationRef = useRef(null)
-
-  const fetchNotifications = async () => {
-    try {
-      setNotificationsLoading(true)
-      setNotificationsError('')
-      const response = await getAlertsApi({ page: 1, limit: 8 })
-      setNotifications(Array.isArray(response?.data) ? response.data : [])
-    } catch (apiError) {
-      setNotificationsError(apiError?.response?.data?.message || 'Không thể tải thông báo')
-      setNotifications([])
-    } finally {
-      setNotificationsLoading(false)
-    }
-  }
 
   const handleLogout = async () => {
     if (confirm(t('owner.confirmLogout'))) {
@@ -118,11 +93,11 @@ const OwnerLayout = () => {
   const isProductsListScreen = currentSegment === 'products' && pathParts.length === 2
   const isUserDetail = currentSegment === 'users' && pathParts.length > 2
   const isProductDetail = currentSegment === 'products' && pathParts.length > 2
-  const isStaffSubView = currentSegment === 'staff-calendar' || currentSegment === 'staff-analytics'
+  const isStaffSubView = currentSegment === 'staff-analytics'
   const showBackButton = isUserDetail || isProductDetail || isStaffSubView
 
   let title = currentSegment === 'reviews'
-    ? 'Quản lý đánh giá'
+    ? 'Quan ly danh gia'
     : t(pageTitleMap[currentSegment], t('pageTitles.owner'))
   if (isUserDetail) title = t('pageTitles.userDetail')
   if (isProductDetail) title = t('pageTitles.productDetail')
@@ -149,26 +124,6 @@ const OwnerLayout = () => {
       document.documentElement.removeAttribute('data-owner-theme')
     }
   }, [appearance])
-
-  useEffect(() => {
-    if (!notificationsOpen) return
-    fetchNotifications()
-  }, [notificationsOpen])
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!notificationRef.current || notificationRef.current.contains(event.target)) return
-      setNotificationsOpen(false)
-    }
-
-    if (notificationsOpen) {
-      document.addEventListener('click', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('click', handleClickOutside)
-    }
-  }, [notificationsOpen])
 
   const handleProductsSearchChange = (value) => {
     const nextParams = new URLSearchParams(location.search)
@@ -296,44 +251,6 @@ const OwnerLayout = () => {
             ) : null}
             <div className="flex items-center gap-4">
               <button
-                ref={notificationRef}
-                type="button"
-                className="relative rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100"
-                onClick={() => setNotificationsOpen((prev) => !prev)}
-                title="Thông báo"
-              >
-                <Bell className="h-5 w-5" />
-
-                {notificationsOpen ? (
-                  <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-lg border border-slate-200 bg-white text-left shadow-lg">
-                    <div className="border-b border-slate-200 p-4 font-semibold text-slate-900">Thông báo</div>
-
-                    {notificationsLoading ? (
-                      <div className="px-4 py-3 text-center text-sm text-slate-500">Đang tải thông báo...</div>
-                    ) : null}
-
-                    {notificationsError ? (
-                      <div className="px-4 py-3 text-center text-sm text-rose-700">{notificationsError}</div>
-                    ) : null}
-
-                    {!notificationsLoading && !notificationsError && notifications.length === 0 ? (
-                      <div className="px-4 py-3 text-center text-sm text-slate-500">Không có thông báo mới</div>
-                    ) : null}
-
-                    {!notificationsLoading && !notificationsError && notifications.length > 0 ? (
-                      <div className="max-h-80 overflow-y-auto">
-                        {notifications.map((item) => (
-                          <article key={item?._id || `${item?.createdAt}-${item?.message}`} className="border-b border-slate-100 px-4 py-3 last:border-0">
-                            <div className="mb-1 text-[11px] font-semibold text-slate-500">{item?.type || 'Thông báo'}</div>
-                            <p className="text-sm text-slate-800">{item?.message || 'Không có nội dung thông báo'}</p>
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </button>
-              <button
                 type="button"
                 className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100"
                 onClick={() => setSettingsOpen(true)}
@@ -432,10 +349,8 @@ const OwnerLayout = () => {
           </aside>
         </>
       ) : null}
-
     </div>
   )
 }
 
 export default OwnerLayout
-

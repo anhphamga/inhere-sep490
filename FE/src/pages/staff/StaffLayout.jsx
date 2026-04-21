@@ -91,7 +91,6 @@ export default function StaffLayout({ children }) {
 
   const sidebarMenu = [
     { to: "/staff", label: "Tổng quan", icon: "DB" },
-    { to: "/staff/shifts", label: "Đăng ký ca làm", icon: "CL" },
     { to: "/staff/rent-orders", label: "Đơn thuê", icon: "DT" },
     { to: "/staff/walk-in", label: "Tạo đơn tại chỗ", icon: "WI" },
     { to: "/staff/bookings", label: "Booking thử đồ", icon: "BK" },
