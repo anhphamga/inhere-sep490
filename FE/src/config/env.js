@@ -10,6 +10,8 @@ const runtimeApiBaseUrl = asText(import.meta.env.VITE_API_BASE_URL);
 const productionApiFallback = 'https://hoianstyle.onrender.com/api';
 
 // 🎯 FINAL BASE URL (KHÔNG BAO GIỜ RỖNG)
+// ⚠️ CRITICAL: Must be full URL (e.g., https://hoianstyle.onrender.com/api)
+// ⚠️ NEVER use relative paths like "/api" - causes OAuth origin_mismatch errors
 export const API_BASE_URL =
   runtimeApiBaseUrl !== ''
     ? runtimeApiBaseUrl

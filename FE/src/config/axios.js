@@ -78,18 +78,51 @@ axiosClient.interceptors.request.use((config) => {
         config.headers.Authorization = `Bearer ${token}`
     }
 
+    // 🔐 Log OAuth requests for debugging
+    if (config.url?.includes('/auth/google-login')) {
+        console.log('🔐 [HTTP] Sending Google OAuth request:', {
+            method: config.method?.toUpperCase(),
+            url: config.url,
+            baseURL: config.baseURL,
+            timestamp: new Date().toISOString()
+        })
+    }
+
     return config
 })
 
 let refreshPromise = null
 
 axiosClient.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        // 🔐 Log successful OAuth requests
+        if (response.config.url?.includes('/auth/google-login')) {
+            console.log('🔐 [HTTP] Google OAuth response received:', {
+                status: response.status,
+                url: response.config.url,
+                hasAccessToken: Boolean(response.data?.accessToken),
+                hasUser: Boolean(response.data?.user),
+                timestamp: new Date().toISOString()
+            })
+        }
+        return response
+    },
     async (error) => {
         const originalRequest = error.config
         const status = error?.response?.status
         const requestUrl = originalRequest?.url || ''
         const skipAuthRedirect = Boolean(originalRequest?.skipAuthRedirect)
+
+        // 🔐 Log OAuth errors for debugging
+        if (requestUrl?.includes('/auth/google-login')) {
+            console.error('🔐 [HTTP] Google OAuth error:', {
+                status: error?.response?.status,
+                statusText: error?.response?.statusText,
+                message: error?.response?.data?.message,
+                url: requestUrl,
+                timestamp: new Date().toISOString()
+            })
+        }
 
         if (status !== 401 || !originalRequest || originalRequest._retry) {
             return Promise.reject(error)
