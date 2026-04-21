@@ -24,7 +24,9 @@ const DEFAULT_PAGINATION = { page: 1, totalPages: 1, totalItems: 0, limit: 24 };
 const extractProductList = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
   if (Array.isArray(payload?.products)) return payload.products;
+  if (Array.isArray(payload?.products?.items)) return payload.products.items;
   return [];
 };
 
@@ -102,7 +104,6 @@ export default function ShopPage() {
       try {
         setLoading(true);
         const params = new URLSearchParams({
-          purpose: "buy",
           lang: "vi",
           limit: "24",
           page: String(page),
@@ -114,7 +115,11 @@ export default function ShopPage() {
         if (!mounted) return;
         const apiResponseData = extractProductList(payload);
         console.log("Products:", apiResponseData);
-        setProducts(Array.isArray(apiResponseData) ? apiResponseData : []);
+        const normalizedProducts = (Array.isArray(apiResponseData) ? apiResponseData : []).filter((product) => {
+          const pricingMode = String(product?.pricingMode || "").trim().toLowerCase();
+          return !pricingMode || pricingMode === "sale" || pricingMode === "buy";
+        });
+        setProducts(Array.isArray(normalizedProducts) ? normalizedProducts : []);
         setPagination(payload?.pagination || DEFAULT_PAGINATION);
       } finally {
         if (mounted) setLoading(false);
