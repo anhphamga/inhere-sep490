@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../../components/common/Header';
 import { useAuth } from '../../hooks/useAuth';
 import { getRouteByRole, normalizeRole } from '../../utils/auth';
-import axiosClient, { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, setAuthToken } from '../../config/axios';
+import { API_BASE_URL } from '../../config/env';
 import '../../style/AuthPages.css';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -11,15 +11,15 @@ const phoneRegex = /^(0|\+84)\d{9,10}$/;
 
 const ROLE_META = {
   owner: {
-    title: '�ang nh?p qu?n tr? ch? shop',
-    subtitle: 'D�nh cho Owner - qu?n tr? to�n b? h? th?ng c?a h�ng.',
-    badge: 'C?NG OWNER',
+    title: 'Đăng nhập quản trị chủ shop',
+    subtitle: 'Dành cho Owner - quản trị toàn bộ hệ thống cửa hàng.',
+    badge: 'CỔNG OWNER',
     fallbackPath: '/owner/dashboard',
   },
   staff: {
-    title: '�ang nh?p nh�n s? c?a h�ng',
-    subtitle: 'D�nh cho Staff - x? l� don thu�, l?ch th? v� v?n h�nh t?i qu?y.',
-    badge: 'C?NG STAFF',
+    title: 'Đăng nhập nhân sự cửa hàng',
+    subtitle: 'Dành cho Staff - xử lý đơn thuê, lịch thử và vận hành tại quầy.',
+    badge: 'CỔNG STAFF',
     fallbackPath: '/staff',
   },
 };
@@ -28,23 +28,23 @@ const normalizeLoginError = (apiError) => {
   const message = apiError?.response?.data?.message || '';
   const normalized = String(message).toLowerCase();
   if (normalized.includes('invalid') || normalized.includes('not found') || normalized.includes('password')) {
-    return 'T�i kho?n ho?c m?t kh?u kh�ng d�ng.';
+    return 'Tài khoản hoặc mật khẩu không đúng.';
   }
   if (normalized.includes('locked')) {
-    return 'T�i kho?n dang b? kh�a. Vui l�ng li�n h? qu?n tr? vi�n.';
+    return 'Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.';
   }
   if (
     normalized.includes('cho owner duyet')
-    || normalized.includes('ch? owner duy?t')
+    || normalized.includes('chờ owner duyệt')
     || normalized.includes('pending')
     || normalized.includes('chua duoc kich hoat')
-    || normalized.includes('chua du?c k�ch ho?t')
+    || normalized.includes('chưa được kích hoạt')
     || normalized.includes('bam accept')
-    || normalized.includes('b?m accept')
+    || normalized.includes('bấm accept')
   ) {
-    return 'T�i kho?n chua k�ch ho?t. Vui l�ng ki?m tra email m?i v� b?m Accept.';
+    return 'Tài khoản chưa kích hoạt. Vui lòng kiểm tra email mời và bấm Accept.';
   }
-  return message || '�ang nh?p th?t b?i.';
+  return message || 'Đăng nhập thất bại.';
 };
 
 export default function RoleLoginPage({ role }) {
@@ -63,7 +63,6 @@ export default function RoleLoginPage({ role }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [googleLoginBusy, setGoogleLoginBusy] = useState(false);
 
   const redirectPath = useMemo(() => {
     const from = location.state?.from?.pathname || '';
@@ -76,25 +75,25 @@ export default function RoleLoginPage({ role }) {
     if (inviteStatus === 'accepted') {
       return {
         tone: 'success',
-        text: 'X�c nh?n email th�nh c�ng. B?n c� th? dang nh?p t�i kho?n Staff ngay b�y gi?.'
+        text: 'Xác nhận email thành công. Bạn có thể đăng nhập tài khoản Staff ngay bây giờ.'
       };
     }
     if (inviteStatus === 'expired') {
       return {
         tone: 'error',
-        text: 'Link m?i d� h?t h?n. Vui l�ng nh? ch? shop g?i l?i l?i m?i m?i.'
+        text: 'Link mời đã hết hạn. Vui lòng nhờ chủ shop gửi lại lời mời mới.'
       };
     }
     if (inviteStatus === 'invalid') {
       return {
         tone: 'error',
-        text: 'Link m?i kh�ng h?p l? ho?c d� du?c s? d?ng.'
+        text: 'Link mời không hợp lệ hoặc đã được sử dụng.'
       };
     }
     if (inviteStatus === 'error') {
       return {
         tone: 'error',
-        text: 'Kh�ng th? x�c nh?n l?i m?i l�c n�y. Vui l�ng th? l?i sau.'
+        text: 'Không thể xác nhận lời mời lúc này. Vui lòng thử lại sau.'
       };
     }
     return null;
@@ -104,80 +103,19 @@ export default function RoleLoginPage({ role }) {
     const userRole = normalizeRole(data?.user?.role);
     if (userRole !== activeRole) {
       clearSession();
-      throw new Error(`T�i kho?n n�y kh�ng c� quy?n truy c?p c?ng ${activeRole.toUpperCase()}.`);
+      throw new Error(`Tài khoản này không có quyền truy cập cổng ${activeRole.toUpperCase()}.`);
     }
     return true;
   };
 
-  const handleCredentialResponse = async (response) => {
-    try {
-      setGoogleLoginBusy(true);
-      setError('');
-      const res = await axiosClient.post('/auth/google-login', {
-        credential: response.credential,
-        portal: activeRole
-      });
-
-      const payload = res?.data?.data || res?.data || {};
-      const accessToken = payload.accessToken;
-      const refreshToken = payload.refreshToken;
-      const user = payload.user;
-
-      if (!accessToken || !user) {
-        throw new Error('Google login response missing accessToken or user');
-      }
-
-      const userRole = normalizeRole(user.role);
-      if (userRole !== activeRole) {
-        throw new Error('Tai khoan khong dung vai tro dang nhap');
-      }
-
-      localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-      if (refreshToken) {
-        localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-      }
-
-      if (rememberMe) {
-        localStorage.setItem('inhere_user', JSON.stringify(user));
-        sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-        sessionStorage.removeItem('inhere_user');
-      } else {
-        sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-        sessionStorage.setItem('inhere_user', JSON.stringify(user));
-        localStorage.removeItem('inhere_user');
-      }
-
-      setAuthToken(accessToken);
-      const targetPath = redirectPath || getRouteByRole(user.role);
-      navigate(targetPath, { replace: true });
-    } catch (apiError) {
-      clearSession();
-      setError(normalizeLoginError(apiError));
-    } finally {
-      setGoogleLoginBusy(false);
-    }
+  const handleGoogleLogin = () => {
+    console.log('🔐 [OAuth] Redirecting to Google OAuth via backend:', {
+      redirectUrl: `${API_BASE_URL}/auth/google?portal=${activeRole}`,
+      portal: activeRole,
+      timestamp: new Date().toISOString()
+    })
+    window.location.href = `${API_BASE_URL}/auth/google?portal=${activeRole}`
   };
-
-  useEffect(() => {
-    const initializeGoogle = () => {
-      if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID) return false;
-
-      window.google.accounts.id.initialize({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-        callback: handleCredentialResponse,
-      });
-
-      window.google.accounts.id.renderButton(
-        document.getElementById('roleGoogleBtn'),
-        { theme: 'outline', size: 'large' }
-      );
-      return true;
-    };
-
-    if (initializeGoogle()) return;
-    const timer = window.setTimeout(initializeGoogle, 300);
-    return () => window.clearTimeout(timer);
-  }, [activeRole]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -185,14 +123,14 @@ export default function RoleLoginPage({ role }) {
 
     const normalizedIdentifier = identifier.replace(/\s+/g, '').trim();
     if (!normalizedIdentifier || !password) {
-      setError('Vui l�ng nh?p d?y d? th�ng tin.');
+      setError('Vui lòng nhập đầy đủ thông tin.');
       return;
     }
 
     const isEmail = emailRegex.test(normalizedIdentifier);
     const isPhone = phoneRegex.test(normalizedIdentifier);
     if (!isEmail && !isPhone) {
-      setError('Vui l�ng nh?p d�ng Email ho?c s? di?n tho?i h?p l?.');
+      setError('Vui lòng nhập đúng Email hoặc số điện thoại hợp lệ.');
       return;
     }
 
@@ -256,7 +194,7 @@ export default function RoleLoginPage({ role }) {
             </div>
 
             <h2 className="auth-title">{meta.title}</h2>
-            <p className="auth-subtitle">Vui l�ng dang nh?p b?ng t�i kho?n du?c ph�n quy?n.</p>
+            <p className="auth-subtitle">Vui lòng đăng nhập bằng tài khoản được phân quyền.</p>
             {activeRole === 'staff' && inviteMessage ? (
               <div className={inviteMessage.tone === 'success' ? 'success-text' : 'error-text'}>
                 {inviteMessage.text}
@@ -265,14 +203,14 @@ export default function RoleLoginPage({ role }) {
 
             <form className="auth-form" onSubmit={handleSubmit}>
               <div className="auth-input-wrap">
-                <label>Email / S�T</label>
+                <label>Email / SĐT</label>
                 <div className="auth-input-icon-wrap">
                   <span className="auth-input-icon" aria-hidden="true">
                     @
                   </span>
                   <input
                     type="text"
-                    placeholder="Email ho?c s? di?n tho?i"
+                    placeholder="Email hoặc số điện thoại"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
                     autoComplete="username"
@@ -282,14 +220,14 @@ export default function RoleLoginPage({ role }) {
               </div>
 
               <div className="auth-input-wrap">
-                <label>M?t kh?u</label>
+                <label>Mật khẩu</label>
                 <div className="auth-input-icon-wrap">
                   <span className="auth-input-icon" aria-hidden="true">
                     *
                   </span>
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Nh?p m?t kh?u"
+                    placeholder="Nhập mật khẩu"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     autoComplete="current-password"
@@ -299,9 +237,9 @@ export default function RoleLoginPage({ role }) {
                     type="button"
                     className="password-toggle-btn"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    aria-label={showPassword ? '?n m?t kh?u' : 'Hi?n m?t kh?u'}
+                    aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
-                    {showPassword ? '?n' : 'Hi?n'}
+                    {showPassword ? 'Ẩn' : 'Hiện'}
                   </button>
                 </div>
               </div>
@@ -313,30 +251,58 @@ export default function RoleLoginPage({ role }) {
                     checked={rememberMe}
                     onChange={(event) => setRememberMe(event.target.checked)}
                   />
-                  <span>Ghi nh? t�i</span>
+                  <span>Ghi nhớ tôi</span>
                 </label>
                 <Link to="/forgot-password" className="inline-link">
-                  Qu�n m?t kh?u?
+                  Quên mật khẩu?
                 </Link>
               </div>
 
               {error && <div className="error-text">{error}</div>}
 
               <button type="submit" disabled={submitting} className="login-submit-btn">
-                {submitting ? '�ang dang nh?p...' : '�ang nh?p'}
+                {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </button>
 
               <div className="auth-divider">
-                <span>Ho?c</span>
+                <span>Hoặc</span>
               </div>
 
-              <div id="roleGoogleBtn"></div>
-              {googleLoginBusy ? <div className="text-sm text-slate-500">Dang dang nhap Google...</div> : null}
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="google-login-btn"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: '#ffffff',
+                  color: '#1f2937',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  hover: { backgroundColor: '#f9fafb', borderColor: '#9ca3af' }
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Đăng nhập với Google
+              </button>
             </form>
 
             <div className="auth-links auth-links-center">
-              <span>C?ng kh�ch h�ng?</span>
-              <Link to="/login">�ang nh?p thu?ng</Link>
+              <span>Cổng khách hàng?</span>
+              <Link to="/login">Đăng nhập thường</Link>
             </div>
           </section>
         </div>
@@ -344,6 +310,3 @@ export default function RoleLoginPage({ role }) {
     </>
   );
 }
-
-
-
