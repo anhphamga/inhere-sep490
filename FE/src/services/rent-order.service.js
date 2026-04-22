@@ -21,7 +21,9 @@ import {
   markWaitingReturnRequest,
   payDepositRequest,
   searchCustomersRequest,
-  staffCollectDepositRequest
+  staffCollectDepositRequest,
+  getSwapCandidatesRequest,
+  swapOrderItemRequest,
 } from '../api/rent-order.api'
 
 export const createRentOrderApi = async (payload) => {
@@ -136,5 +138,15 @@ export const cancelGuestRentOrderApi = async (id, options = {}) => {
 
 export const staffCollectDepositApi = async (id, method = 'Cash') => {
   const response = await staffCollectDepositRequest(id, method)
+  return response.data
+}
+
+export const getSwapCandidatesApi = async (orderId, itemId) => {
+  const response = await getSwapCandidatesRequest(orderId, itemId)
+  return response.data
+}
+
+export const swapOrderItemApi = async (orderId, payload) => {
+  const response = await swapOrderItemRequest(orderId, payload)
   return response.data
 }

@@ -75,15 +75,30 @@ export const normalizeSizeStock = (product, toArray) => {
   const normalizedRows = rows
     .map((row) => ({
       size: toDisplayText(row?.size),
-      quantity: Number(row?.quantity || 0)
+      quantity: Number(row?.quantity || 0),
+      available: Number(row?.available ?? row?.quantity ?? 0),
+      reserved: Number(row?.reserved || 0),
+      renting: Number(row?.renting || 0),
+      other: Number(row?.other || 0),
     }))
     .filter((row) => row.size)
 
   if (normalizedRows.length > 0) {
+    const totalStock = normalizedRows.reduce((sum, item) => sum + item.quantity, 0)
+    const totalAvailable = normalizedRows.reduce((sum, item) => sum + item.available, 0)
+    const totalReserved = normalizedRows.reduce((sum, item) => sum + item.reserved, 0)
+    const totalRenting = normalizedRows.reduce((sum, item) => sum + item.renting, 0)
     return {
       rows: normalizedRows,
-      totalStock: normalizedRows.reduce((sum, item) => sum + item.quantity, 0),
-      sizeText: normalizedRows.map((item) => `${item.size}: ${item.quantity}`).join(' | ')
+      totalStock,
+      totalAvailable,
+      totalReserved,
+      totalRenting,
+      sizeText: normalizedRows.map((item) => `${item.size}: ${item.quantity}`).join(' | '),
+      sizeAvailableText: normalizedRows
+        .filter((r) => r.available > 0)
+        .map((item) => `${item.size}: ${item.available}`)
+        .join(' | ') || '—',
     }
   }
 
@@ -94,9 +109,13 @@ export const normalizeSizeStock = (product, toArray) => {
   const fallbackText = fallbackSizes.length > 0 ? [...new Set(fallbackSizes)].join(', ') : 'Không có'
 
   return {
-    rows: fallbackSizes.map((size) => ({ size, quantity: fallbackStock })),
+    rows: fallbackSizes.map((size) => ({ size, quantity: fallbackStock, available: fallbackStock, reserved: 0, renting: 0, other: 0 })),
     totalStock: fallbackStock,
-    sizeText: fallbackText
+    totalAvailable: fallbackStock,
+    totalReserved: 0,
+    totalRenting: 0,
+    sizeText: fallbackText,
+    sizeAvailableText: fallbackText,
   }
 }
 

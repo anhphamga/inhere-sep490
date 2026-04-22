@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getAllRentOrdersApi, getRentOrderByIdApi, confirmRentOrderApi, markWaitingPickupApi, markWaitingReturnApi, confirmPickupApi, confirmReturnApi, completeWashingApi, finalizeRentOrderApi, markNoShowApi, staffCollectDepositApi, cancelRentOrderApi } from '../../services/rent-order.service'
+import { getAllRentOrdersApi, getRentOrderByIdApi, confirmRentOrderApi, markWaitingPickupApi, markWaitingReturnApi, confirmPickupApi, confirmReturnApi, completeWashingApi, finalizeRentOrderApi, markNoShowApi, staffCollectDepositApi, cancelRentOrderApi, getSwapCandidatesApi, swapOrderItemApi } from '../../services/rent-order.service'
 import { resolveDamagePolicyApi } from '../../services/damage-policy.service'
 import { createDepositPaymentLinkApi, createExtraDuePaymentLinkApi } from '../../services/payment.service'
 
@@ -115,6 +115,17 @@ export default function StaffRentOrders() {
   const [returnNote, setReturnNote] = useState('')
   const [returnError, setReturnError] = useState('')
   const [returnDate, setReturnDate] = useState('')
+
+  // Swap modal state
+  const [showSwapModal, setShowSwapModal] = useState(false)
+  const [swapOrderRef, setSwapOrderRef] = useState(null)
+  const [swapItem, setSwapItem] = useState(null)
+  const [swapCandidates, setSwapCandidates] = useState({ size_swap: [], model_swap: [], upgrade: [] })
+  const [swapTab, setSwapTab] = useState('size_swap')
+  const [swapLoading, setSwapLoading] = useState(false)
+  const [swapSelected, setSwapSelected] = useState(null)
+  const [swapReason, setSwapReason] = useState('')
+  const [swapError, setSwapError] = useState('')
 
   // Fetch full order detail (có collaterals, deposits, payments) khi click vào đơn
   const selectOrder = useCallback(async (order) => {
@@ -381,6 +392,70 @@ export default function StaffRentOrders() {
     setShowReturnModal(false)
     setReturnOrderId(null)
     setReturnDate('')
+  }
+
+  // ── Swap handlers ──────────────────────────────────────────────
+  const openSwapModal = async (order, item) => {
+    setSwapOrderRef(order)
+    setSwapItem(item)
+    setSwapSelected(null)
+    setSwapReason('')
+    setSwapError('')
+    setSwapTab('size_swap')
+    setSwapCandidates({ size_swap: [], model_swap: [], upgrade: [] })
+    setShowSwapModal(true)
+    setSwapLoading(true)
+    try {
+      const res = await getSwapCandidatesApi(order._id, item._id)
+      if (res?.success && res?.data) {
+        setSwapCandidates({
+          size_swap: res.data.size_swap || [],
+          model_swap: res.data.model_swap || [],
+          upgrade: res.data.upgrade || [],
+        })
+        // Tự chọn tab đầu tiên có dữ liệu
+        if ((res.data.size_swap || []).length > 0) setSwapTab('size_swap')
+        else if ((res.data.model_swap || []).length > 0) setSwapTab('model_swap')
+        else if ((res.data.upgrade || []).length > 0) setSwapTab('upgrade')
+      }
+    } catch (err) {
+      setSwapError(err?.response?.data?.message || 'Không thể lấy danh sách ứng viên đổi')
+    } finally {
+      setSwapLoading(false)
+    }
+  }
+
+  const closeSwapModal = () => {
+    setShowSwapModal(false)
+    setSwapOrderRef(null)
+    setSwapItem(null)
+    setSwapSelected(null)
+    setSwapError('')
+  }
+
+  const handleSwapConfirm = async () => {
+    if (!swapSelected || !swapOrderRef || !swapItem) return
+    setSwapLoading(true)
+    setSwapError('')
+    try {
+      const res = await swapOrderItemApi(swapOrderRef._id, {
+        itemId: swapItem._id,
+        newInstanceId: swapSelected._id,
+        swapType: swapTab,
+        reason: swapReason,
+      })
+      if (res?.success) {
+        closeSwapModal()
+        showSuccess(res.message || 'Đổi sản phẩm thành công')
+        if (res.data) setSelectedOrder(res.data)
+      } else {
+        setSwapError(res?.message || 'Đổi sản phẩm thất bại')
+      }
+    } catch (err) {
+      setSwapError(err?.response?.data?.message || 'Lỗi khi đổi sản phẩm')
+    } finally {
+      setSwapLoading(false)
+    }
   }
 
   const handleReturnConfirm = async () => {
@@ -819,11 +894,21 @@ export default function StaffRentOrders() {
                                 <p className="mt-1 font-mono text-[11px] text-slate-400">Mã hàng: {instanceCode}</p>
                               )}
                             </div>
-                            <div className="shrink-0 text-right">
+                            <div className="shrink-0 text-right flex flex-col items-end gap-1">
                               <p className="text-sm font-semibold text-indigo-600">
                                 {formatMoney(item.finalPrice || item.baseRentPrice || 0)}
                               </p>
                               <p className="text-[11px] text-slate-400">/ngày</p>
+                              {['Deposited', 'Confirmed', 'WaitingPickup'].includes(selectedOrder.status) && (
+                                <button
+                                  type="button"
+                                  onClick={() => openSwapModal(selectedOrder, item)}
+                                  className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100 transition-colors"
+                                  title="Đổi sản phẩm"
+                                >
+                                  Đổi SP
+                                </button>
+                              )}
                             </div>
                           </div>
                         )
@@ -1640,6 +1725,186 @@ export default function StaffRentOrders() {
                   </span>
                 ) : 'Xác nhận trả đồ'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Swap Modal ───────────────────────────────────────────── */}
+      {showSwapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Đổi sản phẩm</h3>
+                {swapItem && (
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {getProductName(swapItem?.productInstanceId?.productId || {})}
+                    {swapItem.size ? ` · Size ${swapItem.size}` : ''}
+                    {swapItem.color ? ` · ${swapItem.color}` : ''}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={closeSwapModal} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100 shrink-0 px-4 pt-1 gap-1">
+              {[
+                { key: 'size_swap', label: 'Đổi size', color: 'indigo' },
+                { key: 'model_swap', label: 'Đổi mẫu', color: 'violet' },
+                { key: 'upgrade', label: 'Upgrade', color: 'amber' },
+              ].map(({ key, label, color }) => {
+                const count = swapCandidates[key]?.length || 0
+                const active = swapTab === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => { setSwapTab(key); setSwapSelected(null) }}
+                    className={`flex items-center gap-1.5 rounded-t-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                      active
+                        ? `border-b-2 border-${color}-500 text-${color}-700 bg-${color}-50/50`
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {label}
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${count > 0 ? `bg-${color}-100 text-${color}-700` : 'bg-slate-100 text-slate-400'}`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Tab description */}
+            <div className="px-6 py-2 shrink-0">
+              {swapTab === 'size_swap' && <p className="text-xs text-slate-500">Cùng mẫu sản phẩm, khác size — phù hợp khi khách mặc không vừa.</p>}
+              {swapTab === 'model_swap' && <p className="text-xs text-slate-500">Mẫu khác cùng loại — dùng khi hết size hoặc hết mẫu hiện tại.</p>}
+              {swapTab === 'upgrade' && <p className="text-xs text-slate-500">Cùng mẫu tình trạng tốt hơn (ưu tiên) hoặc mẫu khác cùng loại cao cấp hơn — khi khách yêu cầu nâng cấp. Giá có thể thay đổi.</p>}
+            </div>
+
+            {/* Candidate list */}
+            <div className="flex-1 overflow-y-auto px-4 pb-2">
+              {swapLoading ? (
+                <div className="flex items-center justify-center py-12 text-slate-400">
+                  <svg className="h-6 w-6 animate-spin mr-2" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                  Đang tải...
+                </div>
+              ) : swapCandidates[swapTab]?.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">
+                  Không có sản phẩm phù hợp
+                </div>
+              ) : (
+                <div className="space-y-2 py-1">
+                  {swapCandidates[swapTab].map((cand) => {
+                    const candProduct = cand.productId || {}
+                    const candName = getProductName(candProduct)
+                    const candImage = getProductImage(candProduct)
+                    const currentPrice = Number(swapItem?.finalPrice || swapItem?.baseRentPrice || 0)
+                    const candPrice = Number(cand.currentRentPrice || 0)
+                    const priceDiff = candPrice - currentPrice
+                    const isSelected = swapSelected?._id === cand._id
+                    return (
+                      <button
+                        key={cand._id}
+                        type="button"
+                        onClick={() => setSwapSelected(cand)}
+                        className={`w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-all ${
+                          isSelected
+                            ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'}`}>
+                          {isSelected && <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
+                        </div>
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                          {candImage ? (
+                            <img src={candImage} alt={candName} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-slate-300">
+                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159M3 19.5h18V5.25H3v14.25z" /></svg>
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-900">{candName}</p>
+                          <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                            {cand.size && <span>Size <span className="font-medium text-slate-700">{cand.size}</span></span>}
+                            {cand.color && <span>· {cand.color}</span>}
+                            {cand.conditionScore != null && (
+                              <span>· Điểm tình trạng: <span className="font-medium text-slate-700">{cand.conditionScore}</span></span>
+                            )}
+                          </div>
+                          {cand.instanceCode && (
+                            <p className="mt-0.5 font-mono text-[10px] text-slate-400">{cand.instanceCode}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-semibold text-indigo-600">{formatMoney(candPrice)}</p>
+                          <p className="text-[10px] text-slate-400">/ngày</p>
+                          {priceDiff !== 0 && (
+                            <span className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-bold ${priceDiff > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
+                              {priceDiff > 0 ? '+' : ''}{formatMoney(priceDiff)}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Reason input + footer */}
+            <div className="border-t border-slate-100 px-6 py-4 shrink-0 space-y-3">
+              {swapSelected && (
+                <div className="rounded-2xl bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                  Đã chọn: <span className="font-bold">{getProductName(swapSelected.productId || {})}</span>
+                  {swapSelected.size ? ` · Size ${swapSelected.size}` : ''}
+                  {(() => {
+                    const currentPrice = Number(swapItem?.finalPrice || swapItem?.baseRentPrice || 0)
+                    const newPrice = Number(swapSelected.currentRentPrice || 0)
+                    const diff = newPrice - currentPrice
+                    if (diff === 0) return <span className="ml-2 text-slate-500 text-xs">Giá không đổi</span>
+                    return <span className={`ml-2 text-xs font-bold ${diff > 0 ? 'text-red-600' : 'text-green-700'}`}>Giá thay đổi {diff > 0 ? '+' : ''}{formatMoney(diff)}/ngày</span>
+                  })()}
+                </div>
+              )}
+              <input
+                type="text"
+                placeholder="Lý do đổi (tùy chọn)..."
+                value={swapReason}
+                onChange={(e) => setSwapReason(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+              {swapError && <p className="text-sm text-red-600 font-medium">{swapError}</p>}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={closeSwapModal}
+                  className="flex-1 rounded-2xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={!swapSelected || swapLoading}
+                  onClick={handleSwapConfirm}
+                  className="flex-1 rounded-2xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {swapLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                      Đang xử lý...
+                    </span>
+                  ) : 'Xác nhận đổi'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

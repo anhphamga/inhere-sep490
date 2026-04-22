@@ -8,54 +8,38 @@ const {
   authorizeAnyPermission,
 } = require('../middleware/auth.middleware');
 
-const getProductInventoryDetails = async (req, res) => {
-  req.query = { ...req.query, productId: req.params.productId };
-  return productController.getProductInstances(req, res);
-};
-
-const getProductInstances = async (req, res) => {
-  req.query = { ...req.query, productId: req.params.productId };
-  return productController.getProductInstances(req, res);
-};
-
-const getAllInstances = async (req, res) => {
-  return productController.getProductInstances(req, res);
-};
-
 /**
  * GET /api/products/:productId/inventory
- * Get detailed inventory for a product
- * Returns instances, statistics, and summary
+ * Get detailed inventory for a product (same as instances but kept for backward compat)
  */
 router.get(
   '/:productId/inventory',
   authenticate,
   authorizeAnyPermission(['inventory.read', 'inventory.item.read']),
-  getProductInventoryDetails
+  productController.getProductInstances
 );
 
 /**
  * GET /api/products/:productId/instances
- * Get all instances for a product with optional filters
- * Query params: size (string), status (Available|Rented|Washing|Reserved|Repair|Lost|Sold)
+ * Get all instances for a product
+ * Query params: lifecycleStatus, conditionLevel, page, limit, search
  */
 router.get(
   '/:productId/instances',
   authenticate,
   authorizeAnyPermission(['inventory.read', 'inventory.item.read']),
-  getProductInstances
+  productController.getProductInstances
 );
 
 /**
  * GET /api/products/instances/all
- * Get all instances across all products with optional filters
- * Query params: size (string), status (Available|Rented|Washing|Reserved|Repair|Lost|Sold)
+ * Get all instances across all products (no productId filter)
  */
 router.get(
   '/instances/all',
   authenticate,
   authorizeAnyPermission(['inventory.read', 'inventory.item.read']),
-  getAllInstances
+  productController.getProductInstances
 );
 
 module.exports = router;

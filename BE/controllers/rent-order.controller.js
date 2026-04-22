@@ -6,6 +6,7 @@ const { getInstanceBaseValue } = require('../model/ProductInstance.model');
 const Product = require('../model/Product.model');
 const DamagePolicy = require('../model/DamagePolicy.model');
 const { resolvePolicyForProduct } = require('./damage-policy.controller');
+const ItemSwapHistory = require('../model/ItemSwapHistory.model');
 const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
 const Collateral = require('../model/Collateral.model');
@@ -2976,5 +2977,437 @@ exports.createGuestCustomer = async (req, res) => {
     } catch (error) {
         console.error('Create guest customer error:', error);
         return res.status(500).json({ success: false, message: 'Lỗi server khi tạo hồ sơ khách', error: error.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// SWAP ITEM – đổi sản phẩm trong đơn thuê tại thời điểm bàn giao
+// ─────────────────────────────────────────────────────────────────
+
+const SWAPPABLE_ORDER_STATUSES = ['Deposited', 'Confirmed', 'WaitingPickup'];
+
+/**
+ * Tách category text từ Product để so sánh "cùng loại".
+ * Hỗ trợ cả string lẫn i18n object.
+ */
+const extractCategoryKey = (product) => {
+    if (!product) return '';
+    const cat = product.category;
+    if (!cat) return '';
+    if (typeof cat === 'string') return cat.trim().toLowerCase();
+    const text = cat?.vi || cat?.en || Object.values(cat)[0] || '';
+    return String(text).trim().toLowerCase();
+};
+
+/**
+ * GET /:id/items/:itemId/swap-candidates
+ * Trả về 3 nhóm ứng viên: size_swap, model_swap, upgrade.
+ * Thứ tự ưu tiên: size_swap → model_swap → upgrade.
+ */
+exports.getSwapCandidates = async (req, res) => {
+    try {
+        const { id, itemId } = req.params;
+
+        const order = await RentOrder.findById(id).lean();
+        if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
+
+        if (!SWAPPABLE_ORDER_STATUSES.includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Chỉ có thể đổi sản phẩm khi đơn ở trạng thái ${SWAPPABLE_ORDER_STATUSES.join('/')}`,
+            });
+        }
+
+        const currentItem = await RentOrderItem.findById(itemId)
+            .populate({ path: 'productInstanceId', populate: { path: 'productId' } })
+            .lean();
+        if (!currentItem || String(currentItem.orderId) !== String(id)) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm trong đơn' });
+        }
+
+        const currentInstance = currentItem.productInstanceId;
+        const currentProduct = currentInstance?.productId || {};
+        const currentProductId = String(currentProduct._id || currentInstance?.productId || '');
+        const currentCategoryKey = extractCategoryKey(currentProduct);
+        const itemSize = String(currentItem.size || currentInstance?.size || '').trim();
+        const hasExplicitSize = itemSize && itemSize.toUpperCase() !== 'FREE SIZE';
+
+        const rentStart = currentItem.rentStartDate || order.rentStartDate;
+        const rentEnd = currentItem.rentEndDate || order.rentEndDate;
+
+        // Lấy tất cả instance đang dùng trong đơn để loại trừ
+        const allOrderItems = await RentOrderItem.find({ orderId: id }).lean();
+        const excludedIds = new Set(allOrderItems.map((i) => String(i.productInstanceId)));
+
+        const checkAvail = (instanceId) =>
+            isInstanceAvailableForPeriod(instanceId, rentStart, rentEnd, null, String(id));
+
+        // ── NHÓM 1: Đổi size ──────────────────────────────────────────────
+        // Cùng productId, khác size, không bị chặn
+        const sizeCandidateFilter = {
+            productId: new mongoose.Types.ObjectId(currentProductId),
+            _id: { $nin: Array.from(excludedIds).map((eid) => new mongoose.Types.ObjectId(eid)) },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+            ...(hasExplicitSize ? { size: { $ne: itemSize } } : {}),
+        };
+        const sizeRaw = await ProductInstance.find(sizeCandidateFilter)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: 1, createdAt: 1 })
+            .lean();
+        const sizeSwap = [];
+        for (const cand of sizeRaw) {
+            if (await checkAvail(cand._id)) sizeSwap.push(cand);
+        }
+
+        // ── NHÓM 2: Đổi mẫu ──────────────────────────────────────────────
+        // Cùng category, khác productId, cùng size (nếu có), không bị chặn
+        const sameCatProducts = await Product.find({
+            _id: { $ne: new mongoose.Types.ObjectId(currentProductId) },
+            isDraft: false,
+        }).lean();
+        const sameCatProductIds = sameCatProducts
+            .filter((p) => extractCategoryKey(p) === currentCategoryKey)
+            .map((p) => p._id);
+
+        let modelCandFilter = {
+            productId: { $in: sameCatProductIds },
+            _id: { $nin: Array.from(excludedIds).map((eid) => new mongoose.Types.ObjectId(eid)) },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+        };
+        if (hasExplicitSize) modelCandFilter.size = itemSize;
+
+        const modelRaw = await ProductInstance.find(modelCandFilter)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: 1, createdAt: 1 })
+            .lean();
+        const modelSwap = [];
+        for (const cand of modelRaw) {
+            if (await checkAvail(cand._id)) modelSwap.push(cand);
+        }
+
+        // ── NHÓM 3: Upgrade ───────────────────────────────────────────────
+        // Ưu tiên 1: Cùng mẫu (cùng productId), cùng size, conditionScore CAO HƠN hiện tại
+        // Ưu tiên 2: Khác mẫu nhưng cùng category, cùng size, conditionScore hoặc giá cao hơn
+        const currentConditionScore = Number(currentInstance?.conditionScore ?? 100);
+        const currentDailyPrice = Number(currentItem.baseRentPrice || currentInstance?.currentRentPrice || 0);
+        const excludedArr = Array.from(excludedIds).map((eid) => new mongoose.Types.ObjectId(eid));
+
+        // Ưu tiên 1: cùng productId, cùng size, tình trạng tốt hơn
+        const upgradeFilterSameModel = {
+            productId: new mongoose.Types.ObjectId(currentProductId),
+            _id: { $nin: excludedArr },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+            conditionScore: { $gt: currentConditionScore },
+        };
+        if (hasExplicitSize) upgradeFilterSameModel.size = itemSize;
+
+        const upgradeRawSameModel = await ProductInstance.find(upgradeFilterSameModel)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: -1, createdAt: 1 })
+            .lean();
+
+        // Ưu tiên 2: khác productId, cùng category, cùng size, tình trạng hoặc giá tốt hơn
+        const upgradeFilterOtherModel = {
+            productId: { $in: sameCatProductIds },
+            _id: { $nin: excludedArr },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+            $or: [
+                { conditionScore: { $gt: currentConditionScore } },
+                { currentRentPrice: { $gt: currentDailyPrice } },
+            ],
+        };
+        if (hasExplicitSize) upgradeFilterOtherModel.size = itemSize;
+
+        const upgradeRawOtherModel = await ProductInstance.find(upgradeFilterOtherModel)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: -1, currentRentPrice: -1, createdAt: 1 })
+            .lean();
+
+        // Gộp: cùng mẫu lên đầu, rồi mới đến mẫu khác
+        const upgradeRaw = [...upgradeRawSameModel, ...upgradeRawOtherModel];
+        const upgradeSwap = [];
+        const seenUpgrade = new Set();
+        for (const cand of upgradeRaw) {
+            const candId = String(cand._id);
+            if (seenUpgrade.has(candId)) continue;
+            if (await checkAvail(cand._id)) {
+                seenUpgrade.add(candId);
+                upgradeSwap.push(cand);
+            }
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                currentItem,
+                rentStart,
+                rentEnd,
+                size_swap: sizeSwap,
+                model_swap: modelSwap,
+                upgrade: upgradeSwap,
+            },
+        });
+    } catch (error) {
+        console.error('getSwapCandidates error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
+    }
+};
+
+/**
+ * PUT /:id/swap-item
+ * Body: { itemId, newInstanceId, swapType, reason }
+ * swapType: 'size_swap' | 'model_swap' | 'upgrade'
+ */
+exports.swapOrderItem = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
+
+    try {
+        const { id } = req.params;
+        const { itemId, newInstanceId, swapType, reason = '' } = req.body || {};
+
+        if (!itemId || !newInstanceId) {
+            return res.status(400).json({ success: false, message: 'Thiếu itemId hoặc newInstanceId' });
+        }
+        if (!['size_swap', 'model_swap', 'upgrade'].includes(swapType)) {
+            return res.status(400).json({ success: false, message: 'swapType phải là size_swap / model_swap / upgrade' });
+        }
+        if (!mongoose.isValidObjectId(itemId) || !mongoose.isValidObjectId(newInstanceId)) {
+            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
+        }
+
+        const order = await RentOrder.findById(id);
+        if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
+
+        if (!isOwnerOrStaff(req, order)) {
+            return res.status(403).json({ success: false, message: 'Forbidden - Không có quyền thực hiện' });
+        }
+
+        if (!SWAPPABLE_ORDER_STATUSES.includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Chỉ có thể đổi sản phẩm khi đơn ở trạng thái ${SWAPPABLE_ORDER_STATUSES.join('/')}`,
+            });
+        }
+
+        const currentItem = await RentOrderItem.findById(itemId);
+        if (!currentItem || String(currentItem.orderId) !== String(id)) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm trong đơn' });
+        }
+        if (String(currentItem.productInstanceId) === String(newInstanceId)) {
+            return res.status(400).json({ success: false, message: 'Sản phẩm mới trùng với sản phẩm hiện tại' });
+        }
+
+        const oldInstanceId = currentItem.productInstanceId;
+        const oldInstance = await ProductInstance.findById(oldInstanceId)
+            .populate('productId', 'name images baseRentPrice category categoryPath')
+            .lean();
+        const newInstance = await ProductInstance.findById(newInstanceId)
+            .populate('productId', 'name images baseRentPrice category categoryPath')
+            .lean();
+
+        if (!newInstance) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm mới' });
+        }
+        if (INSTANCE_STATUSES_BLOCKING_RENT.includes(newInstance.lifecycleStatus)) {
+            return res.status(409).json({ success: false, message: 'Sản phẩm mới đã bị mất hoặc đã bán' });
+        }
+
+        // Validate theo swapType
+        const oldProductId = String(oldInstance?.productId?._id || oldInstance?.productId || '');
+        const newProductId = String(newInstance?.productId?._id || newInstance?.productId || '');
+        const itemSize = String(currentItem.size || oldInstance?.size || '').trim();
+        const hasExplicitSize = itemSize && itemSize.toUpperCase() !== 'FREE SIZE';
+
+        if (swapType === 'size_swap') {
+            if (oldProductId !== newProductId) {
+                return res.status(400).json({ success: false, message: 'Đổi size phải cùng mẫu sản phẩm' });
+            }
+        } else if (swapType === 'upgrade') {
+            // Upgrade cho phép:
+            // 1. Cùng mẫu (cùng productId), tình trạng tốt hơn — không cần kiểm tra category
+            // 2. Khác mẫu, cùng category — cần kiểm tra category
+            if (oldProductId !== newProductId) {
+                const oldCat = extractCategoryKey(oldInstance?.productId);
+                const newCat = extractCategoryKey(newInstance?.productId);
+                if (oldCat && newCat && oldCat !== newCat) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Upgrade sang mẫu khác phải cùng loại sản phẩm (category)',
+                    });
+                }
+            }
+        } else {
+            // model_swap: khác productId, cùng category
+            const oldCat = extractCategoryKey(oldInstance?.productId);
+            const newCat = extractCategoryKey(newInstance?.productId);
+            if (oldCat && newCat && oldCat !== newCat) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Đổi mẫu phải cùng loại sản phẩm (category)',
+                });
+            }
+            if (hasExplicitSize) {
+                const newSize = String(newInstance.size || '').trim();
+                if (newSize && newSize !== itemSize) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Đổi mẫu phải cùng size ${itemSize}. Nếu hết size hãy dùng "Đổi mẫu (size khác)".`,
+                    });
+                }
+            }
+        }
+
+        const rentStart = currentItem.rentStartDate || order.rentStartDate;
+        const rentEnd = currentItem.rentEndDate || order.rentEndDate;
+        const isAvail = await isInstanceAvailableForPeriod(newInstanceId, rentStart, rentEnd, null, String(id));
+        if (!isAvail) {
+            return res.status(409).json({ success: false, message: 'Sản phẩm mới không còn khả dụng cho khoảng ngày này' });
+        }
+
+        // ─── Transaction ──────────────────────────────────────────────────
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const before = snapshotOrderForAudit(order);
+        const oldFinalPrice = Number(currentItem.finalPrice || currentItem.baseRentPrice || 0);
+        const newDailyRate = Number(newInstance.currentRentPrice || 0);
+        const itemRentStart = new Date(rentStart);
+        const itemRentEnd = new Date(rentEnd);
+        const rentDays = Math.max(
+            1,
+            Math.ceil((itemRentEnd.getTime() - itemRentStart.getTime()) / (24 * 60 * 60 * 1000))
+        );
+        const newFinalPrice = newDailyRate > 0 ? newDailyRate * rentDays : oldFinalPrice;
+
+        // 1. Cập nhật RentOrderItem
+        await RentOrderItem.updateOne(
+            { _id: itemId },
+            {
+                productInstanceId: newInstanceId,
+                baseRentPrice: newDailyRate,
+                finalPrice: newFinalPrice,
+                size: String(newInstance.size || '').trim() || itemSize,
+                color: String(newInstance.color || currentItem.color || '').trim(),
+            },
+            txOptions
+        );
+
+        // 2. Giải phóng instance cũ → Available nếu không đơn nào khác dùng
+        const otherActiveItems = await RentOrderItem.find({
+            productInstanceId: oldInstanceId,
+            orderId: { $ne: id },
+        }).populate({ path: 'orderId', select: 'status' }).lean();
+        const hasOtherActive = otherActiveItems.some(
+            (it) => !TERMINAL_ORDER_STATUSES.includes(String(it.orderId?.status || '').toLowerCase())
+        );
+        if (!hasOtherActive && oldInstance) {
+            await ProductInstance.updateOne(
+                { _id: oldInstanceId, lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT } },
+                { lifecycleStatus: 'Available' },
+                txOptions
+            );
+        }
+
+        // 3. Mark instance mới → Reserved
+        await ProductInstance.updateOne(
+            { _id: newInstanceId },
+            { lifecycleStatus: 'Reserved' },
+            txOptions
+        );
+
+        // 4. InventoryHistory
+        await InventoryHistory.findOneAndUpdate(
+            { productInstanceId: oldInstanceId, status: 'Reserved', endDate: null },
+            { endDate: new Date() },
+            txOptions
+        );
+        await InventoryHistory.create(
+            [{
+                productInstanceId: newInstanceId,
+                status: 'Reserved',
+                startDate: new Date(),
+                note: `[${swapType}] Đơn ${order.orderCode || id}`,
+            }],
+            txOptions
+        );
+
+        // 5. Cập nhật tổng tiền đơn nếu giá thay đổi
+        const oldOrderTotal = Number(order.totalAmount || 0);
+        let newOrderTotal = oldOrderTotal;
+        if (newFinalPrice !== oldFinalPrice) {
+            const allItems = await RentOrderItem.find({ orderId: id }, null, txOptions).lean();
+            const rawTotal = allItems.reduce((sum, it) => {
+                const price = String(it._id) === String(itemId) ? newFinalPrice : Number(it.finalPrice || 0);
+                return sum + price;
+            }, 0);
+            newOrderTotal = Math.max(0, rawTotal - Number(order.discountAmount || 0));
+            order.totalAmount = newOrderTotal;
+            order.remainingAmount = Math.max(0, newOrderTotal - Number(order.depositAmount || 0));
+            await order.save(txOptions);
+        }
+
+        // 6. Lưu ItemSwapHistory
+        await ItemSwapHistory.create(
+            [{
+                orderId: id,
+                orderItemId: itemId,
+                swapType,
+                oldInstanceId,
+                oldProductId: oldInstance?.productId?._id || oldInstance?.productId || null,
+                oldSize: String(oldInstance?.size || '').trim(),
+                oldColor: String(oldInstance?.color || '').trim(),
+                oldDailyPrice: Number(currentItem.baseRentPrice || 0),
+                newInstanceId,
+                newProductId: newInstance?.productId?._id || newInstance?.productId || null,
+                newSize: String(newInstance.size || '').trim(),
+                newColor: String(newInstance.color || '').trim(),
+                newDailyPrice: newDailyRate,
+                oldOrderTotal,
+                newOrderTotal,
+                reason: String(reason || '').trim(),
+                staffId: req.user?.id || req.user?._id || null,
+            }],
+            txOptions
+        );
+
+        // 7. Audit log
+        await writeAuditLog({
+            req,
+            user: req.user,
+            action: `orders_rent.item.${swapType}`,
+            resource: 'RentOrderItem',
+            resourceId: itemId,
+            before: { productInstanceId: String(oldInstanceId), finalPrice: oldFinalPrice },
+            after: { productInstanceId: String(newInstanceId), finalPrice: newFinalPrice },
+        });
+        await auditOrderChange(req, 'orders_rent.item.swap', order._id, before, snapshotOrderForAudit(order));
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
+
+        const swapTypeLabel = { size_swap: 'Đổi size', model_swap: 'Đổi mẫu', upgrade: 'Upgrade' };
+
+        return res.json({
+            success: true,
+            message: `${swapTypeLabel[swapType] || 'Đổi sản phẩm'} thành công`,
+            priceChanged: newFinalPrice !== oldFinalPrice,
+            oldFinalPrice,
+            newFinalPrice,
+            oldOrderTotal,
+            newOrderTotal,
+            data: await fetchOrderDetail(id),
+        });
+    } catch (error) {
+        if (session) {
+            if (useTransaction) await session.abortTransaction();
+            await session.endSession();
+        }
+        console.error('swapOrderItem error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
     }
 };

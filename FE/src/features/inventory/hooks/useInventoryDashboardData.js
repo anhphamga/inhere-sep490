@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { UI_IMAGE_FALLBACKS } from '../../../constants/ui'
 import { LOW_STOCK_THRESHOLD } from '../config/inventory.constants'
 import { getInventoryDashboardBundleApi } from '../api/inventory.api'
@@ -51,7 +51,7 @@ export const useInventoryDashboardData = () => {
         const id = String(product?._id || product?.id || '')
         const name = toDisplayText(product?.name) || 'Sản phẩm chưa đặt tên'
         const category = toDisplayText(product?.category) || 'Chưa phân loại'
-        const { rows: sizeRows, totalStock, sizeText } = normalizeSizeStock(product, toArray)
+        const { rows: sizeRows, totalStock, totalAvailable, totalReserved, totalRenting, sizeText, sizeAvailableText } = normalizeSizeStock(product, toArray)
 
         const soldSale = saleMap.get(id) || 0
         const soldRent = rentMap.get(id) || 0
@@ -63,12 +63,12 @@ export const useInventoryDashboardData = () => {
         let insightType = 'onDinh'
         let insightLabel = 'Ổn định'
 
-        if (totalStock === 0 || outOfStockIds.has(id)) {
+        if (totalAvailable === 0 || outOfStockIds.has(id)) {
           status = 'out'
-          statusLabel = 'Hết hàng'
+          statusLabel = totalStock > 0 ? 'Hết hàng có sẵn' : 'Hết hàng'
           insightType = 'hetHang'
-          insightLabel = 'Hết hàng'
-        } else if (totalStock <= LOW_STOCK_THRESHOLD || lowStockIds.has(id)) {
+          insightLabel = totalStock > 0 ? 'Hết có sẵn' : 'Hết hàng'
+        } else if (totalAvailable <= LOW_STOCK_THRESHOLD || lowStockIds.has(id)) {
           status = 'low'
           statusLabel = 'Sắp hết hàng'
           insightType = 'sapHet'
@@ -80,21 +80,21 @@ export const useInventoryDashboardData = () => {
           insightLabel = 'Bán chạy'
         }
 
-        if (soldTotal === 0 && totalStock > 6) {
+        if (soldTotal === 0 && totalAvailable > 6) {
           insightType = 'tonLau'
           insightLabel = 'Tồn lâu'
         }
 
         let prediction = 'Ổn định'
-        if (totalStock === 0) {
-          prediction = 'Đã hết hàng'
+        if (totalAvailable === 0) {
+          prediction = totalStock > 0 ? 'Hết hàng có sẵn' : 'Đã hết hàng'
         } else if (soldPerDay > 0) {
-          const remainingDays = Math.max(1, Math.ceil(totalStock / soldPerDay))
+          const remainingDays = Math.max(1, Math.ceil(totalAvailable / soldPerDay))
           prediction = remainingDays <= 3 ? `Hết trong ${remainingDays} ngày` : `Dự kiến còn ${remainingDays} ngày`
         }
 
         const trend = soldPerDay > 0
-          ? (totalStock <= LOW_STOCK_THRESHOLD ? 'Giảm nhanh' : 'Giảm nhẹ')
+          ? (totalAvailable <= LOW_STOCK_THRESHOLD ? 'Giảm nhanh' : 'Giảm nhẹ')
           : 'Ổn định'
 
         return {
@@ -104,7 +104,11 @@ export const useInventoryDashboardData = () => {
           category,
           sizeRows,
           sizeText,
+          sizeAvailableText,
           stock: totalStock,
+          totalAvailable,
+          totalReserved,
+          totalRenting,
           soldTotal,
           soldPerDay,
           status,

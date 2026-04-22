@@ -1,3 +1,4 @@
+﻿const mongoose = require('mongoose');
 const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
 const SizeGuide = require('../model/SizeGuide.model');
@@ -699,7 +700,8 @@ const getOwnerSizeStockMap = async (productIds = []) => {
     {
       $match: {
         productId: { $in: productIds },
-        lifecycleStatus: { $ne: 'Sold' },
+        // Loại trừ cả Sold và Lost khỏi tồn kho hiển thị
+        lifecycleStatus: { $nin: ['Sold', 'Lost'] },
       },
     },
     {
@@ -719,7 +721,25 @@ const getOwnerSizeStockMap = async (productIds = []) => {
     {
       $group: {
         _id: { productId: '$productId', size: '$normSize' },
-        quantity: { $sum: 1 },
+        total: { $sum: 1 },
+        available: {
+          $sum: { $cond: [{ $eq: ['$lifecycleStatus', 'Available'] }, 1, 0] },
+        },
+        reserved: {
+          $sum: { $cond: [{ $eq: ['$lifecycleStatus', 'Reserved'] }, 1, 0] },
+        },
+        renting: {
+          $sum: { $cond: [{ $in: ['$lifecycleStatus', ['Rented', 'Renting']] }, 1, 0] },
+        },
+        other: {
+          $sum: {
+            $cond: [
+              { $in: ['$lifecycleStatus', ['Washing', 'Repair']] },
+              1,
+              0,
+            ],
+          },
+        },
       },
     },
     { $sort: { '_id.size': 1 } },
@@ -730,7 +750,14 @@ const getOwnerSizeStockMap = async (productIds = []) => {
     const pid = String(row._id.productId);
     const size = row._id.size || 'ONE';
     if (!map.has(pid)) map.set(pid, []);
-    map.get(pid).push({ size, quantity: row.quantity || 0 });
+    map.get(pid).push({
+      size,
+      quantity: row.total || 0,       // tổng (không kể Sold/Lost)
+      available: row.available || 0,  // chỉ Available
+      reserved: row.reserved || 0,
+      renting: row.renting || 0,
+      other: row.other || 0,
+    });
   });
 
   return map;
@@ -1565,28 +1592,30 @@ const exportOwnerProducts = async (req, res) => {
 // LÃ¡ÂºÂ¥y danh sÃƒÂ¡ch ProductInstance vÃ¡Â»â€ºi filter
 const getProductInstances = async (req, res) => {
   try {
+    // productId can come from route params (/:productId/instances) or query string
+    const resolvedProductId = req.params.productId || req.query.productId || null;
+
     const {
-      productId,
       conditionLevel,
       lifecycleStatus,
       page = 1,
-      limit = 20,
-      search
+      limit = 100,
+      search,
     } = req.query;
 
     const filter = {};
 
-    if (productId) {
-      filter.productId = productId;
+    if (resolvedProductId) {
+      if (!mongoose.isValidObjectId(resolvedProductId)) {
+        return res.status(400).json({ success: false, message: 'productId khong hop le' });
+      }
+      filter.productId = new mongoose.Types.ObjectId(resolvedProductId);
     }
 
     if (conditionLevel) {
       const normalizedLevel = normalizeConditionLevel(conditionLevel);
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
-        return res.status(400).json({
-          success: false,
-          message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
-        });
+        return res.status(400).json({ success: false, message: 'Tinh trang chi chap nhan New hoac Used' });
       }
       filter.conditionLevel = normalizedLevel;
     }
@@ -1595,48 +1624,46 @@ const getProductInstances = async (req, res) => {
       filter.lifecycleStatus = lifecycleStatus;
     }
 
-    // Search theo product name
-    let productIds = null;
-    if (search) {
-      const searchRegex = new RegExp(buildVietnameseInsensitivePattern(search), 'i');
-      const products = await Product.find({
-        $or: [
-          { name: { $regex: searchRegex } },
-          { 'name.en': { $regex: searchRegex } },
-          { 'name.vi': { $regex: searchRegex } }
-        ]
-      }).select('_id');
-      productIds = products.map(p => p._id);
-      filter.productId = { $in: productIds };
+    // Search within the product scope (by instance code / size / note)
+    if (search && resolvedProductId) {
+      const searchRegex = new RegExp(buildVietnameseInsensitivePattern(search.trim()), 'i');
+      filter.$or = [
+        { instanceCode: { $regex: searchRegex } },
+        { code: { $regex: searchRegex } },
+        { size: { $regex: searchRegex } },
+        { note: { $regex: searchRegex } },
+      ];
     }
 
-    const skip = (page - 1) * limit;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(parseInt(limit, 10) || 100, 500));
+    const skip = (pageNum - 1) * limitNum;
 
     const [instances, total] = await Promise.all([
       ProductInstance.find(filter)
         .populate('productId', 'name images category')
-        .sort({ createdAt: -1 })
+        .sort({ size: 1, createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
-      ProductInstance.countDocuments(filter)
+        .limit(limitNum),
+      ProductInstance.countDocuments(filter),
     ]);
 
     res.json({
       success: true,
       data: instances,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        pages: Math.ceil(total / limit)
-      }
+        pages: Math.ceil(total / limitNum),
+      },
     });
   } catch (error) {
     console.error('Get product instances error:', error);
     res.status(500).json({
       success: false,
-      message: 'LÃ¡Â»â€”i khi lÃ¡ÂºÂ¥y danh sÃƒÂ¡ch sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
-      error: error.message
+      message: 'Loi khi lay danh sach phan ban',
+      error: error.message,
     });
   }
 };

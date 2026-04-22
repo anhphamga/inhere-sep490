@@ -1,4 +1,4 @@
-﻿import InventoryInsightTag from './InventoryInsightTag'
+import InventoryInsightTag from './InventoryInsightTag'
 
 const InventoryTable = ({ rows, loading, onRowClick }) => {
   if (loading) {
@@ -42,11 +42,29 @@ const InventoryTable = ({ rows, loading, onRowClick }) => {
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-2 text-sm text-slate-700">{item.sizeText}</td>
                 <td className="px-4 py-2">
-                  <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                    {item.stock}
-                  </span>
+                  <div className="text-sm text-slate-700">{item.sizeText}</div>
+                  {item.sizeAvailableText && item.sizeAvailableText !== item.sizeText && (
+                    <div className="mt-0.5 text-[11px] text-emerald-600">Có sẵn: {item.sizeAvailableText}</div>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700" title="Có sẵn">
+                      {item.totalAvailable} có sẵn
+                    </span>
+                    {item.totalReserved > 0 && (
+                      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700" title="Đã đặt">
+                        {item.totalReserved} đặt
+                      </span>
+                    )}
+                    {item.totalRenting > 0 && (
+                      <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700" title="Đang thuê">
+                        {item.totalRenting} đang thuê
+                      </span>
+                    )}
+                    <span className="text-[11px] text-slate-400">/ {item.stock} tổng</span>
+                  </div>
                 </td>
                 <td className="px-4 py-2">
                   <InventoryInsightTag type={item.insightType}>{item.insightLabel}</InventoryInsightTag>

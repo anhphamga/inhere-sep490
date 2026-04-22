@@ -77,3 +77,11 @@ export const cancelGuestRentOrderRequest = (id, { token, email } = {}) =>
     params: token ? { token } : undefined,
     skipAuthRedirect: true,
   })
+
+// Lấy ứng viên đổi sản phẩm (3 nhóm: size_swap, model_swap, upgrade)
+export const getSwapCandidatesRequest = (orderId, itemId) =>
+  axiosClient.get(`/rent-orders/${orderId}/items/${itemId}/swap-candidates`)
+
+// Staff đổi sản phẩm trong đơn trước khi khách nhận đồ
+export const swapOrderItemRequest = (orderId, payload) =>
+  axiosClient.put(`/rent-orders/${orderId}/swap-item`, payload)

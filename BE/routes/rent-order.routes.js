@@ -107,6 +107,22 @@ router.put(
   rentOrderController.confirmPickup
 );
 
+router.get(
+  '/:id/items/:itemId/swap-candidates',
+  authenticate,
+  loadRentOrderAccessContext,
+  authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
+  rentOrderController.getSwapCandidates
+);
+
+router.put(
+  '/:id/swap-item',
+  authenticate,
+  loadRentOrderAccessContext,
+  authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
+  rentOrderController.swapOrderItem
+);
+
 router.put(
   '/:id/waiting-pickup',
   authenticate,

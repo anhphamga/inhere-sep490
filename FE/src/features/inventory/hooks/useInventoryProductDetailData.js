@@ -21,7 +21,7 @@ export const useInventoryProductDetailData = (productId) => {
 
       const [productRes, instanceRes] = await Promise.allSettled([
         getInventoryProductDetailApi(productId),
-        getInventoryProductInstancesApi(productId, { includeSold: true })
+        getInventoryProductInstancesApi(productId, { includeSold: true, limit: 500 })
       ])
 
       const productData = productRes.status === 'fulfilled'
