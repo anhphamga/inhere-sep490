@@ -10,6 +10,7 @@ import {
 import { currencyFormatter, toArray } from '../../utils/owner.utils'
 import { flattenCategoryNames, normalizeCategoryTree } from '../../utils/categoryTree'
 import AddProductModal from './AddProductModal'
+import OwnerGlobalSizeGuideModal from './OwnerGlobalSizeGuideModal'
 import { UI_IMAGE_FALLBACKS } from '../../constants/ui'
 
 const lifecycleOptions = ['', 'Available', 'Rented', 'Washing', 'Repair', 'Lost']
@@ -109,6 +110,7 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
     const [error, setError] = useState('')
     const [filters, setFilters] = useState(initialFilters)
     const [openCreateModal, setOpenCreateModal] = useState(false)
+    const [openGlobalSizeGuideModal, setOpenGlobalSizeGuideModal] = useState(false)
     const [importing, setImporting] = useState(false)
     const [importReport, setImportReport] = useState(null)
     const [exporting, setExporting] = useState(false)
@@ -507,6 +509,14 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
 
                         <button
                             type="button"
+                            className="h-10 flex items-center gap-2 px-4 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all"
+                            onClick={() => setOpenGlobalSizeGuideModal(true)}
+                        >
+                            Bảng size mặc định
+                        </button>
+
+                        <button
+                            type="button"
                             className="h-10 flex items-center gap-2 px-4 bg-[#1975d2] text-white rounded-lg text-sm font-semibold hover:bg-[#1975d2]/90 transition-all shadow-md"
                             onClick={() => setOpenCreateModal(true)}
                         >
@@ -722,6 +732,14 @@ export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
                     }}
                 />
             ) : null}
+
+            <OwnerGlobalSizeGuideModal
+                open={openGlobalSizeGuideModal}
+                onClose={() => setOpenGlobalSizeGuideModal(false)}
+                onSaved={() => {
+                    setError('')
+                }}
+            />
         </div>
     )
 }

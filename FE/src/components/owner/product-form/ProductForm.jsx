@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import BasicInfoSection from './BasicInfoSection'
 import SizeSection from './SizeSection'
+import SizeGuideSection from './SizeGuideSection'
 import ImageSection from './ImageSection'
 import InventorySummary from './InventorySummary'
 import {
     calculateTotalQuantity,
+    createDefaultSizeGuideRows,
     createOwnerProductPayload,
     createValidationErrors,
     normalizeSizeRows,
+    SIZE_PRESETS,
     toPositiveInteger,
     toText,
 } from './formUtils'
@@ -22,6 +25,8 @@ const buildInitialState = (initialValues = {}) => ({
     hasSizes: Boolean(initialValues.hasSizes),
     quantity: String(initialValues.quantity ?? '0'),
     sizes: normalizeSizeRows(initialValues.sizes).map((item) => ({ size: item.size, quantity: String(item.quantity) })),
+    sizeGuideMode: toText(initialValues.sizeGuideMode).toLowerCase() === 'product' ? 'product' : 'global',
+    sizeGuideRows: createDefaultSizeGuideRows(initialValues.sizeGuideRows),
     images: Array.isArray(initialValues.images) ? initialValues.images.filter(Boolean).map(String) : [],
     imageFiles: [],
     rentedCount: toPositiveInteger(initialValues.rentedCount, 0),
@@ -142,6 +147,38 @@ export default function ProductForm({
         }))
     }
 
+    const updateSizeGuideMode = (mode) => {
+        const nextMode = toText(mode).toLowerCase() === 'product' ? 'product' : 'global'
+        setForm((prev) => ({
+            ...prev,
+            sizeGuideMode: nextMode,
+            sizeGuideRows: Array.isArray(prev.sizeGuideRows) && prev.sizeGuideRows.length > 0
+                ? prev.sizeGuideRows
+                : createDefaultSizeGuideRows(),
+        }))
+        setErrors((prev) => ({ ...prev, sizeGuideRows: '' }))
+    }
+
+    const updateSizeGuideCell = (gender, rowIndex, field, value) => {
+        setForm((prev) => {
+            const rows = Array.isArray(prev.sizeGuideRows) ? prev.sizeGuideRows.slice() : createDefaultSizeGuideRows()
+            const sizeLabel = SIZE_PRESETS[rowIndex]
+            const targetIndex = rows.findIndex((row) => row.gender === gender && row.sizeLabel === sizeLabel)
+            if (targetIndex < 0) return prev
+
+            rows[targetIndex] = {
+                ...rows[targetIndex],
+                [field]: value,
+            }
+
+            return {
+                ...prev,
+                sizeGuideRows: rows,
+            }
+        })
+        setErrors((prev) => ({ ...prev, sizeGuideRows: '' }))
+    }
+
     const uploadFiles = (files) => {
         const selected = Array.from(files || []).filter((file) => file?.type?.startsWith('image/'))
         if (selected.length === 0) return
@@ -248,6 +285,14 @@ export default function ProductForm({
                 onAddSize={addSize}
                 onUpdateSize={updateSize}
                 onRemoveSize={removeSize}
+                errors={errors}
+            />
+
+            <SizeGuideSection
+                mode={form.sizeGuideMode}
+                rows={form.sizeGuideRows}
+                onModeChange={updateSizeGuideMode}
+                onUpdateCell={updateSizeGuideCell}
                 errors={errors}
             />
 

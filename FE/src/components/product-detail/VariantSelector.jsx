@@ -22,8 +22,17 @@ export default function VariantSelector({
           isFreeSize={isFreeSize}
         />
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Sản phẩm không phân size
+        <div className="space-y-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Sản phẩm không phân size
+          </div>
+          <button
+            type="button"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            onClick={() => window.dispatchEvent(new Event('open-size-guide'))}
+          >
+            Bảng tư vấn size
+          </button>
         </div>
       )}
 

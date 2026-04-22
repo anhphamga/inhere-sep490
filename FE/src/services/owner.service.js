@@ -98,6 +98,41 @@ export const getProductInstancesApi = async (productId, params = {}) => {
     return response.data
 }
 
+export const getProductSizeGuideApi = async (productId, params = {}) => {
+    const response = await axiosClient.get(`/products/${productId}/size-guide`, { params })
+    return response.data
+}
+
+export const getOwnerGlobalSizeGuideApi = async (params = {}) => {
+    const response = await axiosClient.get('/owner/size-guides/global', { params })
+    return response.data
+}
+
+export const upsertOwnerGlobalSizeGuideApi = async (payload) => {
+    const response = await axiosClient.put('/owner/size-guides/global', payload)
+    return response.data
+}
+
+export const deleteOwnerGlobalSizeGuideApi = async () => {
+    const response = await axiosClient.delete('/owner/size-guides/global')
+    return response.data
+}
+
+export const getOwnerProductSizeGuideApi = async (productId, params = {}) => {
+    const response = await axiosClient.get(`/owner/products/${productId}/size-guide`, { params })
+    return response.data
+}
+
+export const upsertOwnerProductSizeGuideApi = async (productId, payload) => {
+    const response = await axiosClient.put(`/owner/products/${productId}/size-guide`, payload)
+    return response.data
+}
+
+export const deleteOwnerProductSizeGuideApi = async (productId) => {
+    const response = await axiosClient.delete(`/owner/products/${productId}/size-guide`)
+    return response.data
+}
+
 export const createOwnerProductApi = async (payload) => {
     const imageFiles = Array.isArray(payload?.imageFiles) ? payload.imageFiles : []
     const instances = Array.isArray(payload?.instances) ? payload.instances : []
@@ -110,6 +145,7 @@ export const createOwnerProductApi = async (payload) => {
             'category',
             'categoryParent',
             'categoryChild',
+            'categoryAncestors',
             'sizes',
             'hasSizes',
             'color',
@@ -123,7 +159,9 @@ export const createOwnerProductApi = async (payload) => {
             'pricingMode',
             'commonRentPrice',
             'variantMatrix',
-            'isDraft'
+            'isDraft',
+            'sizeGuideMode',
+            'sizeGuideRows'
         ]
 
         fields.forEach((field) => {
@@ -162,6 +200,7 @@ export const updateOwnerProductApi = async (productId, payload) => {
             'category',
             'categoryParent',
             'categoryChild',
+            'categoryAncestors',
             'sizes',
             'hasSizes',
             'color',
@@ -175,7 +214,9 @@ export const updateOwnerProductApi = async (productId, payload) => {
             'pricingMode',
             'commonRentPrice',
             'variantMatrix',
-            'isDraft'
+            'isDraft',
+            'sizeGuideMode',
+            'sizeGuideRows'
         ]
 
         fields.forEach((field) => {

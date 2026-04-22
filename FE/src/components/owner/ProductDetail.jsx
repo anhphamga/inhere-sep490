@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
-import { deleteOwnerProductApi, getOwnerProductDetailApi, updateOwnerProductApi, getProductInstancesApi } from '../../services/owner.service'
+import {
+    deleteOwnerProductApi,
+    deleteOwnerProductSizeGuideApi,
+    getOwnerProductDetailApi,
+    getOwnerProductSizeGuideApi,
+    getProductInstancesApi,
+    updateOwnerProductApi,
+    upsertOwnerProductSizeGuideApi,
+} from '../../services/owner.service'
 import { findCategoryPathFromProduct, normalizeCategoryTree } from '../../utils/categoryTree'
 import ProductForm from './product-form/ProductForm'
 
@@ -21,13 +29,31 @@ export default function ProductDetail({ productId, onBack, onSaved }) {
     const [productDetail, setProductDetail] = useState(null)
     const [instances, setInstances] = useState([])
 
+    const applyProductSizeGuide = useCallback(async (nextProductId, payload) => {
+        const mode = String(payload?.sizeGuideMode || '').trim().toLowerCase()
+        if (mode === 'product') {
+            await upsertOwnerProductSizeGuideApi(nextProductId, {
+                mode: 'product',
+                rows: Array.isArray(payload?.sizeGuideRows) ? payload.sizeGuideRows : [],
+            })
+            return
+        }
+
+        await deleteOwnerProductSizeGuideApi(nextProductId)
+    }, [])
+
     const loadDetail = useCallback(async () => {
         try {
             setLoading(true)
             setError('')
-            const response = await getOwnerProductDetailApi(productId)
+            const [response, guideResponse] = await Promise.all([
+                getOwnerProductDetailApi(productId),
+                getOwnerProductSizeGuideApi(productId),
+            ])
+
             const payload = response?.data || {}
-            setProductDetail(payload)
+            const guidePayload = guideResponse?.data || {}
+            setProductDetail({ ...payload, ...guidePayload })
             
             // Lấy instances thực tế
             try {
@@ -78,6 +104,8 @@ export default function ProductDetail({ productId, onBack, onSaved }) {
         const rentedOnly = Number(inv.rented || 0)
         // Form "rentedCount" = đang thuê (Rented); không gộp Reserved/Giặt vào "thuê"
         const rentedCount = Number.isFinite(rentedOnly) ? rentedOnly : Math.max(0, totalQuantity - availableQuantity)
+        const sizeGuideMode = productDetail?.hasOverride ? 'product' : 'global'
+        const sizeGuideRows = Array.isArray(productDetail?.productRows) ? productDetail.productRows : []
 
         setFormSeed({
             name: toText(product?.name),
@@ -90,6 +118,8 @@ export default function ProductDetail({ productId, onBack, onSaved }) {
             quantity: String(totalQuantity), // Total from instances, not product.quantity
             // Use API-computed sizes (from instances), not product.sizes
             sizes: hasSizes ? apiSizes : [{ size: 'ONE', quantity: 1 }],
+            sizeGuideMode,
+            sizeGuideRows,
             images: Array.isArray(product?.images) ? product.images.filter(Boolean).map(String) : [],
             rentedCount,
         })
@@ -100,6 +130,16 @@ export default function ProductDetail({ productId, onBack, onSaved }) {
             setSaving(true)
             setActionError('')
             await updateOwnerProductApi(productId, payload)
+
+            try {
+                await applyProductSizeGuide(productId, payload)
+            } catch {
+                setActionError('Sản phẩm đã được cập nhật, nhưng đồng bộ bảng size thất bại. Vui lòng thử lưu lại phần bảng size.')
+                if (isDraft) {
+                    await loadDetail()
+                }
+                return
+            }
 
             if (!isDraft) {
                 const returnTo = location.state?.returnTo || '/owner/products'

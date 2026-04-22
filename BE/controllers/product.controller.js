@@ -1,5 +1,6 @@
 const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
+const SizeGuide = require('../model/SizeGuide.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
 const { hasPermission } = require('../services/accessControl.service');
@@ -1382,6 +1383,9 @@ const deleteProduct = async (req, res) => {
         message: 'Product not found',
       });
     }
+
+    await SizeGuide.deleteMany({ type: 'product', productId: deleted._id });
+
     return res.status(200).json({
       success: true,
       message: 'Deleted successfully',
@@ -1407,6 +1411,7 @@ const deleteOwnerProduct = async (req, res) => {
     }
 
     await ProductInstance.deleteMany({ productId: deleted._id });
+    await SizeGuide.deleteMany({ type: 'product', productId: deleted._id });
 
     return res.status(200).json({
       success: true,

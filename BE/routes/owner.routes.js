@@ -6,6 +6,7 @@ const categoryController = require('../controllers/category.controller');
 const staffController = require('../controllers/staff.controller');
 const analyticsController = require('../controllers/analytics.controller');
 const orderController = require('../controllers/order.controller');
+const sizeGuideController = require('../controllers/sizeGuide.controller');
 const { requireAuth, requireOwner, authorize } = require('../middleware/auth.middleware');
 const { uploadExcel, uploadProductImages } = require('../middleware/upload.middleware');
 
@@ -35,11 +36,18 @@ router.delete('/categories/:id', requireAuth, requireOwner, categoryController.d
 router.get('/products', requireAuth, requireOwner, productController.listOwnerProducts);
 router.get('/products/export', requireAuth, requireOwner, productController.exportOwnerProducts);
 router.get('/products/:id', requireAuth, requireOwner, productController.getOwnerProductDetail);
+router.get('/products/:id/size-guide', requireAuth, requireOwner, sizeGuideController.getOwnerProductSizeGuide);
 router.post('/products', requireAuth, requireOwner, uploadProductImages, productController.createOwnerProduct);
 router.post('/products/import', requireAuth, requireOwner, handleOwnerProductImportUpload, productController.importOwnerProducts);
 router.put('/products/:id', requireAuth, requireOwner, uploadProductImages, productController.updateOwnerProduct);
+router.put('/products/:id/size-guide', requireAuth, requireOwner, sizeGuideController.upsertOwnerProductSizeGuide);
 router.patch('/products/:id/collateral', requireAuth, requireOwner, productController.updateOwnerProductCollateral);
 router.delete('/products/:id', requireAuth, requireOwner, productController.deleteOwnerProduct);
+router.delete('/products/:id/size-guide', requireAuth, requireOwner, sizeGuideController.deleteOwnerProductSizeGuide);
+
+router.get('/size-guides/global', requireAuth, requireOwner, sizeGuideController.getOwnerGlobalSizeGuide);
+router.put('/size-guides/global', requireAuth, requireOwner, sizeGuideController.upsertOwnerGlobalSizeGuide);
+router.delete('/size-guides/global', requireAuth, requireOwner, sizeGuideController.deleteOwnerGlobalSizeGuide);
 
 router.get('/staff', requireAuth, requireOwner, staffController.listStaff);
 router.get('/staff/:id', requireAuth, requireOwner, staffController.getStaffDetail);
