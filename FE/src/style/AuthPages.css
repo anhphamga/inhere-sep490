@@ -470,7 +470,7 @@
 /* Login page refresh for Hoi An brand */
 .login-page-shell {
   background: linear-gradient(145deg, #fff8ea 0%, #fef3d7 46%, #f5ead7 100%);
-  font-family: Inter, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--app-font, "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif);
 }
 
 .auth-layout-login {
@@ -809,8 +809,20 @@
 
 /* Profile page refresh */
 .profile-view-shell {
+  --profile-font: "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
   align-items: flex-start;
   background: linear-gradient(145deg, #fffaf0 0%, #fef4de 52%, #f5ebdb 100%);
+  font-family: var(--profile-font);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.profile-view-shell,
+.profile-view-shell button,
+.profile-view-shell input,
+.profile-view-shell select,
+.profile-view-shell textarea {
+  font-family: var(--profile-font);
 }
 
 .profile-view-layout {
@@ -929,6 +941,7 @@
   color: #374151;
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.4;
 }
 
 .profile-modern-form input,
@@ -938,6 +951,8 @@
   min-height: 44px;
   padding: 10px 12px;
   outline: none;
+  font-size: 15px;
+  line-height: 1.4;
 }
 
 .profile-modern-form input:focus,

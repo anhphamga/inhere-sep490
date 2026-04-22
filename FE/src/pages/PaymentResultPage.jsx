@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { checkPayosStatusApi } from '../services/payment.service'
+import {
+    checkPayosStatusApi,
+    capturePaypalDepositOrderApi,
+    capturePaypalSaleOrderApi,
+    cancelPaypalOrderApi,
+} from '../services/payment.service'
 import { useAuth } from '../hooks/useAuth'
+import { useBuyCart } from '../contexts/BuyCartContext'
 
 const MAX_POLL = 8
 const POLL_INTERVAL = 3000
@@ -11,14 +17,18 @@ export default function PaymentResultPage() {
     const navigate = useNavigate()
 
     const { isAuthenticated } = useAuth()
+    const { clearCart: clearBuyCart } = useBuyCart()
 
-    const orderId      = searchParams.get('orderId')      // rent order
-    const saleOrderId  = searchParams.get('saleOrderId')  // sale order
-    const orderCode    = searchParams.get('orderCode')
-    const purpose      = searchParams.get('purpose')      // 'deposit' | 'extra-due' | 'sale'
-    const urlStatus    = searchParams.get('status')       // 'cancelled'
-    const source       = searchParams.get('source')       // 'staff' = walk-in order
+    const orderId = searchParams.get('orderId')      // rent order
+    const saleOrderId = searchParams.get('saleOrderId')  // sale order
+    const orderCode = searchParams.get('orderCode')
+    const provider = String(searchParams.get('provider') || 'payos').toLowerCase()
+    const paypalOrderId = searchParams.get('token') || searchParams.get('paypalOrderId') || orderCode
+    const purpose = searchParams.get('purpose')      // 'deposit' | 'extra-due' | 'sale'
+    const urlStatus = searchParams.get('status')       // 'cancelled'
+    const source = searchParams.get('source')       // 'staff' = walk-in order, 'guest' = guest rent
     const isStaffOrder = source === 'staff'
+    const isGuestOrder = source === 'guest'
 
     const [state, setState] = useState('loading') // 'loading' | 'success' | 'cancelled' | 'error'
     const [order, setOrder] = useState(null)
@@ -26,7 +36,16 @@ export default function PaymentResultPage() {
 
     useEffect(() => {
         if (urlStatus === 'cancelled') {
-            setState('cancelled')
+            // Nếu cancel từ PayPal (provider=paypal) → cần notify backend để rollback
+            if (provider === 'paypal') {
+                notifyPaypalCancel()
+            } else {
+                setState('cancelled')
+            }
+            return
+        }
+        if (provider === 'paypal') {
+            capturePaypalStatus()
             return
         }
         if (!orderCode) {
@@ -36,6 +55,48 @@ export default function PaymentResultPage() {
         pollStatus()
     }, [])
 
+    const notifyPaypalCancel = async () => {
+        try {
+            if (purpose === 'sale' && saleOrderId) {
+                await cancelPaypalOrderApi({ purpose: 'sale', saleOrderId })
+            } else if (purpose === 'deposit' && orderId) {
+                await cancelPaypalOrderApi({ purpose: 'deposit', orderId })
+            }
+        } catch {
+            // Không block UI dù backend lỗi — đơn sẽ tự rollback khi FE poll hoặc webhook xử lý
+        } finally {
+            setState('cancelled')
+        }
+    }
+
+    const capturePaypalStatus = async () => {
+        try {
+            if (!paypalOrderId) {
+                setState('error')
+                return
+            }
+
+            if (purpose === 'sale' && saleOrderId) {
+                const data = await capturePaypalSaleOrderApi(saleOrderId, paypalOrderId)
+                setOrder(data?.data?.order || null)
+                clearBuyCart()   // Xóa giỏ hàng sau khi thanh toán PayPal thành công
+                setState('success')
+                return
+            }
+
+            if (purpose === 'deposit' && orderId) {
+                const data = await capturePaypalDepositOrderApi(orderId, paypalOrderId)
+                setOrder(data?.data?.order || null)
+                setState('success')
+                return
+            }
+
+            setState('error')
+        } catch {
+            setState('error')
+        }
+    }
+
     const pollStatus = async () => {
         try {
             const data = await checkPayosStatusApi(orderCode)
@@ -43,6 +104,7 @@ export default function PaymentResultPage() {
 
             if (status === 'PAID') {
                 setOrder(data?.data?.order)
+                if (purpose === 'sale') clearBuyCart()  // Xóa giỏ hàng sau khi PayOS xác nhận thành công
                 setState('success')
                 return
             }
@@ -68,8 +130,13 @@ export default function PaymentResultPage() {
             navigate('/staff/rent-orders')
             return
         }
+        if (isGuestOrder) {
+            // Guest không xem được /rental/:id (yêu cầu auth) → chuyển sang trang tra cứu
+            const orderCode = order?.orderCode ? `?orderCode=${encodeURIComponent(order.orderCode)}` : ''
+            navigate(`/track-order${orderCode}`)
+            return
+        }
         if (purpose === 'sale' && saleOrderId) {
-            // Guest không thể xem /orders/:id (yêu cầu auth)
             if (isAuthenticated) navigate(`/orders/${saleOrderId}`)
             else navigate('/')
         } else if (orderId) navigate(`/rental/${orderId}`)
@@ -81,13 +148,18 @@ export default function PaymentResultPage() {
             navigate('/staff/rent-orders')
             return
         }
+        if (isGuestOrder) {
+            const orderCode = order?.orderCode ? `?orderCode=${encodeURIComponent(order.orderCode)}` : ''
+            navigate(`/track-order${orderCode}`)
+            return
+        }
         if (purpose === 'sale') navigate('/cart')
         else if (orderId) navigate(`/rental/${orderId}`)
         else navigate('/')
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white flex items-center justify-center px-4">
+        <div className="min-h-screen bg-linear-to-br from-pink-50 to-white flex items-center justify-center px-4">
             <div className="w-full max-w-md rounded-3xl bg-white shadow-xl p-8 text-center">
                 {state === 'loading' && (
                     <>
@@ -148,7 +220,11 @@ export default function PaymentResultPage() {
                                 onClick={handleGoOrder}
                                 className="mt-6 w-full rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition"
                             >
-                                {isStaffOrder ? 'Xem danh sách đơn thuê' : 'Xem chi tiết đơn'}
+                                {isStaffOrder
+                                    ? 'Xem danh sách đơn thuê'
+                                    : isGuestOrder
+                                        ? 'Tra cứu đơn của tôi'
+                                        : 'Xem chi tiết đơn'}
                             </button>
                         )}
                     </>

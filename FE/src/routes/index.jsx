@@ -26,12 +26,13 @@ import OwnerProductDetailScreen from '../pages/owner/OwnerProductDetailScreen'
 import OwnerProductsScreen from '../pages/owner/OwnerProductsScreen'
 import OwnerCategoriesScreen from '../pages/owner/OwnerCategoriesScreen'
 import OwnerPromotionsScreen from '../pages/owner/OwnerPromotionsScreen'
+import OwnerDamagePoliciesScreen from '../pages/owner/OwnerDamagePoliciesScreen'
 import OwnerReportsScreen from '../pages/owner/OwnerReportsScreen'
-import OwnerShiftsScreen from '../pages/owner/OwnerShiftsScreen'
 import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen'
 import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen'
 import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen'
-import OwnerInventoryScreen from '../pages/owner/OwnerInventoryScreen'
+import InventoryDashboardPage from '../pages/owner/InventoryDashboardPage'
+import InventoryProductDetailPage from '../pages/owner/InventoryProductDetailPage'
 import OwnerReviewsScreen from '../pages/owner/OwnerReviewsScreen'
 import OwnerBlogsScreen from '../pages/owner/OwnerBlogsScreen'
 // Rental pages
@@ -42,6 +43,7 @@ import CartPage from '../pages/CartPage'
 import OrderHistoryPage from '../pages/OrderHistoryPage'
 import OrderDetailPage from '../pages/OrderDetailPage'
 import PaymentResultPage from '../pages/PaymentResultPage'
+import TrackOrderPage from '../pages/TrackOrderPage'
 
 const AppRoutes = () => {
     return (
@@ -67,9 +69,11 @@ const AppRoutes = () => {
             {/* Rental Routes */}
             <Route path="/rental/checkout" element={<RentalCheckoutPage />} />
             <Route path="/rental/history" element={<Navigate to="/orders/history" replace />} />
+            <Route path="/rental/guest/:id" element={<RentalDetailPage />} />
             <Route path="/rental/:id" element={<RentalDetailPage />} />
             <Route path="/payment-result" element={<PaymentResultPage />} />
             <Route path="/orders/guest/:id" element={<OrderDetailPage />} />
+            <Route path="/track-order" element={<TrackOrderPage />} />
 
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />
@@ -87,16 +91,17 @@ const AppRoutes = () => {
                     <Route path="products" element={<OwnerProductsScreen />} />
                     <Route path="categories" element={<OwnerCategoriesScreen />} />
                     <Route path="products/:productId" element={<OwnerProductDetailScreen />} />
-                    <Route path="inventory" element={<OwnerInventoryScreen />} />
+                    <Route path="inventory" element={<InventoryDashboardPage />} />
+                    <Route path="inventory/:productId" element={<InventoryProductDetailPage />} />
+                    <Route path="inventory-dashboard" element={<Navigate to="/owner/inventory" replace />} />
                     <Route path="staff" element={<OwnerStaffScreen />} />
-                    <Route path="shifts" element={<OwnerShiftsScreen />} />
-                    <Route path="staff-calendar" element={<OwnerShiftsScreen />} />
                     <Route path="staff-analytics" element={<OwnerAnalyticsScreen />} />
                     <Route path="orders" element={<OwnerOrdersScreen />} />
                     <Route path="rent-orders" element={<OwnerRentOrdersScreen />} />
                     <Route path="reviews" element={<OwnerReviewsScreen />} />
                     <Route path="blogs" element={<OwnerBlogsScreen />} />
                     <Route path="promotions" element={<OwnerPromotionsScreen />} />
+                    <Route path="damage-policies" element={<OwnerDamagePoliciesScreen />} />
                     <Route path="alerts" element={<OwnerAlertsScreen />} />
                     <Route path="reports" element={<OwnerReportsScreen />} />
                 </Route>

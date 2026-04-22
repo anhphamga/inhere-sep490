@@ -12,8 +12,8 @@ const colorMap = {
   'Đang giặt': 'bg-sky-100 text-sky-700'
 }
 
-const RentalStatus = ({ statuses }) => {
-  const total = statuses.reduce((sum, item) => sum + item.value, 0)
+const RentalStatus = ({ statuses = [] }) => {
+  const total = statuses.reduce((sum, item) => sum + Number(item.value || 0), 0)
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -22,7 +22,7 @@ const RentalStatus = ({ statuses }) => {
       <div className="space-y-3">
         {statuses.map((item) => {
           const Icon = iconMap[item.label] || Shirt
-          const progress = total > 0 ? (item.value / total) * 100 : 0
+          const progress = total > 0 ? (Number(item.value || 0) / total) * 100 : 0
 
           return (
             <div key={item.label} className="rounded-xl border border-slate-100 p-3">

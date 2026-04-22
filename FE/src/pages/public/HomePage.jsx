@@ -2,7 +2,8 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import Header from "../../components/common/Header";
-import { getBlogPostsFromData } from "../../utils/blogSource";
+import { getPublishedBlogsApi } from "../../services/blog.service";
+import { API_BASE_URL } from "../../config/env";
 import "../../style/pages/HomePage.css";
 import logo from "../../assets/logo/logo.png";
 import banner1 from "../../assets/banner/banner 1.png";
@@ -24,7 +25,6 @@ const I18N = {
     "nav.booking": "Đặt lịch thử đồ",
     "nav.packages": "Combo chụp ảnh",
     "nav.blog": "Blog / Cẩm nang",
-    "nav.promo": "Khuyến mãi",
     "nav.contact": "Liên hệ",
 
     "search.placeholder": "Tìm trang phục...",
@@ -148,9 +148,6 @@ const I18N = {
     "blog.p3.d":
       "Lộ trình gợi ý để chụp đẹp mà không quá mệt.",
 
-    "promo.title": "Khuyến mãi",
-    "promo.sub":
-      "Theo dõi chương trình ưu đãi theo mùa – đặt lịch online để giữ ưu đãi.",
 
     "contact.title": "Liên hệ",
     "contact.sub":
@@ -189,6 +186,17 @@ const CONTACT_INFO = {
   instagramHref: CONTACT_LINKS.instagramHref,
 };
 
+const toApiUrl = (path) => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+const parseJsonSafe = async (response) => {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    const bodyText = await response.text();
+    throw new Error(`Expected JSON but received ${contentType || "unknown"}: ${bodyText.slice(0, 80)}`);
+  }
+  return response.json();
+};
+
 const Homepage = ({ initialSection = "" }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -212,6 +220,10 @@ const Homepage = ({ initialSection = "" }) => {
   const [blogsError, setBlogsError] = useState("");
   const [categorySlideIndex, setCategorySlideIndex] = useState(0);
   const [categoryVisibleCount, setCategoryVisibleCount] = useState(3);
+  const featuredCategories = useMemo(() => {
+    if (!Array.isArray(categories)) return [];
+    return categories.filter((category) => Number(category?.count) > 0);
+  }, [categories]);
   const slideIntervalRef = useRef(null);
   const categorySlideIntervalRef = useRef(null);
   const accountMenuRef = useRef(null);
@@ -359,13 +371,15 @@ const Homepage = ({ initialSection = "" }) => {
       categorySlideIntervalRef.current = null;
     }
 
-    if (categories.length <= categoryVisibleCount) {
+    if (featuredCategories.length <= categoryVisibleCount) {
       setCategorySlideIndex(0);
       return;
     }
 
     categorySlideIntervalRef.current = setInterval(() => {
-      setCategorySlideIndex((prev) => (prev + 1) % categories.length);
+      setCategorySlideIndex((prev) =>
+        featuredCategories.length === 0 ? 0 : (prev + 1) % featuredCategories.length
+      );
     }, CATEGORY_SLIDE_MS);
 
     return () => {
@@ -374,7 +388,7 @@ const Homepage = ({ initialSection = "" }) => {
         categorySlideIntervalRef.current = null;
       }
     };
-  }, [categories.length, categoryVisibleCount]);
+  }, [featuredCategories.length, categoryVisibleCount]);
 
   useEffect(() => {
     let isMounted = true;
@@ -384,12 +398,12 @@ const Homepage = ({ initialSection = "" }) => {
         setCategoriesLoading(true);
         setCategoriesError("");
 
-        const response = await fetch("/api/categories");
+        const response = await fetch(toApiUrl("/categories"));
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
 
-        const payload = await response.json();
+        const payload = await parseJsonSafe(response);
         const apiCategories = Array.isArray(payload?.categories)
           ? payload.categories
           : [];
@@ -420,10 +434,37 @@ const Homepage = ({ initialSection = "" }) => {
   }, [lang]);
 
   useEffect(() => {
-    setBlogsLoading(true);
-    setBlogsError("");
-    setBlogs(getBlogPostsFromData());
-    setBlogsLoading(false);
+    let isMounted = true;
+
+    const fetchBlogs = async () => {
+      try {
+        setBlogsLoading(true);
+        setBlogsError("");
+        const response = await getPublishedBlogsApi({ page: 1, limit: 3 });
+        const apiBlogs = Array.isArray(response?.data) ? response.data : [];
+        if (isMounted) {
+          setBlogs(apiBlogs.slice(0, 3));
+        }
+      } catch {
+        if (isMounted) {
+          setBlogs([]);
+          setBlogsError(
+            lang === "vi"
+              ? "Không tải được bài viết từ hệ thống."
+              : "Failed to load blog posts from server."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setBlogsLoading(false);
+        }
+      }
+    };
+
+    fetchBlogs();
+    return () => {
+      isMounted = false;
+    };
   }, [lang]);
 
   useEffect(() => {
@@ -435,12 +476,12 @@ const Homepage = ({ initialSection = "" }) => {
         setFittingLoading(true);
 
         const [buyRes, fittingRes] = await Promise.all([
-          fetch("/api/products?purpose=all&limit=200"),
-          fetch("/api/products?purpose=all&limit=200"),
+          fetch(toApiUrl("/products?purpose=all&limit=200")),
+          fetch(toApiUrl("/products?purpose=all&limit=200")),
         ]);
 
         if (buyRes.ok) {
-          const buyPayload = await buyRes.json();
+          const buyPayload = await parseJsonSafe(buyRes);
           const buyData = Array.isArray(buyPayload?.data) ? buyPayload.data : [];
           if (isMounted) {
             setBuyProducts(buyData);
@@ -448,7 +489,7 @@ const Homepage = ({ initialSection = "" }) => {
         }
 
         if (fittingRes.ok) {
-          const fittingPayload = await fittingRes.json();
+          const fittingPayload = await parseJsonSafe(fittingRes);
           const fittingData = Array.isArray(fittingPayload?.data) ? fittingPayload.data : [];
           if (isMounted) {
             setFittingProducts(fittingData);
@@ -481,12 +522,12 @@ const Homepage = ({ initialSection = "" }) => {
       try {
         setTopRentLoading(true);
 
-        const response = await fetch("/api/products/top-liked?limit=24");
+        const response = await fetch(toApiUrl("/products/top-liked?limit=24"));
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
 
-        const payload = await response.json();
+        const payload = await parseJsonSafe(response);
         const apiData = Array.isArray(payload?.data) ? payload.data : [];
         if (isMounted) {
           setTopRentProducts(apiData);
@@ -518,7 +559,7 @@ const Homepage = ({ initialSection = "" }) => {
       return;
     }
 
-    const sectionIds = ["rent", "buy", "fitting", "packages", "blog", "promo", "contact"];
+    const sectionIds = ["rent", "buy", "fitting", "packages", "blog", "contact"];
 
     const handleScroll = () => {
       const offset = 130; // gần bằng chiều cao header + nav
@@ -571,13 +612,19 @@ const Homepage = ({ initialSection = "" }) => {
     return "Other";
   };
 
-  const navigateToBuyCategory = (categoryValue) => {
+  const navigateToBuyCategory = (categoryValue, categoryType = "sale_or_rent") => {
     const value = String(categoryValue || "").trim();
+    const normalizedType = String(categoryType || "").trim().toLowerCase();
+    const purpose =
+      normalizedType === "rent" || normalizedType === "service"
+        ? "rent"
+        : "buy";
+
     if (!value) {
-      navigate("/buy");
+      navigate(`/buy?purpose=${purpose}`);
       return;
     }
-    navigate(`/buy?category=${encodeURIComponent(value)}`);
+    navigate(`/buy?purpose=${purpose}&category=${encodeURIComponent(value)}`);
   };
 
   const formatCurrency = (amount) =>
@@ -704,7 +751,7 @@ const Homepage = ({ initialSection = "" }) => {
 
   const displayedBlogs =
     blogs.length > 0
-      ? blogs.slice(0, 6).map((item, index) => {
+      ? blogs.slice(0, 3).map((item, index) => {
         const rawContent = String(item?.content || "").trim();
         const lines = rawContent
           .split(/\r?\n/)
@@ -734,18 +781,18 @@ const Homepage = ({ initialSection = "" }) => {
       : fallbackBlogPosts;
 
   const displayedCategories = useMemo(() => {
-    if (!Array.isArray(categories) || categories.length === 0) {
+    if (!Array.isArray(featuredCategories) || featuredCategories.length === 0) {
       return [];
     }
-    if (categories.length <= categoryVisibleCount) {
-      return categories;
+    if (featuredCategories.length <= categoryVisibleCount) {
+      return featuredCategories;
     }
 
     return Array.from({ length: categoryVisibleCount }, (_, offset) => {
-      const index = (categorySlideIndex + offset) % categories.length;
-      return categories[index];
+      const index = (categorySlideIndex + offset) % featuredCategories.length;
+      return featuredCategories[index];
     });
-  }, [categories, categorySlideIndex, categoryVisibleCount]);
+  }, [featuredCategories, categorySlideIndex, categoryVisibleCount]);
 
   return (
     <>
@@ -907,20 +954,6 @@ const Homepage = ({ initialSection = "" }) => {
                     }}
                   >
                     {t(lang, "nav.blog")}
-                  </a>
-                  <a
-                    className={
-                      "nav-item" +
-                      (activeSection === "promo" ? " active" : "")
-                    }
-                    href="#promo"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      scrollToId("#promo");
-                      setActiveSection("promo");
-                    }}
-                  >
-                    {t(lang, "nav.promo")}
                   </a>
                   <a
                     className={
@@ -1261,11 +1294,19 @@ const Homepage = ({ initialSection = "" }) => {
                 key={`${category.slug}-${index}`}
                 role="button"
                 tabIndex={0}
-                onClick={() => navigateToBuyCategory(category.value || category.displayName)}
+                onClick={() =>
+                  navigateToBuyCategory(
+                    category.value || category.displayName,
+                    category.type
+                  )
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    navigateToBuyCategory(category.value || category.displayName);
+                    navigateToBuyCategory(
+                      category.value || category.displayName,
+                      category.type
+                    );
                   }
                 }}
               >
@@ -1303,7 +1344,10 @@ const Homepage = ({ initialSection = "" }) => {
                           className="category-child-btn"
                           onClick={(event) => {
                             event.stopPropagation();
-                            navigateToBuyCategory(child.value || child.displayName);
+                            navigateToBuyCategory(
+                              child.value || child.displayName,
+                              child.type || category.type
+                            );
                           }}
                         >
                           <span>{child.displayName}</span>
@@ -1324,7 +1368,7 @@ const Homepage = ({ initialSection = "" }) => {
         <div className="container">
           <div className="row-head">
             <h2>{t(lang, "rent.title")}</h2>
-            <a href="#promo">{t(lang, "rent.more")}</a>
+            <Link to="/buy?purpose=rent&sort=top_liked">{t(lang, "rent.more")}</Link>
           </div>
           {topRentLoading && (
             <p className="rent-status">
@@ -1392,7 +1436,7 @@ const Homepage = ({ initialSection = "" }) => {
         <div className="container">
           <div className="row-head">
             <h2>{t(lang, "buy.title")}</h2>
-            <a href="#promo">{t(lang, "buy.more")}</a>
+            <Link to="/buy?purpose=rent&category=co-phuc">{t(lang, "buy.more")}</Link>
           </div>
           {buyLoading && (
             <p className="rent-status">
@@ -1456,7 +1500,9 @@ const Homepage = ({ initialSection = "" }) => {
             <h2>
               {lang === "vi" ? "Váy - đầm cho thuê" : "Dress Rentals"}
             </h2>
-            <a href="#rent">{lang === "vi" ? "Xem đồ thuê" : "View rentals"}</a>
+            <Link to="/buy?purpose=rent&q=vay">
+              {lang === "vi" ? "Xem đồ thuê" : "View rentals"}
+            </Link>
           </div>
           {fittingLoading && (
             <p className="rent-status">
@@ -1569,39 +1615,6 @@ const Homepage = ({ initialSection = "" }) => {
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
-      <section className="soft" id="reviews">
-        <div className="container">
-          <h2 className="section-title">
-            {t(lang, "reviews.title")}
-          </h2>
-          <p className="section-sub">
-            {t(lang, "reviews.sub")}
-          </p>
-
-          <div className="grid-3-cards">
-            <div className="info-card">
-              <h3>★★★★★</h3>
-              <p className="footer-text">
-                {t(lang, "reviews.r1")}
-              </p>
-            </div>
-            <div className="info-card">
-              <h3>★★★★★</h3>
-              <p className="footer-text">
-                {t(lang, "reviews.r2")}
-              </p>
-            </div>
-            <div className="info-card">
-              <h3>★★★★★</h3>
-              <p className="footer-text">
-                {t(lang, "reviews.r3")}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* BLOG */}
       <section id="blog">
         <div className="container">
@@ -1645,18 +1658,6 @@ const Homepage = ({ initialSection = "" }) => {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* PROMO / CONTACT */}
-      <section className="soft" id="promo">
-        <div className="container">
-          <h2 className="section-title">
-            {t(lang, "promo.title")}
-          </h2>
-          <p className="section-sub">
-            {t(lang, "promo.sub")}
-          </p>
         </div>
       </section>
 

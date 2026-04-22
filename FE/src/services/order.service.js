@@ -1,4 +1,5 @@
 import {
+  cancelMySaleOrderRequest,
   checkoutRequest,
   getGuestSaleOrderByIdRequest,
   getMySaleOrderByIdRequest,
@@ -23,6 +24,11 @@ export const getMySaleOrdersApi = async (params = {}) => {
 
 export const getMySaleOrderByIdApi = async (id) => {
   const response = await getMySaleOrderByIdRequest(id)
+  return response.data
+}
+
+export const cancelMySaleOrderApi = async (id) => {
+  const response = await cancelMySaleOrderRequest(id)
   return response.data
 }
 

@@ -8,7 +8,7 @@ import '../../style/AuthPages.css'
 
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024
 
-const ProfilePage = () => {
+const ProfilePage = ({ embedded = false, backPath = '', logoutRedirect = '' }) => {
   const navigate = useNavigate()
   const { user, logout, refreshMe } = useAuth()
   const [activeTab, setActiveTab] = useState('profile')
@@ -39,6 +39,8 @@ const ProfilePage = () => {
     if (user?.role === 'staff') return 'Nhân viên'
     return 'Khách hàng'
   }, [user?.role])
+  const resolvedBackPath = backPath || getRouteByRole(user?.role)
+  const resolvedLogoutRedirect = logoutRedirect || '/login'
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -164,14 +166,14 @@ const ProfilePage = () => {
 
   const handleLogout = async () => {
     await logout()
-    navigate('/login', { replace: true })
+    navigate(resolvedLogoutRedirect, { replace: true })
   }
 
   return (
     <>
-      <Header />
+      {!embedded && <Header />}
 
-      <div className="auth-shell auth-with-header profile-view-shell">
+      <div className={`auth-shell ${embedded ? '' : 'auth-with-header'} profile-view-shell`}>
         <div className="profile-view-layout">
           <aside className="profile-overview-card">
             <div className="profile-overview-top">
@@ -211,8 +213,8 @@ const ProfilePage = () => {
             </div>
 
             <div className="profile-overview-actions">
-              <Link className="auth-secondary-btn" to={getRouteByRole(user?.role)}>
-                Về trang chính
+              <Link className="auth-secondary-btn" to={resolvedBackPath}>
+                {embedded ? 'Về dashboard' : 'Về trang chính'}
               </Link>
               <button className="danger-btn" type="button" onClick={handleLogout}>
                 Đăng xuất

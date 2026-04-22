@@ -31,32 +31,46 @@ export const BuyCartProvider = ({ children }) => {
     const price = Number(variant.salePrice ?? product.baseSalePrice ?? 0)
     const quantity = Math.max(Number(variant.quantity || 1), 1)
 
+    const conditionLevel = variant.conditionLevel === 'Used' ? 'Used' : 'New'
+
+    const hasSizes = Boolean(product?.hasSizes) || (Array.isArray(product?.sizes) && product.sizes.length > 0)
+    const normalizedSize = hasSizes ? (variant.size || 'FREE SIZE') : ''
+
     const newItem = {
-      id: `${product._id}_${variant.color || 'default'}_${variant.size || 'default'}`,
+      id: `${product._id}_${variant.color || 'default'}_${normalizedSize || 'nosize'}_${conditionLevel}`,
       productId: product._id,
       productInstanceId: variant.productInstanceId || null,
       name: product.name,
-      image: product.images?.[0] || product.imageUrl || '',
+      image: variant.image || product.images?.[0] || product.imageUrl || '',
       color: variant.color || 'Default',
-      size: variant.size || 'FREE SIZE',
+      size: normalizedSize,
+      hasSizes,
       salePrice: price,
       quantity,
+      conditionLevel,
       conditionScore: Number(variant.conditionScore ?? 100),
     }
 
     setItems((prev) => {
-      const existingIndex = prev.findIndex(
-        (item) =>
+      const existingIndex = prev.findIndex((item) => {
+        if (newItem.productInstanceId || item.productInstanceId) {
+          return Boolean(newItem.productInstanceId) && item.productInstanceId === newItem.productInstanceId
+        }
+        return (
           item.productId === newItem.productId &&
           item.color === newItem.color &&
-          item.size === newItem.size
-      )
+          item.size === newItem.size &&
+          item.conditionLevel === newItem.conditionLevel
+        )
+      })
 
       if (existingIndex >= 0) {
         const nextItems = [...prev]
         nextItems[existingIndex] = {
           ...nextItems[existingIndex],
-          quantity: nextItems[existingIndex].quantity + quantity
+          quantity: newItem.productInstanceId
+            ? 1
+            : nextItems[existingIndex].quantity + quantity
         }
         saveCart(nextItems)
         return nextItems

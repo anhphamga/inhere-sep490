@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { CreditCard, MapPin, Package, ReceiptText, UserRound } from 'lucide-react'
 import Header from '../components/common/Header'
@@ -239,7 +239,7 @@ export default function OrderDetailPage() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-semibold text-slate-950">Chi tiết đơn mua</h1>
-                  <p className="text-sm text-slate-500">Mã đơn {order._id}</p>
+                  <p className="text-sm text-slate-500">Mã đơn #{String(order._id).slice(-8).toUpperCase()}</p>
                 </div>
               </div>
 

@@ -11,18 +11,18 @@ export default function ProductActions({
   onBuy,
   loadingAction,
   canSubmit,
+  canRent,
   canBuy,
   productImage,
 }) {
   const [showTryOn, setShowTryOn] = useState(false);
   const renting = loadingAction === "rent";
   const buying = loadingAction === "buy";
+  const rentAllowed = canRent !== undefined && canRent !== null ? canRent : canSubmit;
 
   return (
     <>
-      {/* Desktop */}
       <div className="hidden space-y-3 md:block">
-        {/* Primary + Secondary CTA */}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -36,7 +36,7 @@ export default function ProductActions({
           <button
             type="button"
             onClick={onRent}
-            disabled={!canSubmit || renting || buying}
+            disabled={!rentAllowed || renting || buying}
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {renting && <Spinner />}
@@ -44,7 +44,6 @@ export default function ProductActions({
           </button>
         </div>
 
-        {/* Tertiary actions */}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -63,14 +62,12 @@ export default function ProductActions({
           </button>
         </div>
 
-        {/* Trust signals */}
         <div className="flex items-center gap-4 pt-1 text-xs text-slate-400">
           <span>✓ Miễn phí vận chuyển & đổi trả</span>
           <span>✓ Bao gồm giặt hấp</span>
         </div>
       </div>
 
-      {/* Mobile sticky bar */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
         <div className="mx-auto flex w-full max-w-lg items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -89,7 +86,7 @@ export default function ProductActions({
           <button
             type="button"
             onClick={onRent}
-            disabled={!canSubmit || renting || buying}
+            disabled={!rentAllowed || renting || buying}
             className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {renting && <Spinner />}
@@ -98,7 +95,6 @@ export default function ProductActions({
         </div>
       </div>
 
-      {/* Virtual Try-On Modal */}
       <VirtualTryOnModal
         isOpen={showTryOn}
         onClose={() => setShowTryOn(false)}

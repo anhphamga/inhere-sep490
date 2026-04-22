@@ -26,6 +26,7 @@ const favoriteRoutes = require('./favorite.routes');
 const chatbotRoutes = require('../modules/chatbot/routes/chatbot.routes');
 const paymentRoutes = require('./payment.routes');
 const collectionRoutes = require('./collection.routes');
+const damagePolicyRoutes = require('./damage-policy.routes');
 
 router.use('/users', userRoutes);
 router.use('/auth', authRoutes);
@@ -47,6 +48,7 @@ router.use('/favorites', favoriteRoutes);
 router.use('/chatbot', chatbotRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/collections', collectionRoutes);
+router.use('/damage-policies', damagePolicyRoutes);
 router.use('/vouchers', voucherRoutes);
 
 module.exports = router;

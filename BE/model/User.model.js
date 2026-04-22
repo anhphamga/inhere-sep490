@@ -53,6 +53,20 @@ const userSchema = new mongoose.Schema({
     default: null,
     select: false
   },
+  staffInviteToken: {
+    type: String,
+    default: null,
+    select: false
+  },
+  staffInviteExpires: {
+    type: Date,
+    default: null,
+    select: false
+  },
+  staffInviteAcceptedAt: {
+    type: Date,
+    default: null
+  },
   authProvider: {
     type: String,
     enum: ['local', 'google'],

@@ -1,10 +1,14 @@
 const mongoose = require('mongoose');
 const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
+const RentOrder = require('../model/RentOrder.model');
+const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
+const User = require('../model/User.model');
 const GuestVerification = require('../model/GuestVerification.model');
 const Voucher = require('../model/Voucher.model');
+const bcrypt = require('bcryptjs');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 const { normalizeIdempotencyKey, isDuplicateIdempotencyError } = require('../utils/idempotency');
 const {
@@ -14,6 +18,7 @@ const {
   extractBearerToken,
 } = require('../utils/jwt');
 const { sendOrderConfirmationEmail } = require('../services/mailService');
+const { runPostPaymentInvoiceFlow } = require('../services/postPaymentInvoice.service');
 const {
   validateVoucher,
   getVoucherByCode,
@@ -30,6 +35,11 @@ const {
   REVIEWABLE_SALE_STATUSES,
   getReviewedMapForOrders,
 } = require('../services/review.service');
+const {
+  notifySaleOrderCreated,
+  notifySaleOrderCancelled,
+  notifyLowStockForProducts,
+} = require('../services/alert.dispatcher.service');
 const { ORDER_TYPE } = require('../constants/order.constants');
 const { frontendUrl } = require('../config/app.config');
 const {
@@ -41,8 +51,41 @@ const {
 
 const normalizePaymentMethod = (value = '') => {
   if (value === 'BankTransfer') return 'BankTransfer';
-  if (value === 'Online' || value === 'PayOS') return 'Online';
+  if (value === 'Online' || value === 'PayOS' || value === 'PayPal') return 'Online';
   return 'COD';
+};
+
+// Guest sale checkout doesn't create a user by default, but voucher per-user limits require a stable identity.
+// We reuse the same strategy as rent guest flow: create/find a "walk_in" customer by verified email.
+const findOrCreateGuestCustomer = async ({ email, name, phone }) => {
+  const normalizedEmail = normalizeEmail(email);
+  const existing = await User.findOne({ email: normalizedEmail });
+  if (existing) {
+    const updates = {};
+    if (name && String(existing.name || '').trim() !== String(name).trim()) {
+      updates.name = String(name).trim();
+    }
+    const normalizedPhone = normalizePhone(phone);
+    if (normalizedPhone && existing.phone !== normalizedPhone) {
+      updates.phone = normalizedPhone;
+    }
+    if (Object.keys(updates).length > 0) {
+      await User.updateOne({ _id: existing._id }, { $set: updates }).catch(() => null);
+    }
+    return existing;
+  }
+
+  const randomPassword = Math.random().toString(36).slice(2, 12);
+  const passwordHash = await bcrypt.hash(randomPassword, 10);
+  return User.create({
+    name: String(name || '').trim() || 'Khách vãng lai',
+    phone: normalizePhone(phone) || null,
+    email: normalizedEmail,
+    passwordHash,
+    role: 'customer',
+    segment: 'walk_in',
+    status: 'active',
+  });
 };
 
 const buildFallbackHistory = (order) => {
@@ -86,7 +129,9 @@ const normalizeHistory = (order, options = {}) => {
       const shouldUseUserFacingReturned = customerFacing && isRefundedSaleStatus(status);
       return {
         status,
-        statusLabel: shouldUseUserFacingReturned ? userStatusLabel : statusMeta.label,
+        statusLabel: shouldUseUserFacingReturned
+          ? userStatusLabel
+          : (item?.statusLabel || statusMeta.label),
         userStatus,
         userStatusLabel,
         action: item?.action || '',
@@ -138,49 +183,218 @@ const buildNormalizedSaleItems = (items = [], productMap = new Map()) => {
       color: String(item.color || 'Default').trim() || 'Default',
       note: String(item.note || '').trim(),
       unitPrice,
+      conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
+      productInstanceId: item?.productInstanceId || null,
     };
   });
 };
 
+// CHANGED: Validate products against unique product ids, because checkout items can repeat
+// the same productId across different conditions (New/Used) and still be valid.
+const getUniqueProductIds = (items = []) =>
+  Array.from(
+    new Set(
+      (Array.isArray(items) ? items : [])
+        .map((item) => item?.productId)
+        .filter(Boolean)
+        .map((id) => String(id))
+    )
+  );
+
+// Sale: chặn bán nếu instance còn nằm trong bất kỳ `RentOrderItem` chưa kết thúc (so với "today").
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const VN_TZ_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
+const toVnCalendarDay = (d) => Math.floor((new Date(d).getTime() + VN_TZ_OFFSET_MS) / DAY_IN_MS);
+const RENT_ORDER_TERMINAL_STATUSES_LOWER = ['cancelled', 'completed', 'noshow', 'returned'];
+
+const getBlockedInstanceIdsForFutureRent = async (instanceIds = []) => {
+  if (!Array.isArray(instanceIds) || instanceIds.length === 0) return new Set();
+
+  const rentItems = await RentOrderItem.find({
+    productInstanceId: { $in: instanceIds },
+  }).select('productInstanceId orderId rentEndDate rentStartDate').lean();
+
+  if (!rentItems.length) return new Set();
+
+  const orderIds = Array.from(new Set(rentItems.map((i) => String(i.orderId)).filter(Boolean)));
+  if (!orderIds.length) return new Set();
+
+  const orders = await RentOrder.find({ _id: { $in: orderIds } })
+    .select('status rentStartDate rentEndDate')
+    .lean();
+  const orderById = new Map(orders.map((o) => [String(o._id), o]));
+
+  const todayDay = toVnCalendarDay(new Date());
+  const blocked = new Set();
+
+  for (const item of rentItems) {
+    const order = orderById.get(String(item.orderId));
+    if (!order) continue;
+    const status = String(order.status || '').toLowerCase();
+    if (RENT_ORDER_TERMINAL_STATUSES_LOWER.includes(status)) continue;
+
+    const effectiveEnd = item.rentEndDate || order.rentEndDate;
+    if (!effectiveEnd) continue;
+    const endDay = toVnCalendarDay(effectiveEnd);
+    // Ngày kết thúc thuê (inclusive) >= hôm nay theo lịch VN → instance vẫn phải phục vụ đơn thuê, không bán.
+    if (endDay < todayDay) continue;
+
+    blocked.add(String(item.productInstanceId));
+  }
+
+  return blocked;
+};
+
 const ensureSaleStockAvailable = async (normalizedItems = []) => {
-  const requestedByProduct = normalizedItems.reduce((acc, item) => {
-    const key = String(item.productId);
-    acc[key] = (acc[key] || 0) + Number(item.quantity || 0);
-    return acc;
-  }, {});
+  // Group by productId + conditionLevel + size to check real stock buckets.
+  const requestedByKey = {};
+  for (const item of normalizedItems) {
+    const conditionLevel = item.conditionLevel === 'Used' ? 'Used' : 'New';
+    const normalizedSize = String(item?.size || '').trim().toUpperCase();
+    const size = normalizedSize || 'FREE SIZE';
+    const key = `${String(item.productId)}::${conditionLevel}::${size}`;
+    if (!requestedByKey[key]) {
+      requestedByKey[key] = { productId: item.productId, conditionLevel, size, count: 0 };
+    }
+    requestedByKey[key].count += Number(item.quantity || 0);
+  }
 
-  const productIds = Object.keys(requestedByProduct);
-  if (productIds.length === 0) return;
+  const grouped = Object.values(requestedByKey);
+  const requestedProductIds = Array.from(new Set(grouped.map((g) => String(g.productId)))).map((id) => new mongoose.Types.ObjectId(id));
+  const requestedConditionLevels = Array.from(new Set(grouped.map((g) => g.conditionLevel)));
 
-  const availableRows = await ProductInstance.aggregate([
-    {
-      $match: {
-        productId: { $in: productIds.map((id) => new mongoose.Types.ObjectId(id)) },
+  const candidateInstances = await ProductInstance.find({
+    productId: { $in: requestedProductIds },
+    lifecycleStatus: 'Available',
+    conditionLevel: { $in: requestedConditionLevels },
+  }).select('_id productId conditionLevel size').lean();
+
+  const blockedInstanceIds = await getBlockedInstanceIdsForFutureRent(candidateInstances.map((i) => i._id).filter(Boolean));
+  const unblockedCandidates = candidateInstances.filter((i) => !blockedInstanceIds.has(String(i._id)));
+
+  const matchesSize = (instance, size) => {
+    const instanceSize = String(instance?.size || '').trim().toUpperCase() || 'FREE SIZE';
+    return instanceSize === (size || 'FREE SIZE');
+  };
+
+  for (const { productId, conditionLevel, size, count } of grouped) {
+    const available = unblockedCandidates.filter((i) => (
+      String(i.productId) === String(productId)
+      && i.conditionLevel === conditionLevel
+      && matchesSize(i, size)
+    )).length;
+    if (available < count) throw new Error('OUT_OF_STOCK');
+  }
+};
+
+const assignSaleInstances = async (normalizedItems = [], saleOrderId = null, session = null) => {
+  const txOptions = session ? { session } : {};
+
+  const requestedProductIds = Array.from(new Set(normalizedItems.map((i) => String(i.productId)))).map((id) => new mongoose.Types.ObjectId(id));
+  const requestedConditionLevels = Array.from(new Set(normalizedItems.map((i) => i.conditionLevel)));
+
+  const candidateInstances = await ProductInstance.find({
+    productId: { $in: requestedProductIds },
+    lifecycleStatus: 'Available',
+    conditionLevel: { $in: requestedConditionLevels },
+  }).select('_id conditionLevel productId').lean();
+
+  const blockedInstanceIds = await getBlockedInstanceIdsForFutureRent(candidateInstances.map((i) => i._id).filter(Boolean));
+  const blockedObjectIds = Array.from(blockedInstanceIds).map((id) => new mongoose.Types.ObjectId(id));
+
+  for (const item of normalizedItems) {
+    const qty = Number(item.quantity || 1);
+    const conditionLevel = item.conditionLevel === 'Used' ? 'Used' : 'New';
+    const normalizedSize = String(item?.size || '').trim().toUpperCase();
+    const size = normalizedSize || 'FREE SIZE';
+    const requestedInstanceId = mongoose.isValidObjectId(item?.productInstanceId)
+      ? new mongoose.Types.ObjectId(item.productInstanceId)
+      : null;
+    for (let i = 0; i < qty; i++) {
+      const query = {
+        productId: item.productId,
         lifecycleStatus: 'Available',
-        conditionScore: 100,
-      },
-    },
-    {
-      $group: {
-        _id: '$productId',
-        count: { $sum: 1 },
-      },
-    },
-  ]);
+        conditionLevel,
+        size,
+        ...(blockedObjectIds.length ? { _id: { $nin: blockedObjectIds } } : {}),
+      };
 
-  const availableByProduct = availableRows.reduce((acc, row) => {
-    acc[String(row._id)] = Number(row.count || 0);
-    return acc;
-  }, {});
+      if (requestedInstanceId && i === 0) {
+        query._id = requestedInstanceId;
+      }
 
-  const outOfStockProductId = productIds.find((productId) => {
-    const requested = Number(requestedByProduct[productId] || 0);
-    const available = Number(availableByProduct[productId] || 0);
-    return requested > available;
-  });
+      const instance = await ProductInstance.findOneAndUpdate(
+        query,
+        { lifecycleStatus: 'Sold', soldOrderId: saleOrderId || null },
+        { new: true, sort: { conditionScore: -1 }, ...txOptions }
+      );
+      if (!instance) throw new Error('OUT_OF_STOCK');
+    }
+  }
+};
 
-  if (outOfStockProductId) {
-    throw new Error('OUT_OF_STOCK');
+const normalizeSaleItemCondition = (value) => {
+  if (value === 'Used') return 'Used';
+  if (value === 'New') return 'New';
+  return null;
+};
+
+const releaseSaleOrderInstances = async (orderId, session = null) => {
+  if (!orderId) return;
+
+  const txOptions = session ? { session } : {};
+  const items = await SaleOrderItem.find({ orderId }).select('productId quantity conditionLevel').lean();
+  if (!items.length) return;
+
+  const grouped = new Map();
+  for (const item of items) {
+    const productId = String(item?.productId || '').trim();
+    if (!productId) continue;
+    const conditionLevel = normalizeSaleItemCondition(item?.conditionLevel);
+    const qty = Math.max(Number(item?.quantity || 1), 1);
+    const key = `${productId}::${conditionLevel || 'ANY'}`;
+    const current = grouped.get(key) || { productId, conditionLevel, quantity: 0 };
+    current.quantity += qty;
+    grouped.set(key, current);
+  }
+
+  for (const { productId, conditionLevel, quantity } of grouped.values()) {
+    let remaining = quantity;
+
+    const linkedQuery = {
+      productId: new mongoose.Types.ObjectId(productId),
+      lifecycleStatus: 'Sold',
+      soldOrderId: orderId,
+      ...(conditionLevel ? { conditionLevel } : {}),
+    };
+    const linkedInstances = await ProductInstance.find(linkedQuery).sort({ updatedAt: -1 }).limit(remaining).select('_id').lean();
+    if (linkedInstances.length > 0) {
+      const linkedIds = linkedInstances.map((item) => item._id);
+      await ProductInstance.updateMany(
+        { _id: { $in: linkedIds } },
+        { lifecycleStatus: 'Available', soldOrderId: null },
+        txOptions
+      );
+      remaining -= linkedIds.length;
+    }
+
+    if (remaining <= 0) continue;
+
+    const fallbackQuery = {
+      productId: new mongoose.Types.ObjectId(productId),
+      lifecycleStatus: 'Sold',
+      ...(conditionLevel ? { conditionLevel } : {}),
+      $or: [{ soldOrderId: null }, { soldOrderId: { $exists: false } }],
+    };
+    const fallbackInstances = await ProductInstance.find(fallbackQuery).sort({ updatedAt: -1 }).limit(remaining).select('_id').lean();
+    if (!fallbackInstances.length) continue;
+
+    const fallbackIds = fallbackInstances.map((item) => item._id);
+    await ProductInstance.updateMany(
+      { _id: { $in: fallbackIds } },
+      { lifecycleStatus: 'Available', soldOrderId: null },
+      txOptions
+    );
   }
 };
 
@@ -245,6 +459,7 @@ const createSaleOrderWithItems = async ({
       productId: item.productId,
       unitPrice: item.unitPrice,
       quantity: item.quantity,
+      conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
       size: item.size,
       color: item.color,
       note: note ? `${item.note}${item.note ? ' | ' : ''}${note}` : item.note,
@@ -274,33 +489,54 @@ const findSaleOrderByIdempotencyKey = async (idempotencyKey) => {
   return SaleOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
 };
 
+/** Đã xác nhận MongoDB (standalone) không dùng được transaction cho sale checkout — tránh gọi startTransaction lặp lại. */
+let saleMongoTransactionsUnsupported = false;
+let saleMongoTransactionsFallbackLogged = false;
+
+const shouldForceSaleCheckoutWithoutTransaction = () =>
+  ['1', 'true', 'yes'].includes(String(process.env.DISABLE_SALE_MONGO_TRANSACTIONS || '').toLowerCase());
+
 const runSaleCheckoutTransaction = async ({
   createOrderPayload,
   voucherId = null,
 }) => {
+  const normalizedItems = createOrderPayload.items || [];
+
   const runWithoutTransaction = async () => {
     const saleOrder = await createSaleOrderWithItems(createOrderPayload);
+    try {
+      await assignSaleInstances(normalizedItems, saleOrder._id);
 
-    if (voucherId) {
-      await Voucher.findByIdAndUpdate(voucherId, {
-        $inc: { usedCount: 1 },
-      });
+      if (voucherId) {
+        await Voucher.findByIdAndUpdate(voucherId, {
+          $inc: { usedCount: 1 },
+        });
+      }
+
+      return saleOrder;
+    } catch (fallbackError) {
+      // Best-effort rollback when not using transactions.
+      await SaleOrderItem.deleteMany({ orderId: saleOrder._id });
+      await SaleOrder.findByIdAndDelete(saleOrder._id);
+      throw fallbackError;
     }
-
-    return saleOrder;
   };
+
+  if (shouldForceSaleCheckoutWithoutTransaction() || saleMongoTransactionsUnsupported) {
+    return runWithoutTransaction();
+  }
 
   const session = await mongoose.startSession();
 
   try {
     session.startTransaction();
 
-    // Keep order creation, order items, and voucher usage update in one transaction
-    // so either all of them succeed or all of them roll back together.
     const saleOrder = await createSaleOrderWithItems({
       ...createOrderPayload,
       session,
     });
+
+    await assignSaleInstances(normalizedItems, saleOrder._id, session);
 
     if (voucherId) {
       await Voucher.findByIdAndUpdate(
@@ -320,7 +556,18 @@ const runSaleCheckoutTransaction = async ({
     }
 
     if (isTransactionNotSupportedError(error)) {
-      console.warn('MongoDB transactions are not supported in this environment. Falling back to non-transaction sale checkout.');
+      saleMongoTransactionsUnsupported = true;
+      if (!saleMongoTransactionsFallbackLogged) {
+        saleMongoTransactionsFallbackLogged = true;
+        const wantLog = ['1', 'true', 'yes'].includes(String(process.env.LOG_SALE_CHECKOUT_TXN || '').toLowerCase());
+        if (wantLog) {
+          console.info(
+            '[SaleCheckout] MongoDB không hỗ trợ transaction trên deployment này; đã bật chế độ không-transaction cho các lần checkout sau. ' +
+            'Tuỳ chọn: DISABLE_SALE_MONGO_TRANSACTIONS=true (bỏ thử transaction) hoặc dùng replica set / Atlas.',
+            error?.message || error
+          );
+        }
+      }
       return runWithoutTransaction();
     }
 
@@ -332,17 +579,20 @@ const runSaleCheckoutTransaction = async ({
 
 const isTransactionNotSupportedError = (error) => {
   const message = String(error?.message || '').toLowerCase();
-  const name = String(error?.name || '').toLowerCase();
   const codeName = String(error?.codeName || '').toLowerCase();
+
+  if (codeName === 'illegaloperation') {
+    return (
+      message.includes('transaction') ||
+      message.includes('replica set member') ||
+      message.includes('mongos')
+    );
+  }
 
   return (
     message.includes('transaction numbers are only allowed on a replica set member or mongos') ||
     message.includes('transactions are not supported') ||
-    message.includes('cannot use transactions') ||
-    message.includes('replica set') ||
-    message.includes('mongos') ||
-    name.includes('mongoservererror') ||
-    codeName.includes('illegaloperation')
+    message.includes('cannot use transactions')
   );
 };
 
@@ -560,7 +810,7 @@ exports.guestCheckout = async (req, res) => {
     idempotencyKey = normalizeIdempotencyKey(req);
 
     if (!verificationToken) {
-      return res.status(400).json({ success: false, message: 'Thieu token xac minh guest.' });
+      return res.status(400).json({ success: false, message: 'Thiếu token xác minh guest.' });
     }
 
     const existingOrder = await findSaleOrderByIdempotencyKey(idempotencyKey);
@@ -578,25 +828,47 @@ exports.guestCheckout = async (req, res) => {
     try {
       tokenPayload = verifyGuestVerificationToken(verificationToken);
     } catch {
-      return res.status(401).json({ success: false, message: 'Token xac minh guest khong hop le hoac da het han.' });
+      return res.status(401).json({ success: false, message: 'Token xác minh guest không hợp lệ hoặc đã hết hạn.' });
     }
 
     const verification = await GuestVerification.findById(tokenPayload.verificationId);
+
+    // Nếu token đã bị consumed, kiểm tra xem đơn hàng từ session đó có đang ở trạng thái
+    // Failed hoặc PendingPayment không (user muốn thử lại sau khi thanh toán online thất bại).
+    if (verification?.consumedAt) {
+      const retryableOrder = await SaleOrder.findOne({
+        guestVerificationId: verification._id,
+        status: { $in: ['Failed', 'PendingPayment'] },
+      }).lean();
+      if (!retryableOrder) {
+        return res.status(401).json({ success: false, message: 'Phiên xác minh guest không hợp lệ.' });
+      }
+      // Cho phép retry — reset consumedAt để checkout lại
+      verification.consumedAt = null;
+      await verification.save();
+    }
+
     if (
       !verification ||
       !verification.verified ||
-      verification.consumedAt ||
       verification.method !== tokenPayload.method
     ) {
-      return res.status(401).json({ success: false, message: 'Phien xac minh guest khong hop le.' });
+      return res.status(401).json({ success: false, message: 'Phiên xác minh guest không hợp lệ.' });
     }
 
     if (!verification.expiresAt || new Date(verification.expiresAt) <= new Date()) {
-      return res.status(401).json({ success: false, message: 'Phien xac minh guest da het han.' });
+      return res.status(401).json({ success: false, message: 'Phiên xác minh guest đã hết hạn.' });
+    }
+
+    if (verification.method !== 'email') {
+      return res.status(400).json({
+        success: false,
+        message: 'Đơn mua chưa đăng nhập chỉ hỗ trợ xác minh bằng email.',
+      });
     }
 
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, message: 'Gio hang mua dang trong.' });
+      return res.status(400).json({ success: false, message: 'Giỏ hàng mua đang trống.' });
     }
 
     const normalizedName = String(name || '').trim();
@@ -605,36 +877,51 @@ exports.guestCheckout = async (req, res) => {
     const normalizedAddress = String(address || '').trim();
 
     if (!normalizedName || !normalizedAddress || !normalizedEmail) {
-      return res.status(400).json({ success: false, message: 'Vui long nhap day du ten, email va dia chi nhan hang.' });
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ tên, email và địa chỉ nhận hàng.' });
     }
 
     if (!isValidPhone(normalizedPhone)) {
-      return res.status(400).json({ success: false, message: 'So dien thoai nhan hang khong hop le.' });
+      return res.status(400).json({ success: false, message: 'Số điện thoại nhận hàng không hợp lệ.' });
     }
 
-    if (!isValidEmail(verification.method === 'email' ? (verification.email || normalizedEmail) : normalizedEmail)) {
-      return res.status(400).json({ success: false, message: 'Email nhan hang khong hop le.' });
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Email nhận hàng không hợp lệ.' });
     }
 
-    if (verification.method === 'email' && !isValidEmail(verification.email || normalizedEmail)) {
-      return res.status(400).json({ success: false, message: 'Email xac minh khong hop le.' });
+    const verifiedEmail = normalizeEmail(verification.email || normalizedEmail);
+    if (!isValidEmail(verifiedEmail)) {
+      return res.status(400).json({ success: false, message: 'Email xác minh không hợp lệ.' });
     }
 
-    const productIds = items.map((item) => item.productId).filter(Boolean);
-    const products = await Product.find({ _id: { $in: productIds }, isDraft: { $ne: true } }).lean();
+    if (verifiedEmail !== normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email thanh toán phải trùng với email đã xác minh.',
+      });
+    }
+
+    // CHANGED: use unique product ids to avoid false invalid-product errors for same product with different conditions.
+    const uniqueProductIds = getUniqueProductIds(items);
+    const products = await Product.find({ _id: { $in: uniqueProductIds }, isDraft: { $ne: true } }).lean();
     const productMap = new Map(products.map((product) => [String(product._id), product]));
 
-    if (productMap.size !== productIds.length) {
-      return res.status(400).json({ success: false, message: 'Co san pham khong hop le hoac da ngung ban.' });
+    if (productMap.size !== uniqueProductIds.length) {
+      return res.status(400).json({ success: false, message: 'Có sản phẩm không hợp lệ hoặc đã ngừng bán.' });
     }
 
     const normalizedItems = buildNormalizedSaleItems(items, productMap);
     await ensureSaleStockAvailable(normalizedItems);
 
     const subtotal = normalizedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+
+    // If a voucher is used in guest flow, attach a stable guest user id so per-user limits can be enforced.
+    const normalizedVoucherCode = normalizeVoucherCode(voucherCode);
+    const guestUser = normalizedVoucherCode
+      ? await findOrCreateGuestCustomer({ email: verifiedEmail, name: normalizedName, phone: normalizedPhone })
+      : null;
     const voucherApplication = await applyVoucherForSaleOrder({
       voucherCode,
-      user: null,
+      user: guestUser ? { id: guestUser._id, role: 'customer' } : null,
       items,
       subtotal,
     });
@@ -647,39 +934,55 @@ exports.guestCheckout = async (req, res) => {
 
     const saleOrder = await runSaleCheckoutTransaction({
       createOrderPayload: {
-      customerId: null,
-      paymentMethod,
-      totalAmount,
-      shippingFee: normalizedShippingFee,
-      shippingAddress: normalizedAddress,
-      shippingPhone: normalizedPhone,
-      guestName: normalizedName,
-      guestEmail: verification.method === 'email' ? (verification.email || normalizedEmail) : normalizedEmail,
-      guestVerificationMethod: verification.method,
-      guestVerificationId: verification._id,
-      note,
-      items: normalizedItems,
-      idempotencyKey,
-      voucherCode: voucherApplication.voucherCode,
-      voucherId: voucherApplication.voucher?._id || null,
-      voucherSnapshot: voucherApplication.voucherSnapshot,
-      discountAmount: voucherApplication.discountAmount,
+        customerId: guestUser?._id || null,
+        paymentMethod,
+        totalAmount,
+        shippingFee: normalizedShippingFee,
+        shippingAddress: normalizedAddress,
+        shippingPhone: normalizedPhone,
+        guestName: normalizedName,
+        guestEmail: verifiedEmail,
+        guestVerificationMethod: verification.method,
+        guestVerificationId: verification._id,
+        note,
+        items: normalizedItems,
+        idempotencyKey,
+        voucherCode: voucherApplication.voucherCode,
+        voucherId: voucherApplication.voucher?._id || null,
+        voucherSnapshot: voucherApplication.voucherSnapshot,
+        discountAmount: voucherApplication.discountAmount,
       },
       voucherId: voucherApplication.voucher?._id || null,
     });
 
-    verification.consumedAt = new Date();
-    await verification.save();
+    // Chỉ consume token ngay với COD (không cần xác nhận thanh toán).
+    // Với online payment (PayOS/PayPal), giữ token để user có thể thử lại nếu cổng thanh toán thất bại.
+    const normalizedPaymentMethodForToken = normalizePaymentMethod(paymentMethod);
+    if (normalizedPaymentMethodForToken !== 'Online') {
+      verification.consumedAt = new Date();
+      await verification.save();
+    }
 
     await sendOrderConfirmationEmailSafely({
       saleOrder,
       customer: {
         name: normalizedName,
-        email: verification.method === 'email' ? (verification.email || normalizedEmail) : normalizedEmail,
+        email: verifiedEmail,
         phone: normalizedPhone,
         address: normalizedAddress,
       },
     });
+    await Promise.allSettled([
+      notifySaleOrderCreated(saleOrder),
+      notifyLowStockForProducts(uniqueProductIds),
+    ]);
+
+    // Trigger tạo hóa đơn + gửi email (non-blocking)
+    // Chỉ trigger ngay cho COD; Online sẽ được trigger từ confirmSalePayment sau khi capture
+    const guestPaymentMethod = normalizePaymentMethod(paymentMethod);
+    if (guestPaymentMethod !== 'Online') {
+      setImmediate(() => runPostPaymentInvoiceFlow(String(saleOrder._id)).catch(() => {}));
+    }
 
     return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
   } catch (error) {
@@ -698,10 +1001,10 @@ exports.guestCheckout = async (req, res) => {
 
     console.error('Guest checkout error:', error);
     const message = error.message === 'INVALID_PRODUCT_DATA'
-      ? 'Khong the xac thuc du lieu san pham trong gio hang.'
+      ? 'Không thể xác thực dữ liệu sản phẩm trong giỏ hàng.'
       : error.message === 'OUT_OF_STOCK'
-        ? 'Co san pham da het hang hoac khong du so luong de mua.'
-        : 'Khong the tao don mua guest luc nay.';
+        ? 'Có sản phẩm đã hết hàng hoặc không đủ số lượng để mua.'
+        : 'Không thể tạo đơn mua guest lúc này.';
 
     const statusCode = (error.message === 'INVALID_PRODUCT_DATA' || error.message === 'OUT_OF_STOCK') ? 400 : 500;
 
@@ -746,7 +1049,7 @@ exports.checkout = async (req, res) => {
     }
 
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, message: 'Gio hang mua dang trong.' });
+      return res.status(400).json({ success: false, message: 'Giỏ hàng mua đang trống.' });
     }
 
     const normalizedName = String(name || '').trim();
@@ -755,23 +1058,24 @@ exports.checkout = async (req, res) => {
     const normalizedAddress = String(address || '').trim();
 
     if (!normalizedName || !normalizedAddress || !normalizedEmail) {
-      return res.status(400).json({ success: false, message: 'Vui long nhap day du ten, email va dia chi nhan hang.' });
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ tên, email và địa chỉ nhận hàng.' });
     }
 
     if (!isValidPhone(normalizedPhone)) {
-      return res.status(400).json({ success: false, message: 'So dien thoai nhan hang khong hop le.' });
+      return res.status(400).json({ success: false, message: 'Số điện thoại nhận hàng không hợp lệ.' });
     }
 
     if (!isValidEmail(normalizedEmail)) {
-      return res.status(400).json({ success: false, message: 'Email nhan hang khong hop le.' });
+      return res.status(400).json({ success: false, message: 'Email nhận hàng không hợp lệ.' });
     }
 
-    const productIds = items.map((item) => item.productId).filter(Boolean);
-    const products = await Product.find({ _id: { $in: productIds }, isDraft: { $ne: true } }).lean();
+    // CHANGED: use unique product ids to avoid false invalid-product errors for same product with different conditions.
+    const uniqueProductIds = getUniqueProductIds(items);
+    const products = await Product.find({ _id: { $in: uniqueProductIds }, isDraft: { $ne: true } }).lean();
     const productMap = new Map(products.map((product) => [String(product._id), product]));
 
-    if (productMap.size !== productIds.length) {
-      return res.status(400).json({ success: false, message: 'Co san pham khong hop le hoac da ngung ban.' });
+    if (productMap.size !== uniqueProductIds.length) {
+      return res.status(400).json({ success: false, message: 'Có sản phẩm không hợp lệ hoặc đã ngừng bán.' });
     }
 
     const normalizedItems = buildNormalizedSaleItems(items, productMap);
@@ -792,23 +1096,23 @@ exports.checkout = async (req, res) => {
 
     const saleOrder = await runSaleCheckoutTransaction({
       createOrderPayload: {
-      customerId,
-      paymentMethod,
-      totalAmount,
-      shippingFee: normalizedShippingFee,
-      shippingAddress: normalizedAddress,
-      shippingPhone: normalizedPhone,
-      guestName: normalizedName,
-      guestEmail: normalizedEmail,
-      guestVerificationMethod: null,
-      guestVerificationId: null,
-      note,
-      items: normalizedItems,
-      idempotencyKey,
-      voucherCode: voucherApplication.voucherCode,
-      voucherId: voucherApplication.voucher?._id || null,
-      voucherSnapshot: voucherApplication.voucherSnapshot,
-      discountAmount: voucherApplication.discountAmount,
+        customerId,
+        paymentMethod,
+        totalAmount,
+        shippingFee: normalizedShippingFee,
+        shippingAddress: normalizedAddress,
+        shippingPhone: normalizedPhone,
+        guestName: normalizedName,
+        guestEmail: normalizedEmail,
+        guestVerificationMethod: null,
+        guestVerificationId: null,
+        note,
+        items: normalizedItems,
+        idempotencyKey,
+        voucherCode: voucherApplication.voucherCode,
+        voucherId: voucherApplication.voucher?._id || null,
+        voucherSnapshot: voucherApplication.voucherSnapshot,
+        discountAmount: voucherApplication.discountAmount,
       },
       voucherId: voucherApplication.voucher?._id || null,
     });
@@ -822,6 +1126,18 @@ exports.checkout = async (req, res) => {
         address: normalizedAddress,
       },
     });
+    await Promise.allSettled([
+      notifySaleOrderCreated(saleOrder),
+      notifyLowStockForProducts(uniqueProductIds),
+    ]);
+
+    // Trigger tạo hóa đơn + gửi email tự động (non-blocking)
+    // CHỈ trigger cho COD — Online sẽ được trigger trong confirmSalePayment sau khi capture thành công,
+    // tránh gửi email 2 lần cho cùng một đơn.
+    const checkoutPaymentMethod = normalizePaymentMethod(paymentMethod);
+    if (checkoutPaymentMethod !== 'Online') {
+      setImmediate(() => runPostPaymentInvoiceFlow(String(saleOrder._id)).catch(() => {}));
+    }
 
     return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
   } catch (error) {
@@ -840,10 +1156,10 @@ exports.checkout = async (req, res) => {
 
     console.error('Checkout error:', error);
     const message = error.message === 'INVALID_PRODUCT_DATA'
-      ? 'Khong the xac thuc du lieu san pham trong gio hang.'
+      ? 'Không thể xác thực dữ liệu sản phẩm trong giỏ hàng.'
       : error.message === 'OUT_OF_STOCK'
-        ? 'Co san pham da het hang hoac khong du so luong de mua.'
-        : 'Khong the tao don mua luc nay.';
+        ? 'Có sản phẩm đã hết hàng hoặc không đủ số lượng để mua.'
+        : 'Không thể tạo đơn mua lúc này.';
 
     const statusCode = (error.message === 'INVALID_PRODUCT_DATA' || error.message === 'OUT_OF_STOCK') ? 400 : 500;
 
@@ -879,7 +1195,7 @@ exports.getOwnerSaleOrders = async (req, res) => {
         .populate('customerId', 'name phone email')
         .populate('staffId', 'name phone email')
         .populate('history.updatedBy', 'name email')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: 1, _id: 1 })
         .skip(skip)
         .limit(pageSize),
       SaleOrder.countDocuments(query),
@@ -908,6 +1224,20 @@ exports.getOwnerSaleOrders = async (req, res) => {
 
     const mappedData = data.map((order) => mapSaleOrderForOwner(order, { customerFacing: false }));
 
+    const statusOrder = Object.keys(SALE_ORDER_TRANSITIONS);
+    const statusSet = new Set(
+      (await SaleOrder.distinct('status', { orderType: ORDER_TYPE.BUY }))
+        .map((item) => normalizeSaleOrderStatusInput(item))
+        .filter((item) => item && SALE_ORDER_ALLOWED_STATUSES.has(item))
+    );
+    const statusOptions = statusOrder
+      .filter((statusKey) => statusSet.has(statusKey))
+      .map((statusKey) => ({
+        value: statusKey,
+        label: getSaleStatusMeta(statusKey).label,
+        badgeClass: getSaleStatusMeta(statusKey).badgeClass,
+      }));
+
     return res.json({
       success: true,
       data: mappedData,
@@ -918,18 +1248,14 @@ exports.getOwnerSaleOrders = async (req, res) => {
         pages: Math.max(Math.ceil((normalizedKeyword ? data.length : total) / pageSize), 1),
       },
       meta: {
-        statusOptions: Object.keys(SALE_ORDER_TRANSITIONS).map((status) => ({
-          value: status,
-          label: getSaleStatusMeta(status).label,
-          badgeClass: getSaleStatusMeta(status).badgeClass,
-        })),
+        statusOptions,
       },
     });
   } catch (error) {
     console.error('Get owner sale orders error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Khong the lay danh sach don mua luc nay.',
+      message: 'Không thể lấy danh sách đơn mua lúc này.',
     });
   }
 };
@@ -962,6 +1288,9 @@ exports.getMySaleOrders = async (req, res) => {
 
     const attachedOrders = await attachSaleOrderItems(orders);
     const ordersWithReviewState = await attachReviewStatesForCustomer(attachedOrders, customerId);
+    // #region agent log
+    fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H3', location: 'BE/controllers/order.controller.js:getMySaleOrders', message: 'Customer orders payload snapshot', data: { customerId: String(customerId || ''), count: ordersWithReviewState.length, statuses: ordersWithReviewState.map((o) => ({ id: String(o?._id || ''), status: String(o?.status || ''), userStatus: String(o?.userStatus || '') })) }, timestamp: Date.now() }) }).catch(() => { });
+    // #endregion
 
     return res.json({
       success: true,
@@ -971,7 +1300,7 @@ exports.getMySaleOrders = async (req, res) => {
     console.error('Get my sale orders error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Khong the lay lich su don mua luc nay.',
+      message: 'Không thể lấy lịch sử đơn mua lúc này.',
     });
   }
 };
@@ -1000,7 +1329,7 @@ exports.getMySaleOrderById = async (req, res) => {
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: 'Khong tim thay don mua.',
+        message: 'Không tìm thấy đơn mua.',
       });
     }
 
@@ -1015,7 +1344,7 @@ exports.getMySaleOrderById = async (req, res) => {
     console.error('Get my sale order detail error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Khong the lay chi tiet don mua luc nay.',
+      message: 'Không thể lấy chi tiết đơn mua lúc này.',
     });
   }
 };
@@ -1028,7 +1357,7 @@ exports.getGuestSaleOrderById = async (req, res) => {
     if (!guestOrderViewToken) {
       return res.status(401).json({
         success: false,
-        message: 'Thieu token xem don hang guest.',
+        message: 'Thiếu token xem đơn hàng guest.',
       });
     }
 
@@ -1038,14 +1367,14 @@ exports.getGuestSaleOrderById = async (req, res) => {
     } catch {
       return res.status(401).json({
         success: false,
-        message: 'Token xem don hang khong hop le hoac da het han.',
+        message: 'Token xem đơn hàng không hợp lệ hoặc đã hết hạn.',
       });
     }
 
     if (String(payload?.orderId || '') !== String(id || '')) {
       return res.status(403).json({
         success: false,
-        message: 'Token khong khop voi don hang.',
+        message: 'Token không khớp với đơn hàng.',
       });
     }
 
@@ -1060,14 +1389,14 @@ exports.getGuestSaleOrderById = async (req, res) => {
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: 'Khong tim thay don mua guest.',
+        message: 'Không tìm thấy đơn mua guest.',
       });
     }
 
     if (payload?.guestVerificationId && String(order?.guestVerificationId || '') !== String(payload.guestVerificationId)) {
       return res.status(403).json({
         success: false,
-        message: 'Token khong hop le cho don hang nay.',
+        message: 'Token không hợp lệ cho đơn hàng này.',
       });
     }
 
@@ -1076,7 +1405,7 @@ exports.getGuestSaleOrderById = async (req, res) => {
     if (payloadEmail && orderEmail && payloadEmail !== orderEmail) {
       return res.status(403).json({
         success: false,
-        message: 'Token khong hop le cho don hang nay.',
+        message: 'Token không hợp lệ cho đơn hàng này.',
       });
     }
 
@@ -1090,7 +1419,81 @@ exports.getGuestSaleOrderById = async (req, res) => {
     console.error('Get guest sale order detail error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Khong the lay chi tiet don mua guest luc nay.',
+      message: 'Không thể lấy chi tiết đơn mua guest lúc này.',
+    });
+  }
+};
+
+exports.cancelMySaleOrder = async (req, res) => {
+  try {
+    const customerId = req.user?.id;
+    const { id } = req.params;
+
+    if (!customerId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+    const order = await SaleOrder.findOne({
+      _id: id,
+      customerId,
+      orderType: ORDER_TYPE.BUY,
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đơn mua.',
+      });
+    }
+
+    if (order.status === 'Cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Đơn hàng đã ở trạng thái này.',
+      });
+    }
+
+    if (!['PendingPayment', 'PendingConfirmation'].includes(String(order.status || ''))) {
+      return res.status(400).json({
+        success: false,
+        message: `Không thể hủy đơn ở trạng thái "${order.status}".`,
+      });
+    }
+
+    await releaseSaleOrderInstances(order._id);
+
+    order.status = 'Cancelled';
+    order.userStatus = resolveSaleOrderUserStatus('Cancelled', order.userStatus);
+    order.history = Array.isArray(order.history) ? order.history : [];
+    order.history.push({
+      status: 'Cancelled',
+      action: 'customer_cancel',
+      description: 'Khách hàng đã hủy đơn',
+      updatedBy: customerId,
+      updatedAt: new Date(),
+    });
+    await order.save();
+    await notifySaleOrderCancelled(order, 'customer_cancel');
+    const [populated] = await attachSaleOrderItems([
+      await SaleOrder.findById(id)
+        .populate('customerId', 'name phone email')
+        .populate('staffId', 'name phone email')
+        .populate('history.updatedBy', 'name email'),
+    ]);
+
+    return res.json({
+      success: true,
+      message: 'Hủy đơn thành công.',
+      data: mapSaleOrderForOwner(populated, { customerFacing: true }),
+    });
+  } catch (error) {
+    console.error('Cancel my sale order error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Không thể hủy đơn mua lúc này.',
     });
   }
 };
@@ -1104,22 +1507,25 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
     if (!SALE_ORDER_ALLOWED_STATUSES.has(normalizedStatus)) {
       return res.status(400).json({
         success: false,
-        message: 'Trang thai don mua khong hop le.',
+        message: 'Trạng thái đơn mua không hợp lệ.',
       });
     }
 
     const order = await SaleOrder.findById(id);
+    // #region agent log
+    fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H1', location: 'BE/controllers/order.controller.js:updateOwnerSaleOrderStatus:before', message: 'Staff update status request', data: { orderId: String(id || ''), requestedStatus: String(status || ''), normalizedStatus: String(normalizedStatus || ''), currentStatus: String(order?.status || ''), currentUserStatus: String(order?.userStatus || ''), actorRole: String(req?.user?.role || '') }, timestamp: Date.now() }) }).catch(() => { });
+    // #endregion
     if (!order || order.orderType !== ORDER_TYPE.BUY) {
       return res.status(404).json({
         success: false,
-        message: 'Khong tim thay don mua.',
+        message: 'Không tìm thấy đơn mua.',
       });
     }
 
     if (order.status === normalizedStatus) {
       return res.status(400).json({
         success: false,
-        message: 'Don hang da o trang thai nay.',
+        message: 'Đơn hàng đã ở trạng thái này.',
       });
     }
 
@@ -1127,9 +1533,13 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
     if (!allowedNextStatuses.includes(normalizedStatus)) {
       return res.status(400).json({
         success: false,
-        message: `Khong the chuyen tu ${order.status} sang ${normalizedStatus}.`,
+        message: `Không thể chuyển từ ${order.status} sang ${normalizedStatus}.`,
         allowedNextStatuses,
       });
+    }
+
+    if (normalizedStatus === 'Cancelled') {
+      await releaseSaleOrderInstances(order._id);
     }
 
     if (isRefundedSaleStatus(normalizedStatus)) {
@@ -1164,7 +1574,12 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
       });
     }
     await order.save();
-
+    // #region agent log
+    fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H1', location: 'BE/controllers/order.controller.js:updateOwnerSaleOrderStatus:afterSave', message: 'Staff update status persisted', data: { orderId: String(order?._id || ''), savedStatus: String(order?.status || ''), savedUserStatus: String(order?.userStatus || ''), historyCount: Array.isArray(order?.history) ? order.history.length : 0, lastHistoryStatus: String(order?.history?.[order.history.length - 1]?.status || ''), lastHistoryAction: String(order?.history?.[order.history.length - 1]?.action || '') }, timestamp: Date.now() }) }).catch(() => { });
+    // #endregion
+    if (normalizedStatus === 'Cancelled') {
+      await notifySaleOrderCancelled(order, 'owner_or_staff_cancel');
+    }
     const [populated] = await attachSaleOrderItems([
       await SaleOrder.findById(id)
         .populate('customerId', 'name phone email')
@@ -1174,14 +1589,17 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Cap nhat trang thai don mua thanh cong.',
+      message: 'Cập nhật trạng thái đơn mua thành công.',
       data: mapSaleOrderForOwner(populated),
     });
   } catch (error) {
     console.error('Update sale order status error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Khong the cap nhat trang thai don mua luc nay.',
+      message: 'Không thể cập nhật trạng thái đơn mua lúc này.',
     });
   }
 };
+
+
+

@@ -5,6 +5,11 @@ const mongoose = require('mongoose');
  * payosOrderCode là số nguyên duy nhất, dùng để tra cứu khi webhook bắn về.
  */
 const payOSTransactionSchema = new mongoose.Schema({
+    provider: {
+        type: String,
+        enum: ['PAYOS', 'PAYPAL'],
+        default: 'PAYOS',
+    },
     orderId: {
         type: mongoose.Schema.Types.ObjectId,
         required: true,
@@ -21,10 +26,21 @@ const payOSTransactionSchema = new mongoose.Schema({
     },
     payosOrderCode: {
         type: Number,
-        required: true,
+        default: null,
         unique: true,
+        sparse: true,
     },
     payosPaymentLinkId: {
+        type: String,
+        default: '',
+    },
+    paypalOrderId: {
+        type: String,
+        default: '',
+        unique: true,
+        sparse: true,
+    },
+    paypalCheckoutUrl: {
         type: String,
         default: '',
     },

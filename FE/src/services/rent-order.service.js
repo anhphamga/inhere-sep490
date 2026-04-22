@@ -1,4 +1,5 @@
 import {
+  cancelGuestRentOrderRequest,
   cancelRentOrderRequest,
   completeRentOrderRequest,
   completeWashingRequest,
@@ -6,10 +7,13 @@ import {
   confirmRentOrderRequest,
   confirmReturnRequest,
   createGuestCustomerRequest,
+  createGuestRentOrderRequest,
   createRentOrderRequest,
   createWalkInOrderRequest,
   finalizeRentOrderRequest,
   getAllRentOrdersRequest,
+  getGuestRentOrderByIdRequest,
+  getGuestRentOrderRequest,
   getMyRentOrdersRequest,
   getRentOrderByIdRequest,
   markNoShowRequest,
@@ -17,7 +21,9 @@ import {
   markWaitingReturnRequest,
   payDepositRequest,
   searchCustomersRequest,
-  staffCollectDepositRequest
+  staffCollectDepositRequest,
+  getSwapCandidatesRequest,
+  swapOrderItemRequest,
 } from '../api/rent-order.api'
 
 export const createRentOrderApi = async (payload) => {
@@ -110,7 +116,37 @@ export const createGuestCustomerApi = async (payload) => {
   return response.data
 }
 
+export const createGuestRentOrderApi = async (payload) => {
+  const response = await createGuestRentOrderRequest(payload)
+  return response.data
+}
+
+export const getGuestRentOrderApi = async (orderCode, email) => {
+  const response = await getGuestRentOrderRequest(orderCode, email)
+  return response.data
+}
+
+export const getGuestRentOrderByIdApi = async (id, token) => {
+  const response = await getGuestRentOrderByIdRequest(id, token)
+  return response.data
+}
+
+export const cancelGuestRentOrderApi = async (id, options = {}) => {
+  const response = await cancelGuestRentOrderRequest(id, options)
+  return response.data
+}
+
 export const staffCollectDepositApi = async (id, method = 'Cash') => {
   const response = await staffCollectDepositRequest(id, method)
+  return response.data
+}
+
+export const getSwapCandidatesApi = async (orderId, itemId) => {
+  const response = await getSwapCandidatesRequest(orderId, itemId)
+  return response.data
+}
+
+export const swapOrderItemApi = async (orderId, payload) => {
+  const response = await swapOrderItemRequest(orderId, payload)
   return response.data
 }

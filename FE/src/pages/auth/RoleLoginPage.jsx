@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../../components/common/Header';
 import { useAuth } from '../../hooks/useAuth';
@@ -33,8 +33,16 @@ const normalizeLoginError = (apiError) => {
   if (normalized.includes('locked')) {
     return 'Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.';
   }
-  if (normalized.includes('cho owner duyet') || normalized.includes('chờ owner duyệt') || normalized.includes('pending')) {
-    return 'Tài khoản đang chờ owner duyệt.';
+  if (
+    normalized.includes('cho owner duyet')
+    || normalized.includes('chờ owner duyệt')
+    || normalized.includes('pending')
+    || normalized.includes('chua duoc kich hoat')
+    || normalized.includes('chưa được kích hoạt')
+    || normalized.includes('bam accept')
+    || normalized.includes('bấm accept')
+  ) {
+    return 'Tài khoản chưa kích hoạt. Vui lòng kiểm tra email mời và bấm Accept.';
   }
   return message || 'Đăng nhập thất bại.';
 };
@@ -44,8 +52,6 @@ export default function RoleLoginPage({ role }) {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { login, loginWithGoogle, clearSession } = useAuth();
-  const googleButtonRef = useRef(null);
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const requestedRole = normalizeRole(role || searchParams.get('role') || location.state?.loginRole || 'staff');
   const activeRole = requestedRole === 'owner' ? 'owner' : 'staff';
@@ -64,63 +70,98 @@ export default function RoleLoginPage({ role }) {
     if (activeRole === 'staff' && from.startsWith('/staff')) return from;
     return meta.fallbackPath;
   }, [activeRole, location.state, meta.fallbackPath]);
+  const inviteStatus = String(searchParams.get('invite') || '').trim().toLowerCase();
+  const inviteMessage = useMemo(() => {
+    if (inviteStatus === 'accepted') {
+      return {
+        tone: 'success',
+        text: 'Xác nhận email thành công. Bạn có thể đăng nhập tài khoản Staff ngay bây giờ.'
+      };
+    }
+    if (inviteStatus === 'expired') {
+      return {
+        tone: 'error',
+        text: 'Link mời đã hết hạn. Vui lòng nhờ chủ shop gửi lại lời mời mới.'
+      };
+    }
+    if (inviteStatus === 'invalid') {
+      return {
+        tone: 'error',
+        text: 'Link mời không hợp lệ hoặc đã được sử dụng.'
+      };
+    }
+    if (inviteStatus === 'error') {
+      return {
+        tone: 'error',
+        text: 'Không thể xác nhận lời mời lúc này. Vui lòng thử lại sau.'
+      };
+    }
+    return null;
+  }, [inviteStatus]);
 
-  const enforceRole = async (data) => {
+  const enforceRole = useCallback(async (data) => {
     const userRole = normalizeRole(data?.user?.role);
     if (userRole !== activeRole) {
       clearSession();
       throw new Error(`Tài khoản này không có quyền truy cập cổng ${activeRole.toUpperCase()}.`);
     }
     return true;
-  };
+  }, [activeRole, clearSession]);
 
   useEffect(() => {
-    if (!googleClientId || !googleButtonRef.current) return;
+    let mounted = true;
+    const buttonId = `googleStaffBtn-${activeRole}`;
 
-    let cancelled = false;
+    const setupGoogleButton = async () => {
+      try {
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+        if (!clientId) return;
 
-    loadGoogleIdentityScript()
-      .then(() => {
-        if (cancelled || !window.google?.accounts?.id || !googleButtonRef.current) return;
+        await loadGoogleIdentityScript();
+        if (!mounted || !window.google?.accounts?.id) return;
+
+        const container = document.getElementById(buttonId);
+        if (!container) return;
+        container.innerHTML = '';
 
         window.google.accounts.id.initialize({
-          client_id: googleClientId,
+          client_id: clientId,
           callback: async (response) => {
-            if (!response?.credential) {
-              setError('Không lấy được thông tin đăng nhập Google.');
-              return;
-            }
-
             try {
               setError('');
-              const data = await loginWithGoogle({ idToken: response.credential, portal: 'staff' }, { rememberMe });
+              setSubmitting(true);
+              const data = await loginWithGoogle(
+                { idToken: response?.credential, portal: 'staff' },
+                { rememberMe }
+              );
               await enforceRole(data);
               const targetPath = redirectPath || getRouteByRole(data.user.role);
               navigate(targetPath, { replace: true });
             } catch (apiError) {
               setError(normalizeLoginError(apiError));
+            } finally {
+              setSubmitting(false);
             }
           },
         });
 
-        googleButtonRef.current.innerHTML = '';
-        window.google.accounts.id.renderButton(googleButtonRef.current, {
+        window.google.accounts.id.renderButton(container, {
           theme: 'outline',
           size: 'large',
-          shape: 'pill',
+          width: '100%',
           text: 'signin_with',
           locale: 'vi',
-          width: 360,
         });
-      })
-      .catch(() => {
-        setError('Không thể tải nút đăng nhập Google.');
-      });
-
-    return () => {
-      cancelled = true;
+      } catch {
+        // Keep page usable with password login when Google script fails.
+      }
     };
-  }, [activeRole, clearSession, googleClientId, loginWithGoogle, navigate, redirectPath, rememberMe]);
+
+    setupGoogleButton();
+    return () => {
+      mounted = false;
+    };
+  }, [activeRole, enforceRole, loginWithGoogle, navigate, redirectPath, rememberMe]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -200,6 +241,11 @@ export default function RoleLoginPage({ role }) {
 
             <h2 className="auth-title">{meta.title}</h2>
             <p className="auth-subtitle">Vui lòng đăng nhập bằng tài khoản được phân quyền.</p>
+            {activeRole === 'staff' && inviteMessage ? (
+              <div className={inviteMessage.tone === 'success' ? 'success-text' : 'error-text'}>
+                {inviteMessage.text}
+              </div>
+            ) : null}
 
             <form className="auth-form" onSubmit={handleSubmit}>
               <div className="auth-input-wrap">
@@ -268,11 +314,7 @@ export default function RoleLoginPage({ role }) {
                 <span>Hoặc</span>
               </div>
 
-              {googleClientId ? (
-                <div className="google-login-wrap" ref={googleButtonRef} />
-              ) : (
-                <p className="google-login-disabled">Thiếu cấu hình Google Client ID</p>
-              )}
+              <div id={`googleStaffBtn-${activeRole}`} />
             </form>
 
             <div className="auth-links auth-links-center">

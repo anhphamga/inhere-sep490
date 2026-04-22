@@ -7,7 +7,6 @@ export default function ColorSelector({
 }) {
   if (!colors.length) return null;
 
-  // Single color: display as text instead of a selector
   if (colors.length === 1) {
     return (
       <div className="flex items-center gap-2">
@@ -37,10 +36,11 @@ export default function ColorSelector({
               type="button"
               onClick={() => !disabled && onSelect?.(color)}
               disabled={disabled}
-              className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${active
+              className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                active
                   ? "border-slate-900 bg-slate-900 text-white"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                } ${disabled ? "cursor-not-allowed opacity-30" : ""}`}
+              } ${disabled ? "cursor-not-allowed opacity-30" : ""}`}
               aria-pressed={active}
               aria-label={`Chọn màu ${color}`}
             >

@@ -1,5 +1,7 @@
+﻿const mongoose = require('mongoose');
 const Product = require('../model/Product.model');
 const ProductInstance = require('../model/ProductInstance.model');
+const SizeGuide = require('../model/SizeGuide.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
 const { hasPermission } = require('../services/accessControl.service');
@@ -11,6 +13,13 @@ const {
   normalizeLocalizedInput,
   hasLocalizedText,
 } = require('../utils/i18n');
+const {
+  createSizeInstances,
+  createSimpleInstances,
+} = require('../services/productInstance.service');
+const { reconcileInstancesToSizeRows } = require('../services/productInstance.sync.service');
+const { importProductsFromFileBuffer } = require('../services/productImport.service');
+const { notifyLowStockForProducts } = require('../services/alert.dispatcher.service');
 
 const CONDITION_LEVEL_ALIASES = {
   Good: 'New',
@@ -41,6 +50,11 @@ const toIntegerOrNaN = (value) => {
   return Number.isInteger(n) ? n : Number.NaN;
 };
 
+/** Instance cÃƒÂ²n trong kho thuÃƒÂª (backend cÃƒÂ³ thÃ¡Â»Æ’ gÃƒÂ¡n theo ngÃƒÂ y), khÃƒÂ´ng tÃƒÂ­nh mÃ¡ÂºÂ¥t/Ã„â€˜ÃƒÂ£ bÃƒÂ¡n. */
+const INSTANCE_STATUS_RENT_EXCLUDED = new Set(['Lost', 'Sold']);
+const countRentableInstances = (instances = []) =>
+  instances.filter((item) => !INSTANCE_STATUS_RENT_EXCLUDED.has(item.lifecycleStatus)).length;
+
 const normalizeImages = (images) => {
   if (!Array.isArray(images)) return [];
   return images
@@ -51,6 +65,46 @@ const normalizeImages = (images) => {
 const normalizeText = (value) => String(value || '').trim();
 
 const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const VIETNAMESE_CHAR_GROUPS = {
+  a: 'aÃƒÂ ÃƒÂ¡Ã¡ÂºÂ¡Ã¡ÂºÂ£ÃƒÂ£ÃƒÂ¢Ã¡ÂºÂ§Ã¡ÂºÂ¥Ã¡ÂºÂ­Ã¡ÂºÂ©Ã¡ÂºÂ«Ã„Æ’Ã¡ÂºÂ±Ã¡ÂºÂ¯Ã¡ÂºÂ·Ã¡ÂºÂ³Ã¡ÂºÂµ',
+  e: 'eÃƒÂ¨ÃƒÂ©Ã¡ÂºÂ¹Ã¡ÂºÂ»Ã¡ÂºÂ½ÃƒÂªÃ¡Â»ÂÃ¡ÂºÂ¿Ã¡Â»â€¡Ã¡Â»Æ’Ã¡Â»â€¦',
+  i: 'iÃƒÂ¬ÃƒÂ­Ã¡Â»â€¹Ã¡Â»â€°Ã„Â©',
+  o: 'oÃƒÂ²ÃƒÂ³Ã¡Â»ÂÃ¡Â»ÂÃƒÂµÃƒÂ´Ã¡Â»â€œÃ¡Â»â€˜Ã¡Â»â„¢Ã¡Â»â€¢Ã¡Â»â€”Ã†Â¡Ã¡Â»ÂÃ¡Â»â€ºÃ¡Â»Â£Ã¡Â»Å¸Ã¡Â»Â¡',
+  u: 'uÃƒÂ¹ÃƒÂºÃ¡Â»Â¥Ã¡Â»Â§Ã…Â©Ã†Â°Ã¡Â»Â«Ã¡Â»Â©Ã¡Â»Â±Ã¡Â»Â­Ã¡Â»Â¯',
+  y: 'yÃ¡Â»Â³ÃƒÂ½Ã¡Â»ÂµÃ¡Â»Â·Ã¡Â»Â¹',
+  d: 'dÃ„â€˜',
+};
+
+const VIETNAMESE_CHAR_TO_GROUP = Object.entries(VIETNAMESE_CHAR_GROUPS).reduce((acc, [, chars]) => {
+  chars.split('').forEach((char) => {
+    acc[char] = chars;
+  });
+  return acc;
+}, {});
+
+const buildVietnameseInsensitivePattern = (value = '') => {
+  const raw = String(value || '');
+  let pattern = '';
+
+  for (const char of raw) {
+    if (/\s/.test(char)) {
+      pattern += '\\s+';
+      continue;
+    }
+
+    const lower = char.toLowerCase();
+    const groupedChars = VIETNAMESE_CHAR_TO_GROUP[lower];
+    if (groupedChars) {
+      pattern += `[${groupedChars}]`;
+      continue;
+    }
+
+    pattern += escapeRegex(char);
+  }
+
+  return pattern;
+};
 
 const parseJsonLike = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -187,19 +241,54 @@ const resolveProductCategory = (product = {}, lang = 'vi') => {
   return resolveLocalizedField(product, 'category', lang);
 };
 
-const resolveProductSizes = (product = {}) => {
-  if (Array.isArray(product?.sizes) && product.sizes.length > 0) {
-    return normalizeSizes(product.sizes);
-  }
+const normalizeSizeRows = (values) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const result = [];
+
+  source.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const size = normalizeSizeToken(item.size);
+    if (!size) return;
+    const key = size.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({
+      size,
+      quantity: Math.max(toIntegerOrNaN(item.quantity), 0) || 0,
+    });
+  });
+
+  return result;
+};
+
+const resolveProductSizeRows = (product = {}, quantity = {}) => {
+  const currentRows = normalizeSizeRows(product?.sizes);
+  if (currentRows.length > 0) return currentRows;
 
   const sizesFromVariants = getLegacyVariantList(product)
     .map((variant) => normalizeSizeToken(variant?.size))
     .filter(Boolean);
-  if (sizesFromVariants.length > 0) {
-    return normalizeSizes(sizesFromVariants);
+  const legacySizes = normalizeSizes([
+    ...sizesFromVariants,
+    ...(Array.isArray(product?.sizes) ? product.sizes : []),
+    product?.size,
+  ]);
+  if (legacySizes.length > 0) {
+    const fallbackQty = Math.max(
+      toIntegerOrNaN(quantity?.totalQuantity),
+      toIntegerOrNaN(product?.quantity),
+      0
+    ) || 0;
+    const perSize = Math.floor(fallbackQty / legacySizes.length);
+    const remain = fallbackQty % legacySizes.length;
+    return legacySizes.map((size, index) => ({
+      size,
+      quantity: perSize + (index < remain ? 1 : 0),
+    }));
   }
 
-  return normalizeSizes([product?.size]);
+  return [];
 };
 
 const resolveProductColorVariants = (product = {}) => {
@@ -312,6 +401,19 @@ const normalizeVariantMatrix = (values) => {
   return result;
 };
 
+const resolveHasSizes = (product = {}, sizeRows = []) => {
+  if (typeof product?.hasSizes === 'boolean') return product.hasSizes;
+  return sizeRows.length > 0;
+};
+
+const resolveStandaloneQuantity = (product = {}, quantity = {}) => {
+  const fromPayload = toIntegerOrNaN(product?.quantity);
+  if (Number.isInteger(fromPayload) && fromPayload >= 0) return fromPayload;
+  const fromComputed = toIntegerOrNaN(quantity?.totalQuantity);
+  if (Number.isInteger(fromComputed) && fromComputed >= 0) return fromComputed;
+  return 0;
+};
+
 const applyCategoryFilter = (filter = {}, rawCategory = '') => {
   const category = normalizeText(rawCategory);
   if (!category) return filter;
@@ -333,13 +435,25 @@ const applyCategoryFilter = (filter = {}, rawCategory = '') => {
 };
 
 const normalizePayload = (body = {}) => {
-  const rawSizes = parseJsonLike(body.sizes, Array.isArray(body.sizes) ? body.sizes : [body.size]);
-  const sizes = normalizeSizes(rawSizes);
-
   const rawColorVariants = parseJsonLike(body.colorVariants, []);
   const colorVariants = normalizeColorVariants(rawColorVariants);
   const colorNames = colorVariants.map((item) => item.name);
   const primaryColor = normalizeText(body.color) || colorNames[0] || '';
+
+  const rawSizeRows = parseJsonLike(body.sizes, body.sizes);
+  let sizeRows = normalizeSizeRows(rawSizeRows);
+  if (sizeRows.length === 0) {
+    const fallbackSizes = normalizeSizes(parseJsonLike(body.sizes, Array.isArray(body.sizes) ? body.sizes : [body.size]));
+    sizeRows = fallbackSizes.map((size) => ({ size, quantity: 0 }));
+  }
+
+  const hasSizesRaw = body.hasSizes;
+  const hasSizesRawText = String(hasSizesRaw).toLowerCase();
+  const explicitHasSizes = hasSizesRaw === true || hasSizesRawText === 'true';
+  const explicitNoSizes = hasSizesRaw === false || hasSizesRawText === 'false';
+  const hasSizes = explicitNoSizes ? false : (explicitHasSizes || sizeRows.length > 0);
+
+  const standaloneQuantity = Math.max(toIntegerOrNaN(body.quantity), 0) || 0;
 
   const mergedImages = normalizeImages([
     ...normalizeImages(parseJsonLike(body.images, [])),
@@ -359,13 +473,14 @@ const normalizePayload = (body = {}) => {
       child: categoryChild,
       ancestors: categoryAncestors,
     },
-    size: normalizeText(body.size) || sizes[0] || '',
-    sizes,
+    hasSizes,
+    sizes: hasSizes ? sizeRows : [],
+    quantity: hasSizes ? 0 : standaloneQuantity,
     color: primaryColor,
-    colorVariants,
+    colorVariants, // deprecated input support
     pricingMode: normalizeText(body.pricingMode) === 'per_variant' ? 'per_variant' : 'common',
     commonRentPrice: Math.max(toNumber(body.commonRentPrice, toNumber(body.baseRentPrice, 0)), 0),
-    variantMatrix: normalizeVariantMatrix(parseJsonLike(body.variantMatrix, [])),
+    variantMatrix: normalizeVariantMatrix(parseJsonLike(body.variantMatrix, [])), // deprecated input support
     isDraft: Boolean(body.isDraft === true || String(body.isDraft).toLowerCase() === 'true'),
     description: normalizeLocalizedInput(body, 'description'),
     images: mergedImages,
@@ -394,13 +509,26 @@ const ensureOwnerProductRequired = (payload) => {
     return null;
   }
 
-  if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
-    return 'name, category, size, color are required';
+  if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
+    return 'name, category, color are required';
   }
 
-  const uniqueSizes = new Set((payload.sizes || []).map((item) => normalizeSizeToken(item)));
-  if (uniqueSizes.size !== (payload.sizes || []).length) {
-    return 'sizes must not contain duplicates';
+  if (payload.hasSizes) {
+    if (!Array.isArray(payload.sizes) || payload.sizes.length === 0) {
+      return 'sizes are required when hasSizes=true';
+    }
+    const uniqueSizes = new Set((payload.sizes || []).map((item) => normalizeSizeToken(item?.size)));
+    if (uniqueSizes.size !== (payload.sizes || []).length) {
+      return 'sizes must not contain duplicates';
+    }
+    const hasInvalidSizeQty = (payload.sizes || []).some((item) => !Number.isInteger(item?.quantity) || item.quantity < 0);
+    if (hasInvalidSizeQty) {
+      return 'sizes.quantity must be integer >= 0';
+    }
+  } else {
+    if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
+      return 'quantity must be integer >= 0 when hasSizes=false';
+    }
   }
 
   const colorNames = (payload.colorVariants || []).map((item) => normalizeColorName(item.name).toLowerCase()).filter(Boolean);
@@ -433,12 +561,18 @@ const toProductImageUrl = (product) => collectProductImages(product)[0] || '';
 const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
   const prices = resolveProductPrices(product);
   const category = resolveProductCategory(product, lang);
-  const sizes = resolveProductSizes(product);
-  const colorVariants = resolveProductColorVariants(product);
-  const variantMatrix = resolveVariantMatrix(product);
   const images = collectProductImages(product);
-  const primaryColor = normalizeColorName(product?.color) || colorVariants[0]?.name || '';
+  const sizeRows = resolveProductSizeRows(product, quantity);
+  const hasSizes = resolveHasSizes(product, sizeRows);
+  const sizeTokens = sizeRows.map((item) => item.size);
+  const colorVariants = resolveProductColorVariants(product);
+  const primaryColor = normalizeColorName(product?.color) || colorVariants[0]?.name || 'Default';
+  const deprecatedVariantMatrix = resolveVariantMatrix(product);
   const variantRentPrices = resolveVariantRentPrices(product);
+  const rawQuantity = resolveStandaloneQuantity(product, quantity);
+  const resolvedQuantity = hasSizes
+    ? sizeRows.reduce((sum, item) => sum + Math.max(Number(item?.quantity || 0), 0), 0)
+    : rawQuantity;
 
   return {
     id: product._id,
@@ -446,13 +580,16 @@ const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
     name: resolveLocalizedField(product, 'name', lang),
     category,
     categoryPath: product.categoryPath || toObject(product.category) || { parent: '', child: '', ancestors: [] },
-    size: normalizeText(product.size) || sizes[0] || '',
-    sizes,
+    size: sizeTokens[0] || '',
+    hasSizes,
+    sizes: hasSizes ? sizeRows : [],
+    sizeOptions: sizeTokens,
+    quantity: hasSizes ? 0 : resolvedQuantity,
     color: primaryColor,
-    colorVariants,
-    pricingMode: product.pricingMode || (variantMatrix.length > 0 ? 'per_variant' : 'common'),
+    colorVariants: colorVariants.length > 0 ? colorVariants : [{ name: primaryColor, images }], // deprecated
+    pricingMode: product.pricingMode || (deprecatedVariantMatrix.length > 0 ? 'per_variant' : 'common'),
     commonRentPrice: prices.commonRentPrice,
-    variantMatrix,
+    variantMatrix: deprecatedVariantMatrix, // deprecated
     variantRentPrices,
     isDraft: Boolean(product.isDraft),
     description: resolveLocalizedField(product, 'description', lang),
@@ -465,8 +602,17 @@ const sanitizeProduct = (product, quantity = {}, lang = 'vi') => {
     likeCount: product.likeCount || 0,
     averageRating: Math.max(Number(product.averageRating || 0), 0),
     reviewCount: Math.max(Number(product.reviewCount || 0), 0),
-    totalQuantity: quantity.totalQuantity || 0,
-    availableQuantity: quantity.availableQuantity || 0,
+    // Quantity fields must reflect computed inventory (ProductInstance). Legacy `product.quantity/sizes`
+    // should not "inflate" stock when computed values exist (including 0).
+    totalQuantity: Number.isFinite(Number(quantity.totalQuantity))
+      ? Math.max(Number(quantity.totalQuantity), 0)
+      : resolvedQuantity,
+    availableQuantity: Number.isFinite(Number(quantity.availableQuantity))
+      ? Math.max(Number(quantity.availableQuantity), 0)
+      : resolvedQuantity,
+    rentableQuantity: Number.isFinite(Number(quantity.rentableQuantity))
+      ? Math.max(Number(quantity.rentableQuantity), 0)
+      : resolvedQuantity,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
   };
@@ -507,13 +653,15 @@ const createInstances = async ({ productId, quantity, baseRentPrice, baseSalePri
   await ProductInstance.insertMany(docs);
 };
 
-const getQuantityMap = async (productIds = []) => {
+const getQuantityMap = async (productIds = [], options = {}) => {
   if (!Array.isArray(productIds) || productIds.length === 0) return new Map();
+  const excludeSold = Boolean(options.excludeSold);
 
   const rows = await ProductInstance.aggregate([
     {
       $match: {
         productId: { $in: productIds },
+        ...(excludeSold ? { lifecycleStatus: { $ne: 'Sold' } } : {}),
       },
     },
     {
@@ -523,6 +671,11 @@ const getQuantityMap = async (productIds = []) => {
         availableQuantity: {
           $sum: {
             $cond: [{ $eq: ['$lifecycleStatus', 'Available'] }, 1, 0],
+          },
+        },
+        rentableQuantity: {
+          $sum: {
+            $cond: [{ $in: ['$lifecycleStatus', ['Lost', 'Sold']] }, 0, 1],
           },
         },
       },
@@ -535,9 +688,81 @@ const getQuantityMap = async (productIds = []) => {
       {
         totalQuantity: row.totalQuantity || 0,
         availableQuantity: row.availableQuantity || 0,
+        rentableQuantity: row.rentableQuantity || 0,
       },
     ])
   );
+};
+
+/** TÃ¡Â»â€œn kho thÃ¡Â»Â±c tÃ¡ÂºÂ¿ theo size (ProductInstance, khÃƒÂ´ng tÃƒÂ­nh Sold) Ã¢â‚¬â€ dÃƒÂ¹ng mÃƒÂ n owner */
+const getOwnerSizeStockMap = async (productIds = []) => {
+  if (!Array.isArray(productIds) || productIds.length === 0) return new Map();
+
+  const rows = await ProductInstance.aggregate([
+    {
+      $match: {
+        productId: { $in: productIds },
+        // Loại trừ cả Sold và Lost khỏi tồn kho hiển thị
+        lifecycleStatus: { $nin: ['Sold', 'Lost'] },
+      },
+    },
+    {
+      $addFields: {
+        normSize: {
+          $let: {
+            vars: {
+              t: { $trim: { input: { $toString: { $ifNull: ['$size', ''] } } } },
+            },
+            in: {
+              $cond: [{ $eq: ['$$t', ''] }, 'ONE', { $toUpper: '$$t' }],
+            },
+          },
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { productId: '$productId', size: '$normSize' },
+        total: { $sum: 1 },
+        available: {
+          $sum: { $cond: [{ $eq: ['$lifecycleStatus', 'Available'] }, 1, 0] },
+        },
+        reserved: {
+          $sum: { $cond: [{ $eq: ['$lifecycleStatus', 'Reserved'] }, 1, 0] },
+        },
+        renting: {
+          $sum: { $cond: [{ $in: ['$lifecycleStatus', ['Rented', 'Renting']] }, 1, 0] },
+        },
+        other: {
+          $sum: {
+            $cond: [
+              { $in: ['$lifecycleStatus', ['Washing', 'Repair']] },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    { $sort: { '_id.size': 1 } },
+  ]);
+
+  const map = new Map();
+  rows.forEach((row) => {
+    const pid = String(row._id.productId);
+    const size = row._id.size || 'ONE';
+    if (!map.has(pid)) map.set(pid, []);
+    map.get(pid).push({
+      size,
+      quantity: row.total || 0,       // tổng (không kể Sold/Lost)
+      available: row.available || 0,  // chỉ Available
+      reserved: row.reserved || 0,
+      renting: row.renting || 0,
+      other: row.other || 0,
+    });
+  });
+
+  return map;
 };
 
 const getProducts = async (req, res) => {
@@ -554,7 +779,7 @@ const getProducts = async (req, res) => {
 
     const filter = withCategory({});
     if (search) {
-      const regex = new RegExp(escapeRegex(search), 'i');
+      const regex = new RegExp(buildVietnameseInsensitivePattern(search), 'i');
       filter.$and = [
         ...(Array.isArray(filter.$and) ? filter.$and : []),
         {
@@ -566,8 +791,8 @@ const getProducts = async (req, res) => {
             { 'category.vi': { $regex: regex } },
             { 'category.en': { $regex: regex } },
             { color: { $regex: regex } },
-            { size: { $regex: regex } },
-            { sizes: { $elemMatch: { $regex: regex } } },
+            { size: { $regex: regex } }, // deprecated
+            { 'sizes.size': { $regex: regex } },
             { 'colorVariants.name': { $regex: regex } },
           ],
         },
@@ -575,9 +800,15 @@ const getProducts = async (req, res) => {
     }
     const allProducts = await Product.find(filter).sort({ createdAt: -1 }).lean();
     const quantityMap = await getQuantityMap(allProducts.map((product) => product._id));
-    const normalizedProducts = allProducts.map((product) =>
-      sanitizeProduct(product, quantityMap.get(String(product._id)), lang)
-    );
+    const normalizedProducts = allProducts.map((product) => {
+      // No fallback: if a product has no instances, treat stock as 0 on public listing.
+      const quantity = quantityMap.get(String(product._id)) || {
+        totalQuantity: 0,
+        availableQuantity: 0,
+        rentableQuantity: 0,
+      };
+      return sanitizeProduct(product, quantity, lang);
+    });
 
     const filteredProducts = normalizedProducts.filter((product) => {
       if (purpose === 'buy') {
@@ -621,7 +852,9 @@ const listOwnerProducts = async (req, res) => {
     const lifecycleStatus = normalizeText(req.query.lifecycleStatus);
 
     if (category) Object.assign(filter, applyCategoryFilter({}, category));
-    if (size) filter.size = size;
+    if (size) {
+      filter.$or = [{ size }, { sizes: { $elemMatch: { size } } }, { 'sizes.size': size }];
+    }
     if (color) filter.color = color;
 
     if (lifecycleStatus) {
@@ -630,8 +863,22 @@ const listOwnerProducts = async (req, res) => {
     }
 
     const products = await Product.find(filter).sort({ createdAt: -1 }).lean();
-    const quantityMap = await getQuantityMap(products.map((item) => item._id));
-    const data = products.map((item) => sanitizeProduct(item, quantityMap.get(String(item._id)), lang));
+    const productIds = products.map((item) => item._id);
+    const quantityMap = await getQuantityMap(productIds, { excludeSold: true });
+    const sizeStockMap = await getOwnerSizeStockMap(productIds);
+    const data = products.map((item) => {
+      const id = String(item._id);
+      const quantity = quantityMap.get(id) || {
+        totalQuantity: 0,
+        availableQuantity: 0,
+        rentableQuantity: 0,
+      };
+      const base = sanitizeProduct(item, quantity, lang);
+      return {
+        ...base,
+        sizeStock: sizeStockMap.get(id) || [],
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -659,17 +906,31 @@ const getOwnerProductDetail = async (req, res) => {
       });
     }
 
+    // SINGLE SOURCE OF TRUTH: ProductInstance
     const instances = await ProductInstance.find({ productId: product._id }).sort({ createdAt: -1 }).lean();
-    const totalQuantity = instances.length;
-    const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
+    
+    // Compute sizes from instances (NOT from product.sizes)
+    const { groupInstancesBySize, getInventoryTotals } = require('./product.inventory.helper');
+    const computedSizes = groupInstancesBySize(instances, { excludeStatuses: ['Sold'] });
+    const totals = getInventoryTotals(instances, { excludeStatuses: ['Sold'] });
+    const managedInstances = instances.filter((instance) => instance?.lifecycleStatus !== 'Sold');
 
     return res.status(200).json({
       success: true,
       data: {
-        product: sanitizeProduct(product, { totalQuantity, availableQuantity }, lang),
-        instances,
-        totalQuantity,
-        availableQuantity,
+        product: sanitizeProduct(product, { 
+          totalQuantity: totals.total, 
+          availableQuantity: totals.available, 
+          rentableQuantity: totals.rentable 
+        }, lang),
+        // COMPUTED FROM INSTANCES - Don't use product.sizes.quantity anymore
+        sizes: computedSizes,
+        instances: managedInstances,
+        // All totals derived from instances
+        totalQuantity: totals.total,
+        availableQuantity: totals.available,
+        rentableQuantity: totals.rentable,
+        inventory: totals, // Full breakdown
       },
     });
   } catch (error) {
@@ -816,6 +1077,7 @@ const getProductById = async (req, res) => {
     const quantity = {
       totalQuantity: instances.length,
       availableQuantity: instances.filter((item) => item.lifecycleStatus === 'Available').length,
+      rentableQuantity: countRentableInstances(instances),
     };
     return res.status(200).json({
       success: true,
@@ -898,10 +1160,10 @@ const getSimilarProducts = async (req, res) => {
 const createProduct = async (req, res) => {
   try {
     const payload = normalizePayload(req.body);
-    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
+    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
       return res.status(400).json({
         success: false,
-        message: 'name, category, size, color are required',
+        message: 'name, category, color are required',
       });
     }
 
@@ -923,21 +1185,12 @@ const createOwnerProduct = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
     const payload = normalizePayload(req.body);
-    const quantityRaw = req.body?.quantity;
-    const quantity = toIntegerOrNaN(quantityRaw);
 
     const validationError = ensureOwnerProductRequired(payload);
     if (validationError) {
       return res.status(400).json({
         success: false,
         message: validationError,
-      });
-    }
-
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'quantity must be a positive integer',
       });
     }
 
@@ -954,16 +1207,40 @@ const createOwnerProduct = async (req, res) => {
     }
 
     const created = await Product.create(payload);
-    await createInstances({
-      productId: created._id,
-      quantity,
-      baseRentPrice: created.baseRentPrice,
-      baseSalePrice: created.baseSalePrice,
-    });
+    const pid = created._id;
 
+    try {
+      if (!payload.isDraft) {
+        if (payload.hasSizes && Array.isArray(payload.sizes) && payload.sizes.length > 0) {
+          await createSizeInstances({
+            productId: pid,
+            sizes: payload.sizes,
+            baseRentPrice: payload.baseRentPrice,
+            baseSalePrice: payload.baseSalePrice,
+          });
+        } else if (!payload.hasSizes && payload.quantity > 0) {
+          await createSimpleInstances({
+            productId: pid,
+            quantity: payload.quantity,
+            baseRentPrice: payload.baseRentPrice,
+            baseSalePrice: payload.baseSalePrice,
+          });
+        }
+      }
+    } catch (syncErr) {
+      const syncError = syncErr?.message || String(syncErr);
+      await Product.findByIdAndDelete(pid);
+      return res.status(500).json({
+        success: false,
+        message: 'Error creating product inventory',
+        error: syncError,
+      });
+    }
+
+    await notifyLowStockForProducts([pid]);
     return res.status(201).json({
       success: true,
-      data: sanitizeProduct(created.toObject(), { totalQuantity: quantity, availableQuantity: quantity }, lang),
+      data: sanitizeProduct(created.toObject(), {}, lang),
     });
   } catch (error) {
     return res.status(500).json({
@@ -977,10 +1254,10 @@ const createOwnerProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const payload = normalizePayload(req.body);
-    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.size || !payload.color) {
+    if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
       return res.status(400).json({
         success: false,
-        message: 'name, category, size, color are required',
+        message: 'name, category, color are required',
       });
     }
 
@@ -1011,22 +1288,12 @@ const updateOwnerProduct = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
     const payload = normalizePayload(req.body);
-    const quantityRaw = req.body?.quantity;
-    const shouldAddQuantity = quantityRaw !== undefined && quantityRaw !== null && quantityRaw !== '';
-    const addQuantity = shouldAddQuantity ? toIntegerOrNaN(quantityRaw) : 0;
 
     const validationError = ensureOwnerProductRequired(payload);
     if (validationError) {
       return res.status(400).json({
         success: false,
         message: validationError,
-      });
-    }
-
-    if (shouldAddQuantity && (!Number.isInteger(addQuantity) || addQuantity < 0)) {
-      return res.status(400).json({
-        success: false,
-        message: 'quantity must be an integer >= 0',
       });
     }
 
@@ -1058,25 +1325,48 @@ const updateOwnerProduct = async (req, res) => {
       runValidators: true,
     });
 
-    if (addQuantity > 0) {
-      await createInstances({
-        productId: updated._id,
-        quantity: addQuantity,
-        baseRentPrice: updated.baseRentPrice,
-        baseSalePrice: updated.baseSalePrice,
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
       });
     }
 
-    const instances = await ProductInstance.find({ productId: updated._id }).lean();
-    const totalQuantity = instances.length;
-    const availableQuantity = instances.filter((item) => item.lifecycleStatus === 'Available').length;
+    try {
+      if (!nextPayload.isDraft && payload.hasSizes && Array.isArray(payload.sizes) && payload.sizes.length > 0) {
+        // Use actual inventory as baseline to avoid drift between Product.sizes and ProductInstance.
+        const currentSizeStockMap = await getOwnerSizeStockMap([updated._id]);
+        const currentSizeRows = currentSizeStockMap.get(String(updated._id)) || [];
 
+        await reconcileInstancesToSizeRows(
+          updated._id,
+          currentSizeRows,
+          nextPayload.sizes,
+          {
+            baseRentPrice: updated.baseRentPrice,
+            baseSalePrice: updated.baseSalePrice,
+          }
+        );
+      }
+    } catch (syncErr) {
+      const syncError = syncErr?.message || String(syncErr);
+      return res.status(500).json({
+        success: false,
+        message: 'Error updating product inventory',
+        error: syncError,
+      });
+    }
+
+    const quantityMap = await getQuantityMap([updated._id], { excludeSold: true });
+    const quantityFromInstances = quantityMap.get(String(updated._id)) || {};
+    await notifyLowStockForProducts([updated._id]);
     return res.status(200).json({
       success: true,
       data: {
-        product: sanitizeProduct(updated.toObject(), { totalQuantity, availableQuantity }, lang),
-        totalQuantity,
-        availableQuantity,
+        product: sanitizeProduct(updated.toObject(), quantityFromInstances, lang),
+        totalQuantity: quantityFromInstances.totalQuantity || updated.quantity || 0,
+        availableQuantity: quantityFromInstances.availableQuantity || updated.quantity || 0,
+        rentableQuantity: quantityFromInstances.rentableQuantity || updated.quantity || 0,
       },
     });
   } catch (error) {
@@ -1140,6 +1430,9 @@ const deleteProduct = async (req, res) => {
         message: 'Product not found',
       });
     }
+
+    await SizeGuide.deleteMany({ type: 'product', productId: deleted._id });
+
     return res.status(200).json({
       success: true,
       message: 'Deleted successfully',
@@ -1165,6 +1458,7 @@ const deleteOwnerProduct = async (req, res) => {
     }
 
     await ProductInstance.deleteMany({ productId: deleted._id });
+    await SizeGuide.deleteMany({ type: 'product', productId: deleted._id });
 
     return res.status(200).json({
       success: true,
@@ -1179,273 +1473,49 @@ const deleteOwnerProduct = async (req, res) => {
   }
 };
 
-const IMPORT_ID_PATTERN = /^[a-f\d]{24}$/i;
-
-const parseCsvLine = (line = '') => {
-  const result = [];
-  let token = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        token += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === ',' && !inQuotes) {
-      result.push(token);
-      token = '';
-      continue;
-    }
-
-    token += char;
-  }
-
-  result.push(token);
-  return result.map((value) => String(value || '').trim());
-};
-
-const parseCsvContent = (content = '') => {
-  const rows = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const char = content[index];
-    const next = content[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if ((char === '\n' || char === '\r') && !inQuotes) {
-      if (current.trim().length > 0) {
-        rows.push(parseCsvLine(current));
-      }
-      current = '';
-      if (char === '\r' && next === '\n') {
-        index += 1;
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.trim().length > 0) {
-    rows.push(parseCsvLine(current));
-  }
-
-  if (rows.length === 0) {
-    return { headers: [], records: [] };
-  }
-
-  const headers = rows[0].map((item) => String(item || '').trim().toLowerCase());
-  const records = rows.slice(1);
-  return { headers, records };
-};
-
-const parseImportNumber = (value, fallback = 0) => {
-  if (value === null || value === undefined || value === '') {
-    return fallback;
-  }
-
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : fallback;
-  }
-
-  let raw = String(value).trim();
-  if (!raw) {
-    return fallback;
-  }
-
-  raw = raw.replace(/[^\d,.\-]/g, '');
-  if (!raw) {
-    return fallback;
-  }
-
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw)) {
-    raw = raw.replace(/\./g, '').replace(',', '.');
-  } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw)) {
-    raw = raw.replace(/,/g, '');
-  } else {
-    raw = raw.replace(',', '.');
-  }
-
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
 const importOwnerProducts = async (req, res) => {
   try {
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu file import',
+        message: 'Vui long chon file Excel/CSV de import.',
       });
     }
 
     const originalName = String(req.file.originalname || '').toLowerCase();
-    const isCsv = originalName.endsWith('.csv') || String(req.file.mimetype || '').includes('csv');
-    if (!isCsv) {
+    const isSupportedFile = (
+      originalName.endsWith('.csv')
+      || originalName.endsWith('.xlsx')
+      || originalName.endsWith('.xls')
+    );
+    if (!isSupportedFile) {
       return res.status(400).json({
         success: false,
-        message: 'Hiện tại chỉ hỗ trợ import CSV (hãy dùng file export từ hệ thống).',
+        message: 'Chi ho tro file dinh dang Excel/CSV.',
       });
     }
 
-    const csvText = req.file.buffer.toString('utf8').replace(/^\uFEFF/, '');
-    const { headers, records } = parseCsvContent(csvText);
-    if (headers.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'File CSV rỗng hoặc sai định dạng',
-      });
-    }
-
-    const headerIndex = new Map(headers.map((item, index) => [item, index]));
-    const requiredHeaders = ['name', 'category', 'size', 'color'];
-    const missingHeaders = requiredHeaders.filter((key) => !headerIndex.has(key));
-    if (missingHeaders.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Thiếu cột bắt buộc: ${missingHeaders.join(', ')}`,
-      });
-    }
-
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
-    const errors = [];
-
-    const getCell = (row, key) => {
-      const index = headerIndex.get(key);
-      if (index === undefined) return '';
-      return String(row[index] || '').trim();
-    };
-
-    for (let rowIndex = 0; rowIndex < records.length; rowIndex += 1) {
-      const row = records[rowIndex];
-      const lineNumber = rowIndex + 2;
-
-      const name = getCell(row, 'name');
-      const category = getCell(row, 'category');
-      const size = getCell(row, 'size');
-      const color = getCell(row, 'color');
-      const sourceId = getCell(row, 'id');
-
-      if (!name && !category && !size && !color) {
-        skipped += 1;
-        continue;
-      }
-
-      const payload = normalizePayload({
-        name,
-        category,
-        size,
-        color,
-        baseRentPrice: parseImportNumber(getCell(row, 'baserentprice'), 0),
-        baseSalePrice: parseImportNumber(getCell(row, 'basesaleprice'), 0),
-        depositAmount: parseImportNumber(getCell(row, 'depositamount'), 0),
-        buyoutValue: parseImportNumber(getCell(row, 'buyoutvalue'), 0),
-      });
-
-      const validationError = ensureOwnerProductRequired(payload);
-      if (validationError) {
-        errors.push({ line: lineNumber, message: validationError });
-        skipped += 1;
-        continue;
-      }
-
-      let product = null;
-      if (sourceId && IMPORT_ID_PATTERN.test(sourceId)) {
-        product = await Product.findById(sourceId);
-      }
-
-      if (!product) {
-        product = await Product.findOne({
-          name: payload.name,
-          category: payload.category,
-          size: payload.size,
-          color: payload.color,
-        });
-      }
-
-      if (product) {
-        Object.assign(product, payload);
-        await product.save();
-        updated += 1;
-      } else {
-        product = await Product.create(payload);
-        created += 1;
-      }
-
-      const totalQuantityText = getCell(row, 'totalquantity');
-      if (totalQuantityText !== '') {
-        const targetQuantity = Math.max(toIntegerOrNaN(parseImportNumber(totalQuantityText, Number.NaN)), 0);
-        if (!Number.isNaN(targetQuantity)) {
-          const currentTotal = await ProductInstance.countDocuments({ productId: product._id });
-          if (targetQuantity > currentTotal) {
-            await createInstances({
-              productId: product._id,
-              quantity: targetQuantity - currentTotal,
-              baseRentPrice: product.baseRentPrice,
-              baseSalePrice: product.baseSalePrice,
-            });
-          } else if (targetQuantity < currentTotal) {
-            const removeNeeded = currentTotal - targetQuantity;
-            const removableInstances = await ProductInstance.find({
-              productId: product._id,
-              lifecycleStatus: 'Available',
-            })
-              .sort({ createdAt: -1 })
-              .limit(removeNeeded)
-              .select('_id')
-              .lean();
-
-            const removableIds = removableInstances.map((item) => item._id);
-            if (removableIds.length > 0) {
-              await ProductInstance.deleteMany({ _id: { $in: removableIds } });
-            }
-          }
-        }
-      }
-    }
+    const result = await importProductsFromFileBuffer({
+      buffer: req.file.buffer,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+    });
 
     return res.status(200).json({
       success: true,
-      message: 'Import sản phẩm thành công',
-      data: {
-        created,
-        updated,
-        skipped,
-        totalRows: records.length,
-        errors,
-      },
+      message: 'Import completed',
+      successCount: result.successCount,
+      failedCount: result.failedCount,
+      errors: result.errors,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi import sản phẩm',
+      message: 'Khong the import san pham luc nay.',
       error: error.message,
     });
   }
 };
-
 const exportOwnerProducts = async (req, res) => {
   try {
     const lang = getRequestLang(req.query.lang);
@@ -1456,11 +1526,15 @@ const exportOwnerProducts = async (req, res) => {
     const color = normalizeText(req.query.color);
 
     if (category) Object.assign(filter, applyCategoryFilter({}, category));
-    if (size) filter.size = size;
+    if (size) {
+      filter.$or = [{ size }, { sizes: { $elemMatch: { size } } }, { 'sizes.size': size }];
+    }
     if (color) filter.color = color;
 
     const products = await Product.find(filter).sort({ createdAt: -1 }).lean();
-    const quantityMap = includeInstances ? await getQuantityMap(products.map((item) => item._id)) : new Map();
+    const quantityMap = includeInstances
+      ? await getQuantityMap(products.map((item) => item._id), { excludeSold: true })
+      : new Map();
 
     const header = [
       'id',
@@ -1478,17 +1552,22 @@ const exportOwnerProducts = async (req, res) => {
 
     const rows = products.map((product) => {
       const quantity = quantityMap.get(String(product._id)) || {};
+      const normalizedRows = normalizeSizeRows(product?.sizes);
+      const rowSize = normalizedRows[0]?.size || normalizeText(product.size) || '';
+      const rowQuantity = normalizedRows.length > 0
+        ? normalizedRows.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+        : Math.max(toIntegerOrNaN(product.quantity), 0) || 0;
       return [
         String(product._id),
         resolveLocalizedField(product, 'name', lang),
         resolveLocalizedField(product, 'category', lang),
-        product.size || '',
+        rowSize,
         product.color || '',
         product.baseRentPrice || 0,
         product.baseSalePrice || 0,
         product.depositAmount || 0,
         product.buyoutValue || 0,
-        includeInstances ? quantity.totalQuantity || 0 : '',
+        includeInstances ? quantity.totalQuantity || rowQuantity : rowQuantity,
         includeInstances ? quantity.availableQuantity || 0 : '',
       ];
     });
@@ -1515,34 +1594,36 @@ const exportOwnerProducts = async (req, res) => {
 };
 
 // ============================================
-// PRODUCT INSTANCE APIs (Quản lý tồn kho)
+// PRODUCT INSTANCE APIs (QuÃ¡ÂºÂ£n lÃƒÂ½ tÃ¡Â»â€œn kho)
 // ============================================
 
-// Lấy danh sách ProductInstance với filter
+// LÃ¡ÂºÂ¥y danh sÃƒÂ¡ch ProductInstance vÃ¡Â»â€ºi filter
 const getProductInstances = async (req, res) => {
   try {
+    // productId can come from route params (/:productId/instances) or query string
+    const resolvedProductId = req.params.productId || req.query.productId || null;
+
     const {
-      productId,
       conditionLevel,
       lifecycleStatus,
       page = 1,
-      limit = 20,
-      search
+      limit = 100,
+      search,
     } = req.query;
 
     const filter = {};
 
-    if (productId) {
-      filter.productId = productId;
+    if (resolvedProductId) {
+      if (!mongoose.isValidObjectId(resolvedProductId)) {
+        return res.status(400).json({ success: false, message: 'productId khong hop le' });
+      }
+      filter.productId = new mongoose.Types.ObjectId(resolvedProductId);
     }
 
     if (conditionLevel) {
       const normalizedLevel = normalizeConditionLevel(conditionLevel);
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
-        });
+        return res.status(400).json({ success: false, message: 'Tinh trang chi chap nhan New hoac Used' });
       }
       filter.conditionLevel = normalizedLevel;
     }
@@ -1551,52 +1632,51 @@ const getProductInstances = async (req, res) => {
       filter.lifecycleStatus = lifecycleStatus;
     }
 
-    // Search theo product name
-    let productIds = null;
-    if (search) {
-      const products = await Product.find({
-        $or: [
-          { name: { $regex: search, $options: 'i' } },
-          { 'name.en': { $regex: search, $options: 'i' } },
-          { 'name.vi': { $regex: search, $options: 'i' } }
-        ]
-      }).select('_id');
-      productIds = products.map(p => p._id);
-      filter.productId = { $in: productIds };
+    // Search within the product scope (by instance code / size / note)
+    if (search && resolvedProductId) {
+      const searchRegex = new RegExp(buildVietnameseInsensitivePattern(search.trim()), 'i');
+      filter.$or = [
+        { instanceCode: { $regex: searchRegex } },
+        { code: { $regex: searchRegex } },
+        { size: { $regex: searchRegex } },
+        { note: { $regex: searchRegex } },
+      ];
     }
 
-    const skip = (page - 1) * limit;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(parseInt(limit, 10) || 100, 500));
+    const skip = (pageNum - 1) * limitNum;
 
     const [instances, total] = await Promise.all([
       ProductInstance.find(filter)
         .populate('productId', 'name images category')
-        .sort({ createdAt: -1 })
+        .sort({ size: 1, createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
-      ProductInstance.countDocuments(filter)
+        .limit(limitNum),
+      ProductInstance.countDocuments(filter),
     ]);
 
     res.json({
       success: true,
       data: instances,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        pages: Math.ceil(total / limit)
-      }
+        pages: Math.ceil(total / limitNum),
+      },
     });
   } catch (error) {
     console.error('Get product instances error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy danh sách sản phẩm',
-      error: error.message
+      message: 'Loi khi lay danh sach phan ban',
+      error: error.message,
     });
   }
 };
 
-// Lấy chi tiết một ProductInstance
+// LÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t mÃ¡Â»â„¢t ProductInstance
 const getProductInstanceById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1607,7 +1687,7 @@ const getProductInstanceById = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
       });
     }
 
@@ -1619,13 +1699,13 @@ const getProductInstanceById = async (req, res) => {
     console.error('Get product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy chi tiết sản phẩm',
+      message: 'LÃ¡Â»â€”i khi lÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Cập nhật ProductInstance (giá, trạng thái, tình trạng)
+// CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t ProductInstance (giÃƒÂ¡, trÃ¡ÂºÂ¡ng thÃƒÂ¡i, tÃƒÂ¬nh trÃ¡ÂºÂ¡ng)
 const updateProductInstance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1644,11 +1724,11 @@ const updateProductInstance = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
       });
     }
 
-    // Cập nhật các trường được gửi lên
+    // CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t cÃƒÂ¡c trÃ†Â°Ã¡Â»Âng Ã„â€˜Ã†Â°Ã¡Â»Â£c gÃ¡Â»Â­i lÃƒÂªn
     const before = instance.toObject();
 
     if ((conditionLevel !== undefined || conditionScore !== undefined) && !canUpdateCondition) {
@@ -1663,7 +1743,7 @@ const updateProductInstance = async (req, res) => {
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
         return res.status(400).json({
           success: false,
-          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+          message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
         });
       }
       instance.conditionLevel = normalizedLevel;
@@ -1673,7 +1753,7 @@ const updateProductInstance = async (req, res) => {
       if (!ALLOWED_CONDITION_SCORES.has(normalizedScore)) {
         return res.status(400).json({
           success: false,
-          message: 'Điểm tình trạng chỉ chấp nhận 0, 25, 50, 75 hoặc 100'
+          message: 'Ã„ÂiÃ¡Â»Æ’m tÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n 0, 25, 50, 75 hoÃ¡ÂºÂ·c 100'
         });
       }
       instance.conditionScore = normalizedScore;
@@ -1685,7 +1765,7 @@ const updateProductInstance = async (req, res) => {
 
     await instance.save();
 
-    // Populate để trả về
+    // Populate Ã„â€˜Ã¡Â»Æ’ trÃ¡ÂºÂ£ vÃ¡Â»Â
     const updatedInstance = await ProductInstance.findById(id)
       .populate('productId', 'name images category');
 
@@ -1715,20 +1795,20 @@ const updateProductInstance = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Cập nhật sản phẩm thành công',
+      message: 'CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng',
       data: updatedInstance
     });
   } catch (error) {
     console.error('Update product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi cập nhật sản phẩm',
+      message: 'LÃ¡Â»â€”i khi cÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Tạo mới ProductInstance
+// TÃ¡ÂºÂ¡o mÃ¡Â»â€ºi ProductInstance
 const createProductInstance = async (req, res) => {
   try {
     const {
@@ -1742,7 +1822,7 @@ const createProductInstance = async (req, res) => {
     if (!productId || !currentRentPrice || !currentSalePrice) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng cung cấp đầy đủ thông tin'
+        message: 'Vui lÃƒÂ²ng cung cÃ¡ÂºÂ¥p Ã„â€˜Ã¡ÂºÂ§y Ã„â€˜Ã¡Â»Â§ thÃƒÂ´ng tin'
       });
     }
 
@@ -1750,7 +1830,7 @@ const createProductInstance = async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm cha'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m cha'
       });
     }
 
@@ -1758,7 +1838,7 @@ const createProductInstance = async (req, res) => {
     if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
       return res.status(400).json({
         success: false,
-        message: 'Tình trạng chỉ chấp nhận New hoặc Used'
+        message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
       });
     }
 
@@ -1779,20 +1859,20 @@ const createProductInstance = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Tạo sản phẩm thành công',
+      message: 'TÃ¡ÂºÂ¡o sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng',
       data: populatedInstance
     });
   } catch (error) {
     console.error('Create product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi tạo sản phẩm',
+      message: 'LÃ¡Â»â€”i khi tÃ¡ÂºÂ¡o sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Xóa ProductInstance
+// XÃƒÂ³a ProductInstance
 const deleteProductInstance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1802,15 +1882,15 @@ const deleteProductInstance = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sản phẩm'
+        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
       });
     }
 
-    // Chỉ cho phép xóa nếu sản phẩm đang ở trạng thái Available
+    // ChÃ¡Â»â€° cho phÃƒÂ©p xÃƒÂ³a nÃ¡ÂºÂ¿u sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m Ã„â€˜ang Ã¡Â»Å¸ trÃ¡ÂºÂ¡ng thÃƒÂ¡i Available
     if (instance.lifecycleStatus !== 'Available') {
       return res.status(400).json({
         success: false,
-        message: 'Không thể xóa sản phẩm đang được thuê hoặc đang xử lý'
+        message: 'KhÃƒÂ´ng thÃ¡Â»Æ’ xÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m Ã„â€˜ang Ã„â€˜Ã†Â°Ã¡Â»Â£c thuÃƒÂª hoÃ¡ÂºÂ·c Ã„â€˜ang xÃ¡Â»Â­ lÃƒÂ½'
       });
     }
 
@@ -1818,19 +1898,25 @@ const deleteProductInstance = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Xóa sản phẩm thành công'
+      message: 'XÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng'
     });
   } catch (error) {
     console.error('Delete product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi xóa sản phẩm',
+      message: 'LÃ¡Â»â€”i khi xÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
       error: error.message
     });
   }
 };
 
-// Lấy danh sách instance còn available (dùng cho customer thuê)
+// Lấy danh sách instance có thể thuê/mua (dùng cho trang chi tiết khách hàng).
+// - Size/Color/Condition phải lấy từ ProductInstance (không từ Product.sizes).
+// - Rentable: chỉ loại các lifecycle kết thúc (Lost/Sold). Một instance đang Reserved/Rented
+//   vẫn có thể thuê cho khoảng ngày khác không overlap, nên phải hiện ra ở chỗ thuê.
+// - Purchasable: chỉ Available (đồ đang thuê không bán được).
+const RENT_BLOCKING_LIFECYCLE = ['Lost', 'Sold'];
+
 const getAvailableInstances = async (req, res) => {
   try {
     const { productId } = req.params;
@@ -1838,7 +1924,7 @@ const getAvailableInstances = async (req, res) => {
 
     const filter = {
       productId,
-      lifecycleStatus: 'Available'
+      lifecycleStatus: { $nin: RENT_BLOCKING_LIFECYCLE }
     };
 
     if (conditionLevel) {
@@ -1852,13 +1938,47 @@ const getAvailableInstances = async (req, res) => {
       filter.conditionLevel = normalizedLevel;
     }
 
-    const instances = await ProductInstance.find(filter)
+    const rawInstances = await ProductInstance.find(filter)
       .populate('productId', 'name images')
-      .sort({ conditionScore: -1 });
+      .sort({ conditionScore: -1 })
+      .lean();
+
+    const instances = rawInstances.map((inst) => ({
+      ...inst,
+      isPurchasable: inst.lifecycleStatus === 'Available',
+    }));
+
+    // EXTRACT SIZES, COLORS, CONDITIONS FROM INSTANCES ONLY
+    const sizesSet = new Set();
+    const colorsSet = new Set();
+    const conditionsSet = new Set();
+
+    instances.forEach((instance) => {
+      const size = String(instance?.size || '').trim().toUpperCase();
+      const color = String(instance?.color || '').trim();
+      const conditionLevel = String(instance?.conditionLevel || '').trim();
+
+      if (size) sizesSet.add(size);
+      if (color) colorsSet.add(color);
+      if (conditionLevel) conditionsSet.add(conditionLevel);
+    });
+
+    const sizes = Array.from(sizesSet).sort();
+    const colors = Array.from(colorsSet).sort();
+    const conditions = Array.from(conditionsSet).sort();
+
+    const totalPurchasable = instances.filter((inst) => inst.isPurchasable).length;
 
     res.json({
       success: true,
-      data: instances
+      data: {
+        instances,
+        sizes,
+        colors,
+        conditions,
+        totalAvailable: instances.length,
+        totalPurchasable,
+      }
     });
   } catch (error) {
     console.error('Get available instances error:', error);
@@ -1896,3 +2016,4 @@ module.exports = {
   deleteProductInstance,
   getAvailableInstances,
 };
+

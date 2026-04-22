@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getAllRentOrdersApi, getRentOrderByIdApi, confirmRentOrderApi, markWaitingPickupApi, markWaitingReturnApi, confirmPickupApi, confirmReturnApi, completeWashingApi, finalizeRentOrderApi, markNoShowApi, staffCollectDepositApi, cancelRentOrderApi } from '../../services/rent-order.service'
+import { getAllRentOrdersApi, getRentOrderByIdApi, confirmRentOrderApi, markWaitingPickupApi, markWaitingReturnApi, confirmPickupApi, confirmReturnApi, completeWashingApi, finalizeRentOrderApi, markNoShowApi, staffCollectDepositApi, cancelRentOrderApi, getSwapCandidatesApi, swapOrderItemApi } from '../../services/rent-order.service'
+import { resolveDamagePolicyApi } from '../../services/damage-policy.service'
 import { createDepositPaymentLinkApi, createExtraDuePaymentLinkApi } from '../../services/payment.service'
 
 const statusLabels = {
@@ -57,11 +58,29 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString('vi-VN
 const formatDateTime = (value) => (value ? new Date(value).toLocaleString('vi-VN') : 'N/A')
 const displayOrderCode = (order) => order?.orderCode || `#${String(order?._id || '').slice(-8).toUpperCase()}`
 
+const getProductName = (product) => {
+  if (!product) return 'Sản phẩm'
+  if (typeof product.name === 'string') return product.name || 'Sản phẩm'
+  if (product.name && typeof product.name === 'object') {
+    return product.name.vi || product.name.en || 'Sản phẩm'
+  }
+  return 'Sản phẩm'
+}
+
+const getProductImage = (product) => {
+  if (!product) return ''
+  if (Array.isArray(product.images) && product.images.length > 0) return product.images[0]
+  return product.image || ''
+}
+
 export default function StaffRentOrders() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 })
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
@@ -97,6 +116,17 @@ export default function StaffRentOrders() {
   const [returnError, setReturnError] = useState('')
   const [returnDate, setReturnDate] = useState('')
 
+  // Swap modal state
+  const [showSwapModal, setShowSwapModal] = useState(false)
+  const [swapOrderRef, setSwapOrderRef] = useState(null)
+  const [swapItem, setSwapItem] = useState(null)
+  const [swapCandidates, setSwapCandidates] = useState({ size_swap: [], model_swap: [], upgrade: [] })
+  const [swapTab, setSwapTab] = useState('size_swap')
+  const [swapLoading, setSwapLoading] = useState(false)
+  const [swapSelected, setSwapSelected] = useState(null)
+  const [swapReason, setSwapReason] = useState('')
+  const [swapError, setSwapError] = useState('')
+
   // Fetch full order detail (có collaterals, deposits, payments) khi click vào đơn
   const selectOrder = useCallback(async (order) => {
     setSelectedOrder(order)
@@ -115,26 +145,28 @@ export default function StaffRentOrders() {
     try {
       setLoading(true)
       setError('')
-      const response = await getAllRentOrdersApi({})
-      const allOrders = response.data || []
-
-      // Filter locally if status selected
-      if (filterStatus) {
-        setOrders(allOrders.filter(o => o.status === filterStatus))
-      } else {
-        setOrders(allOrders)
-      }
+      const response = await getAllRentOrdersApi({
+        ...(filterStatus ? { status: filterStatus } : {}),
+        page,
+        limit,
+      })
+      setOrders(response.data || [])
+      setPagination(response.pagination || { page, limit, total: (response.data || []).length, pages: 1 })
     } catch (err) {
       console.error('Error fetching orders:', err)
       setError('Không thể tải danh sách đơn thuê')
     } finally {
       setLoading(false)
     }
-  }, [filterStatus])
+  }, [filterStatus, page, limit])
 
   useEffect(() => {
     fetchOrders()
   }, [fetchOrders])
+
+  useEffect(() => {
+    setPage(1)
+  }, [filterStatus, limit])
 
   const handleConfirm = async (orderId) => {
     setActionLoading(true)
@@ -300,7 +332,7 @@ export default function StaffRentOrders() {
     }
   }
 
-  const openReturnModal = (order) => {
+  const openReturnModal = async (order) => {
     setReturnError('')
     setReturnNote('')
     // Dùng ngày local (Vietnam) thay vì UTC để tránh sai ngày khi 0-7 giờ sáng
@@ -315,12 +347,45 @@ export default function StaffRentOrders() {
     const items = (order?.items || []).map((item) => ({
       productInstanceId: item.productInstanceId?._id || item.productInstanceId,
       label: item.productInstanceId?.productId?.name || item.productInstanceId?._id || 'Sản phẩm',
-      damageEntries: [], // [{ key, label, fee }]
+      damageLevelKey: '',
+      policy: null,
+      baseValue: 0,
+      policyLoading: true,
     }))
 
     setReturnItems(items)
     setReturnOrderId(order?._id)
     setShowReturnModal(true)
+
+    // Resolve damage policy + base value cho từng instance (song song)
+    await Promise.all(
+      items.map(async (it, idx) => {
+        try {
+          const res = await resolveDamagePolicyApi({ productInstanceId: it.productInstanceId })
+          setReturnItems((prev) => {
+            const next = [...prev]
+            if (next[idx]) {
+              next[idx] = {
+                ...next[idx],
+                policy: res?.data?.policy || null,
+                baseValue: Number(res?.data?.baseValue || 0),
+                policyLoading: false,
+              }
+            }
+            return next
+          })
+        } catch (err) {
+          console.error('resolve policy failed', err)
+          setReturnItems((prev) => {
+            const next = [...prev]
+            if (next[idx]) {
+              next[idx] = { ...next[idx], policyLoading: false }
+            }
+            return next
+          })
+        }
+      })
+    )
   }
 
   const closeReturnModal = () => {
@@ -329,21 +394,83 @@ export default function StaffRentOrders() {
     setReturnDate('')
   }
 
+  // ── Swap handlers ──────────────────────────────────────────────
+  const openSwapModal = async (order, item) => {
+    setSwapOrderRef(order)
+    setSwapItem(item)
+    setSwapSelected(null)
+    setSwapReason('')
+    setSwapError('')
+    setSwapTab('size_swap')
+    setSwapCandidates({ size_swap: [], model_swap: [], upgrade: [] })
+    setShowSwapModal(true)
+    setSwapLoading(true)
+    try {
+      const res = await getSwapCandidatesApi(order._id, item._id)
+      if (res?.success && res?.data) {
+        setSwapCandidates({
+          size_swap: res.data.size_swap || [],
+          model_swap: res.data.model_swap || [],
+          upgrade: res.data.upgrade || [],
+        })
+        // Tự chọn tab đầu tiên có dữ liệu
+        if ((res.data.size_swap || []).length > 0) setSwapTab('size_swap')
+        else if ((res.data.model_swap || []).length > 0) setSwapTab('model_swap')
+        else if ((res.data.upgrade || []).length > 0) setSwapTab('upgrade')
+      }
+    } catch (err) {
+      setSwapError(err?.response?.data?.message || 'Không thể lấy danh sách ứng viên đổi')
+    } finally {
+      setSwapLoading(false)
+    }
+  }
+
+  const closeSwapModal = () => {
+    setShowSwapModal(false)
+    setSwapOrderRef(null)
+    setSwapItem(null)
+    setSwapSelected(null)
+    setSwapError('')
+  }
+
+  const handleSwapConfirm = async () => {
+    if (!swapSelected || !swapOrderRef || !swapItem) return
+    setSwapLoading(true)
+    setSwapError('')
+    try {
+      const res = await swapOrderItemApi(swapOrderRef._id, {
+        itemId: swapItem._id,
+        newInstanceId: swapSelected._id,
+        swapType: swapTab,
+        reason: swapReason,
+      })
+      if (res?.success) {
+        closeSwapModal()
+        showSuccess(res.message || 'Đổi sản phẩm thành công')
+        if (res.data) setSelectedOrder(res.data)
+      } else {
+        setSwapError(res?.message || 'Đổi sản phẩm thất bại')
+      }
+    } catch (err) {
+      setSwapError(err?.response?.data?.message || 'Lỗi khi đổi sản phẩm')
+    } finally {
+      setSwapLoading(false)
+    }
+  }
+
   const handleReturnConfirm = async () => {
     if (!returnOrderId) return
 
     const mapped = returnItems.map((item) => {
-      const totalDmgFee = item.damageEntries.reduce(
-        (s, e) => s + (parseInt(String(e.fee || '0').replace(/[^0-9]/g, ''), 10) || 0), 0
-      )
-      const dmgNote = item.damageEntries.length > 0
-        ? `[${item.label}] ${item.damageEntries.map((e) => e.label).join(', ')}`
+      const level = item.damageLevelKey
+        ? (item.policy?.levels || []).find((l) => l.key === item.damageLevelKey)
         : null
+      const dmgNote = level ? `[${item.label}] ${level.label}` : null
       return {
         apiItem: {
           productInstanceId: item.productInstanceId,
-          condition: item.damageEntries.length > 0 ? 'Damaged' : 'Normal',
-          damageFee: totalDmgFee,
+          damageLevelKey: item.damageLevelKey || undefined,
+          condition: level?.condition || 'Normal',
         },
         dmgNote,
       }
@@ -358,7 +485,6 @@ export default function StaffRentOrders() {
       await confirmReturnApi(returnOrderId, {
         returnedItems: mapped.map((i) => i.apiItem),
         note: finalNote,
-        washingFee: 0,
         returnDate: returnDate || undefined,
       })
       showSuccess('Xác nhận trả đồ thành công!')
@@ -440,7 +566,7 @@ export default function StaffRentOrders() {
             <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[420px]">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tổng đơn</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-950">{orders.length}</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{pagination.total || 0}</p>
               </div>
               <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-500">Đang thuê</p>
@@ -475,6 +601,19 @@ export default function StaffRentOrders() {
                   <option value="Compensation">Bồi thường</option>
                   <option value="Completed">Hoàn tất</option>
                   <option value="Cancelled">Đã hủy</option>
+                </select>
+              </div>
+              <div className="min-w-[180px]">
+                <label className="mb-2 block text-sm font-medium text-slate-700">Số dòng / trang</label>
+                <select
+                  value={limit}
+                  onChange={(e) => setLimit(parseInt(e.target.value || '10', 10))}
+                  className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
                 </select>
               </div>
               <button
@@ -519,7 +658,33 @@ export default function StaffRentOrders() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Danh sách đơn</p>
               <h3 className="mt-2 text-lg font-semibold text-slate-950">Đơn thuê hiện tại</h3>
             </div>
-            <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">{orders.length} đơn</div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+                {pagination.total || 0} đơn
+              </div>
+              <div className="hidden items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 sm:flex">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={loading || page <= 1}
+                  className={`rounded-xl px-2 py-1 transition ${loading || page <= 1 ? 'cursor-not-allowed text-slate-400' : 'text-slate-700 hover:bg-slate-100'}`}
+                >
+                  Trước
+                </button>
+                <span className="text-slate-500">Trang</span>
+                <span className="text-slate-900">{page}</span>
+                <span className="text-slate-500">/</span>
+                <span className="text-slate-900">{pagination.pages || 1}</span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(pagination.pages || 1, p + 1))}
+                  disabled={loading || page >= (pagination.pages || 1)}
+                  className={`rounded-xl px-2 py-1 transition ${loading || page >= (pagination.pages || 1) ? 'cursor-not-allowed text-slate-400' : 'text-slate-700 hover:bg-slate-100'}`}
+                >
+                  Sau
+                </button>
+              </div>
+            </div>
           </div>
 
           {loading ? (
@@ -564,6 +729,33 @@ export default function StaffRentOrders() {
                   </div>
                 </button>
               ))}
+            </div>
+          )}
+
+          {!loading && (pagination.pages || 1) > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 text-sm">
+              <p className="text-slate-500">
+                Đang xem trang <span className="font-semibold text-slate-900">{page}</span> /{' '}
+                <span className="font-semibold text-slate-900">{pagination.pages || 1}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className={`h-10 rounded-2xl px-4 font-semibold transition ${page <= 1 ? 'cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'}`}
+                >
+                  Trước
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(pagination.pages || 1, p + 1))}
+                  disabled={page >= (pagination.pages || 1)}
+                  className={`h-10 rounded-2xl px-4 font-semibold transition ${page >= (pagination.pages || 1) ? 'cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                >
+                  Sau
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -648,6 +840,83 @@ export default function StaffRentOrders() {
                   )
                 })()}
 
+                {/* Sản phẩm trong đơn */}
+                {Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0 && (
+                  <div className="rounded-3xl border border-slate-200 bg-white p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Sản phẩm thuê</p>
+                      <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600">
+                        {selectedOrder.items.length} món
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {selectedOrder.items.map((item, idx) => {
+                        const product = item?.productInstanceId?.productId || {}
+                        const productName = getProductName(product)
+                        const productImage = getProductImage(product)
+                        const productId = product?._id
+                        const instanceCode = item?.productInstanceId?.instanceCode || item?.productInstanceId?.code
+                        return (
+                          <div
+                            key={item._id || idx}
+                            className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3"
+                          >
+                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                              {productImage ? (
+                                <img src={productImage} alt={productName} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-slate-300">
+                                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159M16.5 14.25L18 12.75a2.25 2.25 0 013.182 0L21.75 15M3 19.5h18a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75H3a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75z" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              {productId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/products/${productId}`)}
+                                  className="line-clamp-2 text-left text-sm font-semibold text-slate-900 hover:text-indigo-600 hover:underline"
+                                  title={productName}
+                                >
+                                  {productName}
+                                </button>
+                              ) : (
+                                <p className="line-clamp-2 text-sm font-semibold text-slate-900">{productName}</p>
+                              )}
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                {item.size && <span>Size: <span className="font-medium text-slate-700">{item.size}</span></span>}
+                                {item.color && <span>Màu: <span className="font-medium text-slate-700">{item.color}</span></span>}
+                                {item.condition && <span>Tình trạng: <span className="font-medium text-slate-700">{item.condition}</span></span>}
+                              </div>
+                              {instanceCode && (
+                                <p className="mt-1 font-mono text-[11px] text-slate-400">Mã hàng: {instanceCode}</p>
+                              )}
+                            </div>
+                            <div className="shrink-0 text-right flex flex-col items-end gap-1">
+                              <p className="text-sm font-semibold text-indigo-600">
+                                {formatMoney(item.finalPrice || item.baseRentPrice || 0)}
+                              </p>
+                              <p className="text-[11px] text-slate-400">/ngày</p>
+                              {['Deposited', 'Confirmed', 'WaitingPickup'].includes(selectedOrder.status) && (
+                                <button
+                                  type="button"
+                                  onClick={() => openSwapModal(selectedOrder, item)}
+                                  className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100 transition-colors"
+                                  title="Đổi sản phẩm"
+                                >
+                                  Đổi SP
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Thông tin thanh toán */}
                 <div className="rounded-3xl border border-slate-200 bg-white p-5">
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Thông tin thanh toán</p>
@@ -689,7 +958,8 @@ export default function StaffRentOrders() {
                     const totalFees = (selectedOrder.lateFee || 0) + (selectedOrder.damageFee || 0) + (selectedOrder.compensationFee || 0)
                     const grandTotal = (selectedOrder.totalAmount || 0) + totalFees
                     const refundPayment = (selectedOrder.payments || []).filter(p => p.purpose === 'Refund' && p.status === 'Paid').reduce((s, p) => s + (p.amount || 0), 0)
-                    const extraPayment = (selectedOrder.payments || []).filter(p => ['LateFee','DamageFee','WashingFee','Compensation','ExtraFee'].includes(p.purpose) && p.status === 'Paid').reduce((s, p) => s + (p.amount || 0), 0)
+                    const paidRemainingTotal = (selectedOrder.payments || []).filter((p) => p.purpose === 'Remaining' && p.status === 'Paid').reduce((s, p) => s + Number(p.amount || 0), 0)
+                    const extraPayment = Math.max(0, paidRemainingTotal - Number(selectedOrder.remainingAmount || 0))
                     const cashCollateralTotal = (selectedOrder.collaterals || []).filter(c => c.type === 'CASH').reduce((s, c) => s + Number(c.cashAmount || 0), 0)
                     return (
                       <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4 space-y-2">
@@ -1297,51 +1567,38 @@ export default function StaffRentOrders() {
                 </div>
                 <div className="space-y-4">
                   {returnItems.map((item, index) => {
-                    const DAMAGE_TYPES = [
-                      { key: 'torn',    label: 'Rách / Hỏng vải' },
-                      { key: 'stain',   label: 'Bẩn không giặt được' },
-                      { key: 'faded',   label: 'Phai màu / Ố vàng' },
-                      { key: 'missing', label: 'Mất phụ kiện' },
-                      { key: 'zipper',  label: 'Hỏng khóa / Cúc' },
-                      { key: 'other',   label: 'Hư hỏng khác' },
-                    ]
-                    const selectedKeys = new Set(item.damageEntries.map((e) => e.key))
-                    const totalItemFee = item.damageEntries.reduce(
-                      (s, e) => s + (parseInt(String(e.fee || '0').replace(/[^0-9]/g, ''), 10) || 0), 0
-                    )
+                    const levels = item.policy?.levels || []
+                    const sortedLevels = [...levels].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                    const selectedLevel = item.damageLevelKey
+                      ? levels.find((l) => l.key === item.damageLevelKey)
+                      : null
+                    const itemFee = selectedLevel
+                      ? Math.round(((item.baseValue || 0) * Number(selectedLevel.penaltyPercent || 0)) / 100)
+                      : 0
 
-                    const toggleDamageType = (dt) => {
+                    const selectLevel = (key) => {
                       const next = [...returnItems]
-                      const entries = next[index].damageEntries
-                      const exists = entries.findIndex((e) => e.key === dt.key)
-                      if (exists >= 0) {
-                        next[index].damageEntries = entries.filter((e) => e.key !== dt.key)
-                      } else {
-                        next[index].damageEntries = [...entries, { key: dt.key, label: dt.label, fee: '' }]
-                      }
-                      setReturnItems(next)
-                    }
-
-                    const updateEntryFee = (key, val) => {
-                      const next = [...returnItems]
-                      next[index].damageEntries = next[index].damageEntries.map((e) =>
-                        e.key === key ? { ...e, fee: val } : e
-                      )
+                      next[index] = { ...next[index], damageLevelKey: next[index].damageLevelKey === key ? '' : key }
                       setReturnItems(next)
                     }
 
                     return (
                       <div key={item.productInstanceId} className={`rounded-2xl border p-4 transition-all ${
-                        item.damageEntries.length > 0
+                        selectedLevel
                           ? 'border-red-200 bg-red-50/60'
                           : 'border-slate-200 bg-slate-50'
                       }`}>
                         {/* Product name + status badge */}
                         <div className="flex items-center justify-between gap-2 mb-3">
-                          <p className="text-sm font-semibold text-slate-800 leading-snug truncate">{item.label}</p>
-                          {item.damageEntries.length > 0 ? (
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 leading-snug truncate">{item.label}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Giá trị sản phẩm: <span className="font-semibold text-slate-700">{(item.baseValue || 0).toLocaleString('vi-VN')}đ</span>
+                            </p>
+                          </div>
+                          {selectedLevel ? (
                             <span className="shrink-0 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
-                              Hư hỏng · {totalItemFee > 0 ? `${totalItemFee.toLocaleString('vi-VN')}đ` : 'Chưa nhập phí'}
+                              {selectedLevel.label} · {itemFee.toLocaleString('vi-VN')}đ
                             </span>
                           ) : (
                             <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
@@ -1350,50 +1607,55 @@ export default function StaffRentOrders() {
                           )}
                         </div>
 
-                        {/* Damage type chips */}
-                        <div className="flex flex-wrap gap-2">
-                          {DAMAGE_TYPES.map((dt) => {
-                            const active = selectedKeys.has(dt.key)
-                            return (
-                              <button
-                                key={dt.key}
-                                type="button"
-                                onClick={() => toggleDamageType(dt)}
-                                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
-                                  active
-                                    ? 'border-red-300 bg-red-100 text-red-700 shadow-sm ring-1 ring-red-200'
-                                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-100'
-                                }`}
-                              >
-                                {active ? '✓ ' : '+ '}{dt.label}
-                              </button>
-                            )
-                          })}
-                        </div>
+                        {/* Policy level chips */}
+                        {item.policyLoading ? (
+                          <p className="text-xs text-slate-400">Đang tải chính sách hư hỏng...</p>
+                        ) : sortedLevels.length === 0 ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            Chưa có chính sách hư hỏng áp dụng cho sản phẩm này. Owner cần tạo trước khi staff áp phí.
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {sortedLevels.map((lvl) => {
+                              const active = item.damageLevelKey === lvl.key
+                              const fee = Math.round(((item.baseValue || 0) * Number(lvl.penaltyPercent || 0)) / 100)
+                              return (
+                                <button
+                                  key={lvl.key}
+                                  type="button"
+                                  onClick={() => selectLevel(lvl.key)}
+                                  title={lvl.description}
+                                  className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
+                                    active
+                                      ? 'border-red-300 bg-red-100 text-red-700 shadow-sm ring-1 ring-red-200'
+                                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {active ? '✓ ' : ''}{lvl.label} · {lvl.penaltyPercent}% ({fee.toLocaleString('vi-VN')}đ)
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
 
-                        {/* Fee inputs for selected damage types */}
-                        {item.damageEntries.length > 0 && (
-                          <div className="mt-3 space-y-2 border-t border-red-200 pt-3">
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Phí bồi thường theo loại hư hỏng (VND)</p>
-                            {item.damageEntries.map((entry) => (
-                              <div key={entry.key} className="flex items-center gap-2">
-                                <span className="w-40 shrink-0 text-xs font-medium text-slate-600 truncate">{entry.label}</span>
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={entry.fee}
-                                  onChange={(e) => updateEntryFee(entry.key, e.target.value)}
-                                  placeholder="VD: 150000"
-                                  className="h-9 flex-1 rounded-xl border border-red-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                                />
-                              </div>
-                            ))}
-                            {item.damageEntries.length > 1 && totalItemFee > 0 && (
-                              <div className="flex justify-between border-t border-red-200 pt-2 text-sm font-semibold text-red-700">
-                                <span>Tổng phí sản phẩm này</span>
-                                <span>{totalItemFee.toLocaleString('vi-VN')}đ</span>
-                              </div>
-                            )}
+                        {/* Details of selected level */}
+                        {selectedLevel && (
+                          <div className="mt-3 rounded-lg border border-red-200 bg-white p-3 text-xs">
+                            <div className="flex justify-between text-slate-600">
+                              <span>% giá trị phạt</span>
+                              <span className="font-semibold text-slate-900">{selectedLevel.penaltyPercent}%</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600 mt-1">
+                              <span>Giá trị sản phẩm</span>
+                              <span className="font-semibold text-slate-900">{(item.baseValue || 0).toLocaleString('vi-VN')}đ</span>
+                            </div>
+                            <div className="mt-2 border-t border-red-100 pt-2 flex justify-between text-sm font-semibold text-red-700">
+                              <span>Phí áp dụng</span>
+                              <span>{itemFee.toLocaleString('vi-VN')}đ</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              Sau khi xác nhận, sản phẩm sẽ chuyển sang trạng thái <span className="font-semibold">{selectedLevel.triggerLifecycle}</span>.
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1402,10 +1664,12 @@ export default function StaffRentOrders() {
                 </div>
 
                 {/* Grand total damage */}
-                {returnItems.some((i) => i.damageEntries.length > 0) && (() => {
-                  const grandDmg = returnItems.reduce((s, i) =>
-                    s + i.damageEntries.reduce((ss, e) => ss + (parseInt(String(e.fee || '0').replace(/[^0-9]/g, ''), 10) || 0), 0)
-                  , 0)
+                {returnItems.some((i) => i.damageLevelKey) && (() => {
+                  const grandDmg = returnItems.reduce((s, i) => {
+                    const lvl = (i.policy?.levels || []).find((l) => l.key === i.damageLevelKey)
+                    if (!lvl) return s
+                    return s + Math.round(((i.baseValue || 0) * Number(lvl.penaltyPercent || 0)) / 100)
+                  }, 0)
                   return grandDmg > 0 ? (
                     <div className="mt-3 flex items-center justify-between rounded-2xl border border-red-300 bg-red-100 px-4 py-3">
                       <span className="text-sm font-semibold text-red-800">Tổng phí hư hỏng</span>
@@ -1461,6 +1725,186 @@ export default function StaffRentOrders() {
                   </span>
                 ) : 'Xác nhận trả đồ'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Swap Modal ───────────────────────────────────────────── */}
+      {showSwapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Đổi sản phẩm</h3>
+                {swapItem && (
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {getProductName(swapItem?.productInstanceId?.productId || {})}
+                    {swapItem.size ? ` · Size ${swapItem.size}` : ''}
+                    {swapItem.color ? ` · ${swapItem.color}` : ''}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={closeSwapModal} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100 shrink-0 px-4 pt-1 gap-1">
+              {[
+                { key: 'size_swap', label: 'Đổi size', color: 'indigo' },
+                { key: 'model_swap', label: 'Đổi mẫu', color: 'violet' },
+                { key: 'upgrade', label: 'Upgrade', color: 'amber' },
+              ].map(({ key, label, color }) => {
+                const count = swapCandidates[key]?.length || 0
+                const active = swapTab === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => { setSwapTab(key); setSwapSelected(null) }}
+                    className={`flex items-center gap-1.5 rounded-t-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                      active
+                        ? `border-b-2 border-${color}-500 text-${color}-700 bg-${color}-50/50`
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {label}
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${count > 0 ? `bg-${color}-100 text-${color}-700` : 'bg-slate-100 text-slate-400'}`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Tab description */}
+            <div className="px-6 py-2 shrink-0">
+              {swapTab === 'size_swap' && <p className="text-xs text-slate-500">Cùng mẫu sản phẩm, khác size — phù hợp khi khách mặc không vừa.</p>}
+              {swapTab === 'model_swap' && <p className="text-xs text-slate-500">Mẫu khác cùng loại — dùng khi hết size hoặc hết mẫu hiện tại.</p>}
+              {swapTab === 'upgrade' && <p className="text-xs text-slate-500">Cùng mẫu tình trạng tốt hơn (ưu tiên) hoặc mẫu khác cùng loại cao cấp hơn — khi khách yêu cầu nâng cấp. Giá có thể thay đổi.</p>}
+            </div>
+
+            {/* Candidate list */}
+            <div className="flex-1 overflow-y-auto px-4 pb-2">
+              {swapLoading ? (
+                <div className="flex items-center justify-center py-12 text-slate-400">
+                  <svg className="h-6 w-6 animate-spin mr-2" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                  Đang tải...
+                </div>
+              ) : swapCandidates[swapTab]?.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">
+                  Không có sản phẩm phù hợp
+                </div>
+              ) : (
+                <div className="space-y-2 py-1">
+                  {swapCandidates[swapTab].map((cand) => {
+                    const candProduct = cand.productId || {}
+                    const candName = getProductName(candProduct)
+                    const candImage = getProductImage(candProduct)
+                    const currentPrice = Number(swapItem?.finalPrice || swapItem?.baseRentPrice || 0)
+                    const candPrice = Number(cand.currentRentPrice || 0)
+                    const priceDiff = candPrice - currentPrice
+                    const isSelected = swapSelected?._id === cand._id
+                    return (
+                      <button
+                        key={cand._id}
+                        type="button"
+                        onClick={() => setSwapSelected(cand)}
+                        className={`w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-all ${
+                          isSelected
+                            ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'}`}>
+                          {isSelected && <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
+                        </div>
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                          {candImage ? (
+                            <img src={candImage} alt={candName} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-slate-300">
+                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159M3 19.5h18V5.25H3v14.25z" /></svg>
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-900">{candName}</p>
+                          <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                            {cand.size && <span>Size <span className="font-medium text-slate-700">{cand.size}</span></span>}
+                            {cand.color && <span>· {cand.color}</span>}
+                            {cand.conditionScore != null && (
+                              <span>· Điểm tình trạng: <span className="font-medium text-slate-700">{cand.conditionScore}</span></span>
+                            )}
+                          </div>
+                          {cand.instanceCode && (
+                            <p className="mt-0.5 font-mono text-[10px] text-slate-400">{cand.instanceCode}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-semibold text-indigo-600">{formatMoney(candPrice)}</p>
+                          <p className="text-[10px] text-slate-400">/ngày</p>
+                          {priceDiff !== 0 && (
+                            <span className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-bold ${priceDiff > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
+                              {priceDiff > 0 ? '+' : ''}{formatMoney(priceDiff)}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Reason input + footer */}
+            <div className="border-t border-slate-100 px-6 py-4 shrink-0 space-y-3">
+              {swapSelected && (
+                <div className="rounded-2xl bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                  Đã chọn: <span className="font-bold">{getProductName(swapSelected.productId || {})}</span>
+                  {swapSelected.size ? ` · Size ${swapSelected.size}` : ''}
+                  {(() => {
+                    const currentPrice = Number(swapItem?.finalPrice || swapItem?.baseRentPrice || 0)
+                    const newPrice = Number(swapSelected.currentRentPrice || 0)
+                    const diff = newPrice - currentPrice
+                    if (diff === 0) return <span className="ml-2 text-slate-500 text-xs">Giá không đổi</span>
+                    return <span className={`ml-2 text-xs font-bold ${diff > 0 ? 'text-red-600' : 'text-green-700'}`}>Giá thay đổi {diff > 0 ? '+' : ''}{formatMoney(diff)}/ngày</span>
+                  })()}
+                </div>
+              )}
+              <input
+                type="text"
+                placeholder="Lý do đổi (tùy chọn)..."
+                value={swapReason}
+                onChange={(e) => setSwapReason(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+              {swapError && <p className="text-sm text-red-600 font-medium">{swapError}</p>}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={closeSwapModal}
+                  className="flex-1 rounded-2xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={!swapSelected || swapLoading}
+                  onClick={handleSwapConfirm}
+                  className="flex-1 rounded-2xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {swapLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                      Đang xử lý...
+                    </span>
+                  ) : 'Xác nhận đổi'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

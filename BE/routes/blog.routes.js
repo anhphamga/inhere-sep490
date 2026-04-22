@@ -45,6 +45,13 @@ router.get(
   checkPermission(PERMISSIONS.blog.post.approve),
   blogController.getPendingBlogs
 );
+router.get(
+  '/approved',
+  requireAuth,
+  checkRole('owner'),
+  checkPermission(PERMISSIONS.blog.post.approve),
+  blogController.getApprovedBlogs
+);
 router.post(
   '/:id/approve',
   requireAuth,

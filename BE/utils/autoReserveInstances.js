@@ -6,8 +6,16 @@ const ProductInstance = require('../model/ProductInstance.model');
 // 24h = đủ thời gian staff chuẩn bị đồ trước 1 ngày
 const HOURS_BEFORE_RESERVED = Number(process.env.HOURS_BEFORE_RESERVED || 24);
 
-// Chạy mỗi 60 phút
-const INTERVAL_MS = 60 * 60 * 1000;
+/** Chu kỳ quét (phút). Mặc định 60; dev có thể đặt 1 qua AUTO_RESERVE_INTERVAL_MINUTES */
+const parseIntervalMinutes = () => {
+    const raw = process.env.AUTO_RESERVE_INTERVAL_MINUTES;
+    if (raw === undefined || raw === '') return 60;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 60;
+    return Math.min(Math.max(1, Math.floor(n)), 7 * 24 * 60);
+};
+const INTERVAL_MINUTES = parseIntervalMinutes();
+const INTERVAL_MS = INTERVAL_MINUTES * 60 * 1000;
 
 const runAutoReserve = async () => {
     const now = new Date();
@@ -47,12 +55,13 @@ const runAutoReserve = async () => {
 const startAutoReserveJob = () => {
     // Chạy ngay lần đầu khi server khởi động
     runAutoReserve().catch((err) => console.error('[AutoReserve] Initial run error:', err.message));
-    // Sau đó chạy mỗi giờ
     setInterval(
         () => runAutoReserve().catch((err) => console.error('[AutoReserve] Run error:', err.message)),
         INTERVAL_MS
     );
-    console.log(`[AutoReserve] Job started — ngưỡng ${HOURS_BEFORE_RESERVED}h trước ngày thuê, chạy mỗi 60 phút`);
+    console.log(
+        `[AutoReserve] Job started — ngưỡng ${HOURS_BEFORE_RESERVED}h trước ngày thuê, quét mỗi ${INTERVAL_MINUTES} phút`
+    );
 };
 
 module.exports = { startAutoReserveJob };

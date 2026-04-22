@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SlidersHorizontal, X } from "lucide-react";
 import Header from "../../components/common/Header";
@@ -17,8 +17,21 @@ import {
 } from "./catalogHelpers";
 import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useFavorites } from "../../contexts/FavoritesContext";
+import { API_BASE_URL } from "../../config/env";
 
 const DEFAULT_FILTERS = { category: "", color: "", size: "", price: "" };
+const DEFAULT_PAGINATION = { page: 1, totalPages: 1, totalItems: 0, limit: 24 };
+
+const extractProductList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
+  if (Array.isArray(payload?.products)) return payload.products;
+  if (Array.isArray(payload?.products?.items)) return payload.products.items;
+  return [];
+};
+
+const toApiUrl = (path) => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
 const priceInRange = (price, range) => {
   if (!range) return true;
@@ -26,6 +39,36 @@ const priceInRange = (price, range) => {
   if (range === "mid") return price >= 300000 && price <= 700000;
   if (range === "high") return price > 700000;
   return true;
+};
+
+const isFreeSizeLike = (value = "") => {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  return normalized === "freesize" || normalized === "onesize" || normalized === "free";
+};
+
+const requiresVariantSelection = (product = {}) => {
+  if (product?.hasSizes === true) return true;
+
+  const rows = Array.isArray(product?.sizes) ? product.sizes : [];
+  const hasSizedRows = rows.some((row) => {
+    const sizeValue = typeof row === "object" ? row?.size : row;
+    const sizeText = String(sizeValue || "").trim();
+    return Boolean(sizeText) && !isFreeSizeLike(sizeText);
+  });
+  if (hasSizedRows) return true;
+
+  const options = Array.isArray(product?.sizeOptions) ? product.sizeOptions : [];
+  const hasSizedOptions = options.some((size) => {
+    const sizeText = String(size || "").trim();
+    return Boolean(sizeText) && !isFreeSizeLike(sizeText);
+  });
+  if (hasSizedOptions) return true;
+
+  return false;
 };
 
 export default function ShopPage() {
@@ -39,7 +82,7 @@ export default function ShopPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, totalItems: 0, limit: 24 });
+  const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
   const [loading, setLoading] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [quickViewProduct, setQuickViewProduct] = useState(null);
@@ -62,7 +105,7 @@ export default function ShopPage() {
     let mounted = true;
     const run = async () => {
       try {
-        const response = await fetch("/api/categories?lang=vi&purpose=buy");
+        const response = await fetch(toApiUrl("/categories?lang=vi&purpose=buy"));
         const payload = response.ok ? await response.json() : { categories: [] };
         if (!mounted) return;
         setCategories(Array.isArray(payload?.categories) ? payload.categories : []);
@@ -94,18 +137,25 @@ export default function ShopPage() {
       try {
         setLoading(true);
         const params = new URLSearchParams({
-          purpose: "buy",
           lang: "vi",
           limit: "24",
           page: String(page),
         });
         if (searchKeyword) params.set("search", searchKeyword);
         if (filters.category) params.set("category", filters.category);
-        const response = await fetch(`/api/products?${params.toString()}`);
-        const payload = response.ok ? await response.json() : { data: [] };
+        const response = await fetch(toApiUrl(`/products?${params.toString()}`));
+        const payload = response.ok ? await response.json() : null;
         if (!mounted) return;
-        setProducts(Array.isArray(payload?.data) ? payload.data : []);
-        setPagination(payload?.pagination || { page: 1, totalPages: 1, totalItems: 0, limit: 24 });
+        const apiResponseData = extractProductList(payload);
+        console.log("Products:", apiResponseData);
+        const normalizedProducts = (Array.isArray(apiResponseData) ? apiResponseData : []).filter((product) => {
+          const pricingMode = String(product?.pricingMode || "").trim().toLowerCase();
+          // Accept all supported pricing modes from backend. Excluding unknown mode
+          // made valid products disappear even when API returned data.
+          return !pricingMode || ["sale", "buy", "common", "per_variant"].includes(pricingMode);
+        });
+        setProducts(Array.isArray(normalizedProducts) ? normalizedProducts : []);
+        setPagination(payload?.pagination || DEFAULT_PAGINATION);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -130,7 +180,11 @@ export default function ShopPage() {
         : true;
       const bySize = filters.size
         ? normalizeText(
-            `${product?.size || ""} ${Array.isArray(product?.sizes) ? product.sizes.join(" ") : ""} ${
+            `${product?.size || ""} ${Array.isArray(product?.sizeOptions) ? product.sizeOptions.join(" ") : ""} ${
+              Array.isArray(product?.sizes)
+                ? product.sizes.map((row) => (typeof row === "object" ? row?.size : row)).join(" ")
+                : ""
+            } ${
               Array.isArray(product?.colorVariants)
                 ? product.colorVariants.map((variant) => variant?.size || "").join(" ")
                 : ""
@@ -199,11 +253,19 @@ export default function ShopPage() {
       showToast("Sản phẩm đang hết hàng.");
       return;
     }
+
+    if (requiresVariantSelection(product)) {
+      showToast("Vui lòng chọn size/tình trạng trong trang chi tiết trước khi thêm giỏ hàng.");
+      navigate(`/products/${product?._id || product?.id}`);
+      return;
+    }
+
     addItem(product, {
       color: "Mặc định",
       size: "FREE SIZE",
       salePrice: Number(product?.baseSalePrice || 0),
       quantity: 1,
+      image: product?.images?.[0] || product?.imageUrl || '',
     });
     showToast("Đã thêm vào giỏ hàng.");
   };

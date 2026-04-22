@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapPin, Phone, UserCircle } from 'lucide-react'
 import { getOwnerCustomerDetailApi, updateOwnerCustomerStatusApi } from '../../services/owner.service'
@@ -20,9 +20,10 @@ const formatDateTime = (value) => {
 const mapRentOrder = (order) => ({
     id: order?._id || order?.id,
     type: 'Rent',
-    code: order?.orderCode || order?._id || 'N/A',
+    code: order?.orderCode ? `#${String(order.orderCode).toUpperCase()}` : `#${String(order?._id || order?.id || '').slice(-8).toUpperCase()}`,
     status: order?.status || 'N/A',
     amount: Number(order?.totalAmount || 0),
+    paid: ['Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'WaitingReturn', 'Returned', 'Completed', 'Compensation'].includes(order?.status),
     createdAt: order?.createdAt,
     closedAt: order?.actualReturnDate || order?.returnDate
 })
@@ -30,9 +31,10 @@ const mapRentOrder = (order) => ({
 const mapSaleOrder = (order) => ({
     id: order?._id || order?.id,
     type: 'Sale',
-    code: order?.orderCode || order?._id || 'N/A',
+    code: order?.orderCode ? `#${String(order.orderCode).toUpperCase()}` : `#${String(order?._id || order?.id || '').slice(-8).toUpperCase()}`,
     status: order?.status || 'N/A',
     amount: Number(order?.totalAmount || 0),
+    paid: ['PendingConfirmation', 'Confirmed', 'Shipping', 'Completed', 'Returned', 'Refunded'].includes(order?.status),
     createdAt: order?.createdAt,
     closedAt: order?.createdAt
 })
@@ -53,7 +55,8 @@ export default function UserDetail({ userId }) {
             setPayload({
                 customer: data?.customer || null,
                 rentOrders: toArray(data?.rentOrders),
-                saleOrders: toArray(data?.saleOrders)
+                saleOrders: toArray(data?.saleOrders),
+                summary: data?.summary || null,
             })
         } catch (apiError) {
             setError(apiError?.response?.data?.message || apiError?.message || 'Không tải được chi tiết khách hàng')
@@ -77,9 +80,11 @@ export default function UserDetail({ userId }) {
     }, [payload.rentOrders, payload.saleOrders])
 
     const totalSpend = useMemo(
-        () => transactions.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-        [transactions]
+        () => payload.summary?.totalSpent ?? transactions.reduce((sum, row) => sum + (row.paid ? Number(row.amount || 0) : 0), 0),
+        [payload.summary, transactions]
     )
+    const saleSpend = payload.summary?.saleSpent ?? 0
+    const rentSpend = payload.summary?.rentSpent ?? 0
 
     const handleToggleStatus = async () => {
         try {
@@ -134,7 +139,7 @@ export default function UserDetail({ userId }) {
                             className="w-24 h-24 rounded-full object-cover border-4 border-slate-50 shadow-sm mx-auto"
                         />
                         <h2 className="mt-4 text-xl font-bold text-slate-900">{customer.name || 'N/A'}</h2>
-                        <p className="text-slate-500 text-sm">ID: {customer.id}</p>
+                        
                     </div>
 
                     <div className="p-6 space-y-4 text-sm">
@@ -179,7 +184,17 @@ export default function UserDetail({ userId }) {
                     </div>
                     <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                         <p className="text-xs text-slate-400 font-bold uppercase">Tổng chi tiêu</p>
-                        <p className="text-xl font-bold mt-1">{currencyFormatter.format(totalSpend)}</p>
+                        <p className="text-xl font-bold mt-1 text-[#1975d2]">{currencyFormatter.format(totalSpend)}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <p className="text-xs text-slate-400 font-bold uppercase">Đơn mua</p>
+                        <p className="text-sm font-bold mt-1">{currencyFormatter.format(saleSpend)}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{payload.summary?.totalSaleOrders ?? '-'} đơn</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <p className="text-xs text-slate-400 font-bold uppercase">Đơn thuê</p>
+                        <p className="text-sm font-bold mt-1">{currencyFormatter.format(rentSpend)}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{payload.summary?.totalRentOrders ?? '-'} đơn</p>
                     </div>
                 </div>
             </div>
@@ -197,7 +212,8 @@ export default function UserDetail({ userId }) {
                                     <th className="py-3 pr-4">Trạng thái</th>
                                     <th className="py-3 pr-4">Ngày tạo</th>
                                     <th className="py-3 pr-4">Ngày hoàn tất</th>
-                                    <th className="py-3 text-right">Tổng tiền</th>
+                                    <th className="py-3 text-right">Số tiền</th>
+                                    <th className="py-3 pl-2 text-right">Đã TT</th>
                                     <th className="py-3 pl-4 text-right">Thao tác</th>
                                 </tr>
                             </thead>
@@ -205,11 +221,29 @@ export default function UserDetail({ userId }) {
                                 {transactions.map((tx) => (
                                     <tr key={`${tx.type}-${tx.id}`} className="hover:bg-slate-50 transition-colors">
                                         <td className="py-3 pr-4 font-medium">{tx.code}</td>
-                                        <td className="py-3 pr-4">{tx.type}</td>
-                                        <td className="py-3 pr-4">{tx.status}</td>
+                                        <td className="py-3 pr-4">
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${tx.type === 'Rent' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
+                                                {tx.type === 'Rent' ? 'Thuê' : 'Mua'}
+                                            </span>
+                                        </td>
+                                        <td className="py-3 pr-4">
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                ['Completed'].includes(tx.status) ? 'bg-emerald-50 text-emerald-700' :
+                                                ['Cancelled', 'NoShow', 'Failed'].includes(tx.status) ? 'bg-red-50 text-red-600' :
+                                                ['Returned', 'Refunded'].includes(tx.status) ? 'bg-orange-50 text-orange-600' :
+                                                'bg-slate-100 text-slate-500'
+                                            }`}>
+                                                {tx.status === 'PendingDeposit' ? 'Chờ đặt cọc' : tx.status === 'PendingPayment' ? 'Chờ TT' : tx.status === 'PendingConfirmation' ? 'Chờ xác nhận' : tx.status === 'Deposited' ? 'Đã đặt cọc' : tx.status === 'Confirmed' ? 'Đã xác nhận' : tx.status === 'WaitingPickup' ? 'Chờ lấy đồ' : tx.status === 'Renting' ? 'Đang thuê' : tx.status === 'WaitingReturn' ? 'Chờ trả đồ' : tx.status === 'Returned' ? 'Đã trả đồ' : tx.status === 'Shipping' ? 'Đang giao' : tx.status === 'Refunded' ? 'Hoàn tiền' : tx.status === 'Cancelled' ? 'Đã hủy' : tx.status === 'NoShow' ? 'Không đến' : tx.status === 'Compensation' ? 'Bồi thường' : tx.status === 'Completed' ? 'Hoàn tất' : tx.status}
+                                            </span>
+                                        </td>
                                         <td className="py-3 pr-4 text-slate-500">{formatDateTime(tx.createdAt)}</td>
                                         <td className="py-3 pr-4 text-slate-500">{formatDateTime(tx.closedAt)}</td>
                                         <td className="py-3 text-right font-semibold">{currencyFormatter.format(tx.amount)}</td>
+                                        <td className="py-3 pl-2 text-right">
+                                            {tx.paid
+                                                ? <span className="text-xs font-semibold text-emerald-600">✓</span>
+                                                : <span className="text-xs text-slate-300">–</span>}
+                                        </td>
                                         <td className="py-3 pl-4 text-right">
                                             <button
                                                 type="button"
@@ -223,7 +257,7 @@ export default function UserDetail({ userId }) {
                                 ))}
                                 {transactions.length === 0 ? (
                                     <tr>
-                                        <td className="py-4 text-slate-500" colSpan={7}>
+                                        <td className="py-4 text-slate-500" colSpan={8}>
                                             Khách hàng chưa có giao dịch.
                                         </td>
                                     </tr>

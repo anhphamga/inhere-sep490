@@ -22,17 +22,19 @@ const uploadBlogThumbnail = upload.single('thumbnail');
 const excelUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024
+    fileSize: 10 * 1024 * 1024
   },
   fileFilter: (req, file, cb) => {
     const validMimeTypes = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/vnd.ms-excel',
       'text/csv',
-      'application/csv'
+      'application/csv',
+      'text/plain',
+      'application/octet-stream'
     ];
     const fileName = (file.originalname || '').toLowerCase();
-    const hasValidExtension = fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv');
+    const hasValidExtension = fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
 
     if ((!file.mimetype || !validMimeTypes.includes(file.mimetype)) && !hasValidExtension) {
       cb(new Error('Only Excel/CSV files are allowed'));

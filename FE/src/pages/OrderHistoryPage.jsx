@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   Box,
@@ -18,8 +18,9 @@ import {
 } from 'lucide-react'
 import Header from '../components/common/Header'
 import { useAuth } from '../contexts/AuthContext'
-import { getMySaleOrdersApi } from '../services/order.service'
-import { getMyRentOrdersApi } from '../services/rent-order.service'
+import { useBuyCart } from '../contexts/BuyCartContext'
+import { cancelMySaleOrderApi, getMySaleOrdersApi } from '../services/order.service'
+import { cancelRentOrderApi, getMyRentOrdersApi } from '../services/rent-order.service'
 import { UI_IMAGE_FALLBACKS } from '../constants/ui'
 
 const ORDER_TYPE_TABS = [
@@ -124,7 +125,7 @@ function getStatusMeta(status) {
   return STATUS_META[status] || STATUS_META.pending_confirmation
 }
 
-function getActionConfig(action) {
+function getActionConfig(action, orderType = 'rent') {
   const actionMap = {
     view: {
       label: 'Xem chi tiết',
@@ -157,7 +158,7 @@ function getActionConfig(action) {
       icon: XCircle,
     },
     reorder: {
-      label: 'Thuê lại',
+      label: orderType === 'buy' ? 'Mua lại' : 'Thuê lại',
       className: 'border-slate-200 text-slate-700 hover:bg-slate-50',
       icon: ArrowRight,
     },
@@ -204,6 +205,9 @@ function calculateRentalDays(startDate, endDate) {
 }
 
 function mapBuyStatus(status) {
+  // #region agent log
+  fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H2', location: 'FE/src/pages/OrderHistoryPage.jsx:mapBuyStatus', message: 'Map buy raw status to UI status', data: { rawStatus: String(status || '') }, timestamp: Date.now() }) }).catch(() => { });
+  // #endregion
   switch (status) {
     case 'Completed':
       return 'completed'
@@ -347,6 +351,10 @@ function normalizeBuyOrders(orders = []) {
         id: item._id,
         orderId: order._id,
         productId: item.productId?._id,
+        size: item.size || 'FREE SIZE',
+        color: item.color || 'Mặc định',
+        unitPrice: Number(item.unitPrice || 0),
+        conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
         image: getImageUrl(item.productId?.images),
         name: getProductName(item.productId),
         variant: `${item.size || 'FREE SIZE'} / ${item.color || 'Mặc định'}`,
@@ -426,11 +434,10 @@ function OrderFilters({
                 key={tab.value}
                 type="button"
                 onClick={() => onTabChange(tab.value)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                  isActive
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${isActive
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -544,22 +551,20 @@ function RentalProgress({ currentStep }) {
           return (
             <div key={step.key} className="relative">
               <div
-                className={`flex h-full flex-col items-center rounded-2xl px-2 py-3 text-center transition ${
-                  isCurrent
+                className={`flex h-full flex-col items-center rounded-2xl px-2 py-3 text-center transition ${isCurrent
                     ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10'
                     : isDone
                       ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
                       : 'bg-slate-50 text-slate-400 ring-1 ring-slate-200'
-                }`}
+                  }`}
               >
                 <div
-                  className={`mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
-                    isCurrent
+                  className={`mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${isCurrent
                       ? 'bg-white/15 text-white'
                       : isDone
                         ? 'bg-emerald-500 text-white'
                         : 'bg-white text-slate-400 ring-1 ring-slate-200'
-                  }`}
+                    }`}
                 >
                   {isDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
                 </div>
@@ -573,8 +578,8 @@ function RentalProgress({ currentStep }) {
   )
 }
 
-function ActionButton({ actionKey, order }) {
-  const action = getActionConfig(actionKey)
+function ActionButton({ actionKey, order, onAction }) {
+  const action = getActionConfig(actionKey, order?.type)
   const Icon = action.icon
   const className = `inline-flex min-h-[44px] items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition ${action.className}`
 
@@ -588,30 +593,30 @@ function ActionButton({ actionKey, order }) {
   }
 
   return (
-    <button type="button" className={className}>
+    <button type="button" className={className} onClick={() => onAction?.(order, actionKey)}>
       <Icon className="h-4 w-4" />
       {action.label}
     </button>
   )
 }
 
-function OrderCard({ order }) {
+function OrderCard({ order, onAction }) {
   const statusMeta = getStatusMeta(order.status)
   const typeMeta = TYPE_META[order.type]
   const financialRows = order.type === 'rent'
     ? [
-        { label: 'Tổng giá thuê', value: formatCurrency(order.totalAmount), icon: ShoppingBag },
-        { label: 'Đã cọc 50%', value: formatCurrency(order.depositAmount), icon: Wallet },
-        { label: 'Còn lại cần thanh toán', value: formatCurrency(order.remainingAmount), icon: CreditCard },
-        order.collateralAmount > 0
-          ? { label: 'Tiền thế chấp', value: formatCurrency(order.collateralAmount), icon: Box }
-          : null,
-      ].filter(Boolean)
+      { label: 'Tổng giá thuê', value: formatCurrency(order.totalAmount), icon: ShoppingBag },
+      { label: 'Đã cọc 50%', value: formatCurrency(order.depositAmount), icon: Wallet },
+      { label: 'Còn lại cần thanh toán', value: formatCurrency(order.remainingAmount), icon: CreditCard },
+      order.collateralAmount > 0
+        ? { label: 'Tiền thế chấp', value: formatCurrency(order.collateralAmount), icon: Box }
+        : null,
+    ].filter(Boolean)
     : [
-        { label: 'Tổng đơn', value: formatCurrency(order.subtotal), icon: ShoppingBag },
-        { label: 'Phí vận chuyển', value: formatCurrency(order.shippingFee), icon: Truck },
-        { label: 'Thanh toán', value: formatCurrency(order.totalAmount), icon: CreditCard },
-      ]
+      { label: 'Tổng đơn', value: formatCurrency(order.subtotal), icon: ShoppingBag },
+      { label: 'Phí vận chuyển', value: formatCurrency(order.shippingFee), icon: Truck },
+      { label: 'Thanh toán', value: formatCurrency(order.totalAmount), icon: CreditCard },
+    ]
 
   return (
     <article className="overflow-hidden rounded-[32px] border border-white/70 bg-white/95 shadow-[0_24px_80px_rgba(15,23,42,0.08)] ring-1 ring-slate-100 backdrop-blur">
@@ -698,7 +703,7 @@ function OrderCard({ order }) {
 
             <div className="flex flex-wrap gap-3">
               {order.actions.map((actionKey) => (
-                <ActionButton key={actionKey} actionKey={actionKey} order={order} />
+                <ActionButton key={actionKey} actionKey={actionKey} order={order} onAction={onAction} />
               ))}
             </div>
           </div>
@@ -748,6 +753,8 @@ function ErrorState({ message }) {
 }
 
 export default function OrderHistoryPage() {
+  const navigate = useNavigate()
+  const { addItem: addBuyItem } = useBuyCart()
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [activeTab, setActiveTab] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -755,6 +762,7 @@ export default function OrderHistoryPage() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -775,6 +783,9 @@ export default function OrderHistoryPage() {
         getMySaleOrdersApi(),
         getMyRentOrdersApi({ limit: 50 }),
       ])
+      // #region agent log
+      fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H4', location: 'FE/src/pages/OrderHistoryPage.jsx:fetchOrders', message: 'Fetched orders before normalize', data: { buyCount: Array.isArray(buyResponse?.data) ? buyResponse.data.length : 0, buyStatuses: Array.isArray(buyResponse?.data) ? buyResponse.data.map((o) => ({ id: String(o?._id || ''), status: String(o?.status || ''), statusLabel: String(o?.statusLabel || ''), userStatus: String(o?.userStatus || '') })) : [] }, timestamp: Date.now() }) }).catch(() => { });
+      // #endregion
 
       const normalizedOrders = [
         ...normalizeBuyOrders(buyResponse?.data || []),
@@ -810,6 +821,57 @@ export default function OrderHistoryPage() {
       return matchesTab && matchesStatus && matchesKeyword
     })
   }, [activeTab, orders, searchValue, statusFilter])
+
+  const handleOrderAction = async (order, actionKey) => {
+    if (actionKey === 'cancel') {
+      const confirmed = window.confirm('Bạn có chắc muốn hủy đơn này không?')
+      if (!confirmed) return
+      try {
+        if (order?.type === 'buy') {
+          await cancelMySaleOrderApi(order.id)
+        } else if (order?.type === 'rent') {
+          await cancelRentOrderApi(order.id)
+        }
+        await fetchOrders()
+        setActionMessage('Đã hủy đơn thành công')
+        setTimeout(() => setActionMessage(''), 1800)
+      } catch (actionError) {
+        const message = actionError?.response?.data?.message || 'Không thể hủy đơn lúc này.'
+        setError(message)
+      }
+      return
+    }
+
+    if (actionKey !== 'reorder') return
+    if (order?.type !== 'buy') return
+
+    const buyItems = Array.isArray(order?.items) ? order.items : []
+    if (!buyItems.length) return
+
+    buyItems.forEach((item) => {
+      if (!item?.productId) return
+      addBuyItem(
+        {
+          _id: item.productId,
+          name: item.name || 'Sản phẩm',
+          images: item.image ? [item.image] : [],
+          availableQuantity: Math.max(Number(item.quantity || 1), 1),
+          baseSalePrice: Number(item.unitPrice || 0),
+        },
+        {
+          color: item.color || 'Mặc định',
+          size: item.size || 'FREE SIZE',
+          salePrice: Number(item.unitPrice || 0),
+          quantity: Math.max(Number(item.quantity || 1), 1),
+          conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
+        }
+      )
+    })
+
+    setActionMessage('Đã thêm lại sản phẩm vào giỏ mua')
+    setTimeout(() => setActionMessage(''), 1800)
+    navigate('/cart')
+  }
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -852,10 +914,10 @@ export default function OrderHistoryPage() {
 
             <Link
               to="/buy"
-              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white! no-underline visited:text-white! hover:bg-slate-800"
             >
               Khám phá bộ sưu tập
-              <ArrowRight className="h-4 w-4" />
+              <ArrowRight className="h-4 w-4 text-white!" />
             </Link>
           </div>
         </section>
@@ -877,11 +939,17 @@ export default function OrderHistoryPage() {
           {!loading && !error && filteredOrders.length === 0 ? <EmptyState /> : null}
           {!loading && !error && filteredOrders.length > 0
             ? filteredOrders.map((order) => (
-                <OrderCard key={`${order.type}-${order.id}`} order={order} />
-              ))
+              <OrderCard key={`${order.type}-${order.id}`} order={order} onAction={handleOrderAction} />
+            ))
             : null}
         </section>
       </main>
+
+      {actionMessage ? (
+        <div className="fixed right-4 top-20 z-50 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
+          {actionMessage}
+        </div>
+      ) : null}
     </div>
   )
 }

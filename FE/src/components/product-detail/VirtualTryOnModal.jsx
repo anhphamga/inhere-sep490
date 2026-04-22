@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Upload, Loader2 } from "lucide-react";
+import { X, Upload, Loader2, ZoomIn, ZoomOut, RotateCcw, Maximize2 } from "lucide-react";
 import { API_BASE_URL } from "../../config/env";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -36,6 +36,8 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [guestTryCount, setGuestTryCount] = useState(0);
+    const [resultZoom, setResultZoom] = useState(1);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
     // Auto-set outfit from product image
     const effectiveOutfitPreview = outfitPreview || outfitImageUrl;
@@ -64,6 +66,13 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
 
         setGuestTryCount(Number.isFinite(storedCount) ? storedCount : 0);
     }, [isAuthenticated, isOpen]);
+
+    useEffect(() => {
+        if (!result) {
+            setResultZoom(1);
+            setIsPreviewOpen(false);
+        }
+    }, [result]);
 
     // Hide header and body scroll when modal is open
     useEffect(() => {
@@ -238,7 +247,13 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
         setOutfitPreview("");
         setResult(null);
         setError("");
+        setResultZoom(1);
+        setIsPreviewOpen(false);
     };
+
+    const zoomInResult = () => setResultZoom((prev) => Math.min(prev + 0.25, 3));
+    const zoomOutResult = () => setResultZoom((prev) => Math.max(prev - 0.25, 0.5));
+    const resetResultZoom = () => setResultZoom(1);
 
     if (!isOpen) return null;
 
@@ -384,7 +399,52 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
                                 </div>
                             ) : result ? (
                                 <div className="relative h-full w-full">
-                                    <img src={result} alt="Try-On Result" className="h-full w-full object-contain" />
+                                    <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-lg bg-black/60 p-1 text-white">
+                                        <button
+                                            onClick={zoomOutResult}
+                                            className="rounded p-1 transition hover:bg-white/20"
+                                            aria-label="Zoom out"
+                                            title="Thu nhỏ"
+                                        >
+                                            <ZoomOut size={16} />
+                                        </button>
+                                        <button
+                                            onClick={zoomInResult}
+                                            className="rounded p-1 transition hover:bg-white/20"
+                                            aria-label="Zoom in"
+                                            title="Phóng to"
+                                        >
+                                            <ZoomIn size={16} />
+                                        </button>
+                                        <button
+                                            onClick={resetResultZoom}
+                                            className="rounded p-1 transition hover:bg-white/20"
+                                            aria-label="Reset zoom"
+                                            title="Về 100%"
+                                        >
+                                            <RotateCcw size={16} />
+                                        </button>
+                                        <span className="px-1 text-xs font-medium">{Math.round(resultZoom * 100)}%</span>
+                                    </div>
+
+                                    <button
+                                        onClick={() => setIsPreviewOpen(true)}
+                                        className="absolute right-4 top-4 z-10 rounded-lg bg-black/60 p-2 text-white transition hover:bg-black/75"
+                                        aria-label="Open large preview"
+                                        title="Xem lớn"
+                                    >
+                                        <Maximize2 size={16} />
+                                    </button>
+
+                                    <div className="flex h-full w-full items-center justify-center overflow-auto p-3">
+                                        <img
+                                            src={result}
+                                            alt="Try-On Result"
+                                            className="max-h-full max-w-full object-contain transition-transform duration-200"
+                                            style={{ transform: `scale(${resultZoom})`, transformOrigin: "center center" }}
+                                        />
+                                    </div>
+
                                     <button
                                         onClick={handleReset}
                                         className="absolute bottom-4 right-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
@@ -407,6 +467,54 @@ export default function VirtualTryOnModal({ isOpen, onClose, outfitImageUrl }) {
                     </div>
                 </div>
             </div>
+
+            {isPreviewOpen && result && (
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 p-4">
+                    <div className="relative h-full w-full max-h-[92vh] max-w-6xl overflow-hidden rounded-xl bg-slate-900">
+                        <div className="absolute left-4 top-4 z-10 flex items-center gap-1 rounded-lg bg-black/60 p-1 text-white">
+                            <button
+                                onClick={zoomOutResult}
+                                className="rounded p-1 transition hover:bg-white/20"
+                                aria-label="Zoom out"
+                            >
+                                <ZoomOut size={18} />
+                            </button>
+                            <button
+                                onClick={zoomInResult}
+                                className="rounded p-1 transition hover:bg-white/20"
+                                aria-label="Zoom in"
+                            >
+                                <ZoomIn size={18} />
+                            </button>
+                            <button
+                                onClick={resetResultZoom}
+                                className="rounded p-1 transition hover:bg-white/20"
+                                aria-label="Reset zoom"
+                            >
+                                <RotateCcw size={18} />
+                            </button>
+                            <span className="px-1 text-sm font-medium">{Math.round(resultZoom * 100)}%</span>
+                        </div>
+
+                        <button
+                            onClick={() => setIsPreviewOpen(false)}
+                            className="absolute right-4 top-4 z-10 rounded-lg bg-black/60 p-2 text-white transition hover:bg-black/75"
+                            aria-label="Close preview"
+                        >
+                            <X size={18} />
+                        </button>
+
+                        <div className="flex h-full w-full items-center justify-center overflow-auto p-6">
+                            <img
+                                src={result}
+                                alt="Try-On Result Preview"
+                                className="max-h-full max-w-full object-contain transition-transform duration-200"
+                                style={{ transform: `scale(${resultZoom})`, transformOrigin: "center center" }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

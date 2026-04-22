@@ -13,6 +13,7 @@ import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useFavorites } from "../../contexts/FavoritesContext";
 import { useRentalCart } from "../../contexts/RentalCartContext";
 import { getProductReviewsApi } from "../../services/review.service";
+import { formatConditionLabel } from "../../utils/formatConditionLabel";
 
 const I18N = {
   vi: {
@@ -51,20 +52,6 @@ const I18N = {
   },
 };
 
-const SWATCH_CLASS_MAP = {
-  den: "bg-neutral-900",
-  do: "bg-red-600",
-  vang: "bg-yellow-400",
-  xanh: "bg-blue-600",
-  xanhduong: "bg-blue-700",
-  xanhla: "bg-green-600",
-  trang: "bg-white",
-  hong: "bg-pink-400",
-  tim: "bg-purple-600",
-  nau: "bg-amber-700",
-  xam: "bg-neutral-500",
-};
-
 const normalize = (value = "") =>
   String(value || "")
     .toLowerCase()
@@ -82,7 +69,7 @@ const uniq = (list = []) => Array.from(new Set(list.filter(Boolean)));
 
 const isFreeSizeValue = (value = "") => {
   const n = normalize(value);
-  return n === "freesize" || n === "free" || n === "onesize" || n === "motco";
+  return n === "freesize" || n === "free" || n === "onesize" || n === "one" || n === "motco";
 };
 
 const formatCurrency = (value, lang = "vi") => {
@@ -115,6 +102,9 @@ export default function ProductDetailPage() {
   const [reviewPagination, setReviewPagination] = useState({ page: 1, pages: 1, total: 0, limit: 5 });
   const [availableInstances, setAvailableInstances] = useState([]);
   const [selectedConditionKey, setSelectedConditionKey] = useState("");
+  const [sizeGuideGender, setSizeGuideGender] = useState('female');
+  const [sizeGuideRows, setSizeGuideRows] = useState([]);
+  const [sizeGuideSource, setSizeGuideSource] = useState('global');
 
   // Date selection modal state
   const [showDateModal, setShowDateModal] = useState(false);
@@ -156,10 +146,41 @@ export default function ProductDetailPage() {
     let mounted = true;
     const run = async () => {
       try {
+        const params = new URLSearchParams();
+        if (sizeGuideGender) params.set('gender', sizeGuideGender);
+        const response = await fetch(`/api/products/${id}/size-guide?${params.toString()}`);
+        const payload = response.ok ? await response.json() : { data: { rows: [], source: 'global' } };
+
+        if (!mounted) return;
+        const rows = Array.isArray(payload?.data?.rows) ? payload.data.rows : [];
+        setSizeGuideRows(rows);
+        setSizeGuideSource(payload?.data?.source === 'product' ? 'product' : 'global');
+      } catch {
+        if (!mounted) return;
+        setSizeGuideRows([]);
+        setSizeGuideSource('global');
+      }
+    };
+
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, [id, sizeGuideGender]);
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      try {
         const response = await fetch(`/api/products/${id}/available-instances`);
         const payload = response.ok ? await response.json() : { data: [] };
         if (!mounted) return;
-        setAvailableInstances(Array.isArray(payload?.data) ? payload.data : []);
+        const instances = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.data?.instances)
+            ? payload.data.instances
+            : [];
+        setAvailableInstances(instances);
       } catch {
         if (mounted) setAvailableInstances([]);
       }
@@ -177,29 +198,68 @@ export default function ProductDetailPage() {
     return [];
   }, [product]);
 
+  // CRITICAL: Derive sizes from availableInstances ONLY, never from product.sizes
   const sizes = useMemo(() => {
-    if (!product) return [];
-    if (Array.isArray(product.sizes) && product.sizes.length > 0) return uniq(product.sizes.map(String));
-    return uniq(parseList(product.size));
-  }, [product]);
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
+      return [];
+    }
+    const sizesSet = new Set();
+    availableInstances.forEach((instance) => {
+      const size = String(instance?.size || "").trim().toUpperCase();
+      if (size && !isFreeSizeValue(size)) {
+        sizesSet.add(size);
+      }
+    });
+    return Array.from(sizesSet).sort();
+  }, [availableInstances]);
 
+  // Check if product has FREE SIZE instances
   const isFreeSize = useMemo(() => {
-    if (sizes.length !== 1) return false;
-    return isFreeSizeValue(sizes[0]);
-  }, [sizes]);
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
+      return false;
+    }
+    const hasFreeSize = availableInstances.some((instance) => {
+      const size = String(instance?.size || "").trim().toUpperCase();
+      return isFreeSizeValue(size);
+    });
+    return hasFreeSize;
+  }, [availableInstances]);
 
+  const hasSizes = useMemo(() => {
+    return sizes.length > 0 || isFreeSize;
+  }, [isFreeSize, sizes.length]);
+
+  // Extract colors from both product data and available instances
   const colors = useMemo(() => {
-    if (!product) return [];
-    const fromVariants = Array.isArray(product.colorVariants)
-      ? product.colorVariants
-        .map((variant) => String(variant?.name || variant?.color || "").trim())
-        .filter(Boolean)
-      : [];
-    if (fromVariants.length > 0) return uniq(fromVariants);
-    const fromString = uniq(parseList(product.color));
-    if (fromString.length > 0) return fromString;
-    return ["Default"];
-  }, [product]);
+    const colorsSet = new Set();
+    
+    // First priority: colors from available instances
+    if (Array.isArray(availableInstances) && availableInstances.length > 0) {
+      availableInstances.forEach((instance) => {
+        const color = String(instance?.color || "").trim();
+        if (color) colorsSet.add(color);
+      });
+    }
+    
+    // Fallback: colors from product data
+    if (colorsSet.size === 0) {
+      const fromString = uniq(parseList(product?.color || ""));
+      fromString.forEach((color) => colorsSet.add(color));
+    }
+    
+    if (colorsSet.size === 0) {
+      const fromVariants = Array.isArray(product?.colorVariants)
+        ? product.colorVariants.map((variant) => String(variant?.name || variant?.color || "").trim()).filter(Boolean)
+        : [];
+      fromVariants.forEach((color) => colorsSet.add(color));
+    }
+    
+    if (colorsSet.size === 0) {
+      colorsSet.add("Default");
+    }
+    
+    return Array.from(colorsSet).sort();
+  }, [product, availableInstances]);
 
   const imagesByColor = useMemo(() => {
     const map = {};
@@ -225,19 +285,32 @@ export default function ProductDetailPage() {
     return map;
   }, [product, colors, baseImages]);
 
+  // Check if a specific size is available in the instances
+  const isSizeAvailable = useCallback((size) => {
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
+      return false;
+    }
+    const normalizedSize = String(size || "").trim().toUpperCase();
+    return availableInstances.some((instance) => {
+      const instanceSize = String(instance?.size || "").trim().toUpperCase();
+      return instanceSize === normalizedSize;
+    });
+  }, [availableInstances]);
+
   const hasVariantPricing = useMemo(() => {
     const pricing = product?.variantRentPrices;
     return Boolean(pricing && typeof pricing === "object" && Object.keys(pricing).length > 0);
   }, [product]);
 
   const isVariantAvailable = useCallback((size, color) => {
+    if (!hasSizes) return true;
     if (!hasVariantPricing) return true;
     if (isFreeSize) {
       return product?.variantRentPrices?.[`FREE SIZE__${color}`] != null || product?.variantRentPrices?.[`Free Size__${color}`] != null;
     }
     if (!size || !color) return false;
     return product?.variantRentPrices?.[`${size}__${color}`] != null;
-  }, [hasVariantPricing, isFreeSize, product?.variantRentPrices]);
+  }, [hasVariantPricing, hasSizes, isFreeSize, product?.variantRentPrices]);
 
   useEffect(() => {
     if (!colors.length) return;
@@ -246,23 +319,27 @@ export default function ProductDetailPage() {
       return;
     }
 
-    if (!isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) {
+    if (hasSizes && !isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) {
       const fallback = sizes.find((size) => isVariantAvailable(size, selectedColor));
       if (fallback) setSelectedSize(fallback);
     }
-  }, [colors, selectedColor, selectedSize, sizes, isFreeSize, isVariantAvailable]);
+  }, [colors, selectedColor, selectedSize, sizes, isFreeSize, isVariantAvailable, hasSizes]);
 
   useEffect(() => {
-    if (!sizes.length) return;
+    if (!hasSizes || !sizes.length) {
+      setSelectedSize("");
+      return;
+    }
     if (isFreeSize) {
       setSelectedSize("FREE SIZE");
       return;
     }
 
-    if (!selectedSize || !sizes.includes(selectedSize)) {
-      setSelectedSize(sizes[0]);
+    // Validate that selected size exists in available instances
+    if (!selectedSize || !isSizeAvailable(selectedSize)) {
+      setSelectedSize(sizes[0] || "");
     }
-  }, [sizes, selectedSize, isFreeSize]);
+  }, [sizes, isFreeSize, hasSizes, isSizeAvailable, selectedSize]);
 
   useEffect(() => {
     setSelectedImageIndex(0);
@@ -272,11 +349,34 @@ export default function ProductDetailPage() {
     return imagesByColor[selectedColor] || baseImages;
   }, [imagesByColor, selectedColor, baseImages]);
 
-  const conditionOptions = useMemo(() => {
+  const filteredInstancesForSelection = useMemo(() => {
     if (!Array.isArray(availableInstances) || availableInstances.length === 0) return [];
+
+    const bySize = availableInstances.filter((instance) => {
+      const instanceSize = String(instance?.size || "").trim().toUpperCase();
+      if (!hasSizes || isFreeSize) {
+        return isFreeSizeValue(instanceSize || "FREE SIZE");
+      }
+      if (!selectedSize) return false;
+      return instanceSize === String(selectedSize || "").trim().toUpperCase();
+    });
+
+    // If backend provides color per instance, keep UI consistent with selected color.
+    const byColor = bySize.filter((instance) => {
+      const instanceColor = String(instance?.color || "").trim();
+      if (!instanceColor) return true;
+      if (!selectedColor) return true;
+      return instanceColor === selectedColor;
+    });
+
+    return byColor;
+  }, [availableInstances, hasSizes, isFreeSize, selectedColor, selectedSize]);
+
+  const conditionOptions = useMemo(() => {
+    if (!filteredInstancesForSelection.length) return [];
     const grouped = new Map();
 
-    availableInstances.forEach((instance) => {
+    filteredInstancesForSelection.forEach((instance) => {
       const score = Number(instance?.conditionScore ?? 100);
       const level = String(instance?.conditionLevel || "Used");
       const rentPrice = Number(instance?.currentRentPrice ?? 0);
@@ -312,9 +412,9 @@ export default function ProductDetailPage() {
       .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
       .map((item) => ({
         ...item,
-        label: `${item.level === "New" ? "Mới" : "Đã sử dụng"} - ${item.score}/100 - ${formatCurrency(item.rentPrice, lang)}${item.count > 1 ? ` (${item.count} sản phẩm)` : ""}`,
+        label: formatConditionLabel(item.score),
       }));
-  }, [availableInstances, lang]);
+  }, [filteredInstancesForSelection]);
 
   const selectedConditionOption = useMemo(() => {
     if (!conditionOptions.length) return null;
@@ -346,10 +446,8 @@ export default function ProductDetailPage() {
     setSelectedImageIndex(0);
   }, [selectedImageIndex, currentImagesByColor]);
 
+  // Giá thuê luôn lấy từ product (variant matrix hoặc base), KHÔNG bị ảnh hưởng bởi condition
   const currentRentPrice = useMemo(() => {
-    if (selectedConditionOption) {
-      return Number(selectedConditionOption.rentPrice || 0);
-    }
     if (!product) return 0;
     if (!hasVariantPricing) return Number(product.baseRentPrice || 0);
 
@@ -366,34 +464,51 @@ export default function ProductDetailPage() {
     }
 
     return Number(product.baseRentPrice || 0);
-  }, [selectedConditionOption, product, hasVariantPricing, isFreeSize, selectedSize, selectedColor]);
+  }, [product, hasVariantPricing, isFreeSize, selectedSize, selectedColor]);
 
   const currentSalePrice = useMemo(() => {
     if (selectedConditionOption) {
-      return Number(selectedConditionOption.salePrice || 0);
+      const optionSalePrice = Number(selectedConditionOption.salePrice || 0);
+      if (optionSalePrice > 0) return optionSalePrice;
     }
     return Number(product?.baseSalePrice || 0);
   }, [selectedConditionOption, product?.baseSalePrice]);
 
-  const canSubmit = useMemo(() => {
+  // Biến thể (size/màu) — không gắn với “còn hàng thuê/mua”
+  const variantReady = useMemo(() => {
     if (!product) return false;
-    if (Number(product?.availableQuantity || 0) <= 0) return false;
     if (!selectedColor) return false;
-    if (conditionOptions.length > 0 && !selectedConditionOption) return false;
-    if (!isFreeSize && sizes.length > 0 && !selectedSize) return false;
-    if (!isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) return false;
+    if (hasSizes && !isFreeSize && sizes.length > 0 && !selectedSize) return false;
+    if (hasSizes && !isFreeSize && selectedSize && !isVariantAvailable(selectedSize, selectedColor)) return false;
     return true;
-  }, [product, selectedColor, selectedSize, conditionOptions.length, selectedConditionOption, isFreeSize, sizes, isVariantAvailable]);
+  }, [product, selectedColor, selectedSize, isFreeSize, sizes, isVariantAvailable, hasSizes]);
 
-  const canBuy = useMemo(() => {
-    if (!canSubmit) return false;
-    if (Number(currentSalePrice || 0) <= 0) return false;
-    if (Number(product?.availableQuantity || 0) <= 0) return false;
-    if (conditionOptions.length > 0) {
-      return Number(selectedConditionOption?.score || 0) === 100;
-    }
+  // Số lượng có thể thuê — tất cả instance còn trong vòng đời cho thuê
+  const rentableQuantity = useMemo(() => {
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) return 0;
+    return availableInstances.length;
+  }, [availableInstances]);
+
+  // Số lượng có thể mua — chỉ đếm instance Available (BE đã đánh dấu isPurchasable)
+  const purchasableQuantity = useMemo(() => {
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) return 0;
+    return availableInstances.filter((inst) => inst?.isPurchasable).length;
+  }, [availableInstances]);
+
+  const canSubmitRent = useMemo(() => {
+    if (!variantReady) return false;
+    if (rentableQuantity <= 0) return false;
     return true;
-  }, [canSubmit, currentSalePrice, product?.availableQuantity, conditionOptions.length, selectedConditionOption?.score]);
+  }, [variantReady, rentableQuantity]);
+
+  // Chỉ cho Mua khi thực sự có instance Available (đồ đang thuê/reserved không bán được)
+  const canBuy = useMemo(() => {
+    if (!variantReady) return false;
+    if (Number(currentSalePrice || 0) <= 0) return false;
+    if (purchasableQuantity <= 0) return false;
+    if (conditionOptions.length > 0 && !selectedConditionOption) return false;
+    return true;
+  }, [variantReady, currentSalePrice, purchasableQuantity, conditionOptions.length, selectedConditionOption]);
 
   useEffect(() => {
     if (!product?._id) return;
@@ -466,6 +581,7 @@ export default function ProductDetailPage() {
   };
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const maxRentalDays = useMemo(() => parseInt(import.meta.env.VITE_MAX_RENTAL_DAYS || "30", 10), []);
 
   const rentStartDateTime = useMemo(() => {
     if (!rentStartDate || !rentStartTime) return null;
@@ -498,11 +614,11 @@ export default function ProductDetailPage() {
   }, []);
 
   const handleRent = async () => {
-    if (Number(product?.availableQuantity || 0) <= 0) {
-      showToast("Sản phẩm đã hết hàng, không thể mua hoặc thuê");
+    if (rentableQuantity <= 0) {
+      showToast("Không còn bản ghi nào có thể thuê (đã mất hoặc đã bán hết).");
       return;
     }
-    if (!canSubmit) {
+    if (!canSubmitRent) {
       showToast(t.toastError);
       return;
     }
@@ -528,20 +644,26 @@ export default function ProductDetailPage() {
       return;
     }
 
+    if (rentalDays > maxRentalDays) {
+      showToast(`Thời gian thuê tối đa là ${maxRentalDays} ngày.`);
+      return;
+    }
+
     setLoadingAction("rent");
     try {
       // Tạo datetime string với giờ
       const startDateTime = rentStartDate && rentStartTime ? `${rentStartDate}T${rentStartTime}:00` : rentStartDate;
       const endDateTime = rentEndDate && rentEndTime ? `${rentEndDate}T${rentEndTime}:00` : rentEndDate;
 
-      // Thêm sản phẩm vào giỏ thuê với thông tin ngày và giờ
-      addItem(product, {
+      // Thêm vào giỏ thuê – hệ thống tự assign instance (ưu tiên Used)
+        addItem(product, {
         color: selectedColor,
-        size: selectedSize,
+        size: hasSizes ? selectedSize : '',
         rentPrice: currentRentPrice,
-        productInstanceId: selectedConditionOption?.instanceId || null,
+        productInstanceId: null,
         rentStartDate: startDateTime,
-        rentEndDate: endDateTime
+        rentEndDate: endDateTime,
+        image: currentImagesByColor[selectedImageIndex] || currentImagesByColor[0] || product.imageUrl || '',
       });
       showToast(t.toastRent);
       // Đóng modal và chuyển đến trang checkout
@@ -555,11 +677,12 @@ export default function ProductDetailPage() {
   };
 
   const handleBuy = async () => {
-    if (Number(product?.availableQuantity || 0) <= 0) {
+    // Check if product is actually in stock based on availableInstances
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) {
       showToast("Sản phẩm đã hết hàng, không thể mua hoặc thuê");
       return;
     }
-    if (!canSubmit) {
+    if (!variantReady) {
       showToast(t.toastError);
       return;
     }
@@ -571,11 +694,13 @@ export default function ProductDetailPage() {
     try {
       addBuyItem(product, {
         color: selectedColor,
-        size: selectedSize,
+        size: hasSizes ? selectedSize : '',
         salePrice: currentSalePrice,
         productInstanceId: selectedConditionOption?.instanceId || null,
+        conditionLevel: selectedConditionOption?.level || 'New',
         conditionScore: Number(selectedConditionOption?.score ?? 100),
-        quantity: 1
+        quantity: 1,
+        image: currentImagesByColor[selectedImageIndex] || currentImagesByColor[0] || product.imageUrl || '',
       });
       showToast(t.toastBuy);
       navigate("/cart");
@@ -608,19 +733,15 @@ export default function ProductDetailPage() {
     showToast(result.added ? t.toastFavoriteAdded : t.toastFavoriteRemoved);
   };
 
-  const getSwatchClass = (color) => {
-    const key = normalize(color);
-    const match = Object.keys(SWATCH_CLASS_MAP).find((item) => key.includes(item));
-    return match ? SWATCH_CLASS_MAP[match] : "bg-neutral-300";
-  };
-
   const badges = useMemo(() => {
-    const list = [Number(product?.availableQuantity || 0) > 0 ? "Có sẵn" : "Hết hàng"];
+    // Check stock based on ACTUAL available instances, not product.availableQuantity
+    const actuallyInStock = Array.isArray(availableInstances) && availableInstances.length > 0;
+    const list = [actuallyInStock ? "Có sẵn" : "Hết hàng"];
     if (isFreeSize) list.push("Free size");
     if (product?.isBestSeller) list.push("Best seller");
     if (product?.isNew) list.push("Mới");
     return list;
-  }, [product?.availableQuantity, product?.isBestSeller, product?.isNew, isFreeSize]);
+  }, [availableInstances, product?.isBestSeller, product?.isNew, isFreeSize]);
 
   return (
     <div className="min-h-screen bg-white pb-24 md:pb-10">
@@ -662,18 +783,15 @@ export default function ProductDetailPage() {
                   salePriceText={formatCurrency(currentSalePrice, lang)}
                   variantContent={
                     <VariantSelector
-                      colors={colors}
                       sizes={sizes}
+                      hasSizes={hasSizes}
                       conditionOptions={conditionOptions}
                       selectedConditionKey={selectedConditionOption?.key || ""}
                       onConditionChange={setSelectedConditionKey}
                       selectedColor={selectedColor}
                       selectedSize={selectedSize}
-                      onColorChange={setSelectedColor}
                       onSizeChange={setSelectedSize}
-                      getSwatchClass={getSwatchClass}
-                      isColorDisabled={(color) => !isFreeSize && selectedSize ? !isVariantAvailable(selectedSize, color) : false}
-                      isSizeDisabled={(size) => selectedColor ? !isVariantAvailable(size, selectedColor) : false}
+                      isSizeDisabled={(size) => !isSizeAvailable(size) || (selectedColor ? !isVariantAvailable(size, selectedColor) : false)}
                       isFreeSize={isFreeSize}
                     />
                   }
@@ -684,7 +802,8 @@ export default function ProductDetailPage() {
                       onRent={handleRent}
                       onBuy={handleBuy}
                       loadingAction={loadingAction}
-                      canSubmit={canSubmit}
+                      canSubmit={variantReady}
+                      canRent={canSubmitRent}
                       canBuy={canBuy}
                       productImage={
                         currentImagesByColor[selectedImageIndex] || currentImagesByColor[0] || product.imageUrl || ""
@@ -696,7 +815,13 @@ export default function ProductDetailPage() {
 
               {/* Description Section */}
               <section className="border-t border-slate-200 pt-4">
-                <ProductDescription description={product.description} />
+                <ProductDescription
+                  description={product.description}
+                  sizeGuideRows={sizeGuideRows}
+                  sizeGuideSource={sizeGuideSource}
+                  selectedGender={sizeGuideGender}
+                  onGenderChange={setSizeGuideGender}
+                />
               </section>
 
               <section className="border-t border-slate-200 pt-4">
@@ -855,6 +980,11 @@ export default function ProductDetailPage() {
                     Vui lòng chọn giờ trả sau giờ nhận để tạo khoảng thuê hợp lệ.
                   </p>
                 )}
+                {rentalDays > maxRentalDays && (
+                  <p className="mt-3 text-sm font-medium text-rose-600">
+                    Thời gian thuê tối đa là {maxRentalDays} ngày. Hiện tại bạn đang chọn {rentalDays} ngày.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -869,7 +999,7 @@ export default function ProductDetailPage() {
               <button
                 type="button"
                 onClick={handleConfirmRent}
-                disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate || rentalDays === 0}
+                disabled={loadingAction === "rent" || !rentStartDate || !rentEndDate || rentalDays === 0 || rentalDays > maxRentalDays}
                 className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-300"
               >
                 {loadingAction === "rent" ? "Đang xử lý..." : "Xác nhận"}

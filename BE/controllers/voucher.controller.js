@@ -1,4 +1,5 @@
 const User = require('../model/User.model');
+const { notifyVoucherExpiringSoon } = require('../services/alert.dispatcher.service');
 const {
   validateVoucher,
   buildInvalidResponse,
@@ -27,6 +28,7 @@ const handleVoucherAdminError = (res, error) => {
 exports.createVoucher = async (req, res) => {
   try {
     const voucher = await createVoucher(req.body || {});
+    await notifyVoucherExpiringSoon();
     return res.status(201).json({
       success: true,
       message: 'Tao voucher thanh cong',
@@ -86,6 +88,7 @@ exports.getVoucherDetail = async (req, res) => {
 exports.updateVoucher = async (req, res) => {
   try {
     const voucher = await updateVoucher(req.params.id, req.body || {});
+    await notifyVoucherExpiringSoon();
     return res.json({
       success: true,
       message: 'Cap nhat voucher thanh cong',
@@ -100,6 +103,7 @@ exports.updateVoucher = async (req, res) => {
 exports.toggleVoucherStatus = async (req, res) => {
   try {
     const voucher = await toggleVoucherStatus(req.params.id);
+    await notifyVoucherExpiringSoon();
     return res.json({
       success: true,
       message: voucher.isActive ? 'Kich hoat voucher thanh cong' : 'Tat voucher thanh cong',

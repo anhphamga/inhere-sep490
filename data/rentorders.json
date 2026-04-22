@@ -18,7 +18,6 @@
     },
     "depositAmount": 300000,
     "remainingAmount": 400000,
-    "washingFee": 0,
     "damageFee": 0,
     "totalAmount": 700000,
     "createdAt": {

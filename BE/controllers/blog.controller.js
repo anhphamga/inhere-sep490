@@ -263,6 +263,30 @@ const getPendingBlogs = async (req, res) => {
   }
 };
 
+const getApprovedBlogs = async (req, res) => {
+  try {
+    const blogs = await Blog.find({
+      approvedBy: { $ne: null },
+      status: { $in: ['pending', 'published'] },
+    })
+      .sort({ updatedAt: -1 })
+      .populate('author', 'name email')
+      .populate('approvedBy', 'name email')
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: blogs.map(mapBlog),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'KhÃ´ng thá»ƒ táº£i danh sÃ¡ch bÃ i viáº¿t Ä‘Ã£ duyá»‡t',
+      error: error.message,
+    });
+  }
+};
+
 const approveBlog = async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id);
@@ -545,6 +569,7 @@ module.exports = {
   createBlog,
   deleteBlog,
   getMyBlogs,
+  getApprovedBlogs,
   getPendingBlogs,
   getPublishedBlogBySlug,
   getPublishedBlogs,

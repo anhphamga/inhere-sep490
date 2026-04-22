@@ -10,6 +10,7 @@ const normalizeForMatch = (value) => {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -100,6 +101,30 @@ const findFaqAnswer = (message) => {
       question: 'Nếu làm rách đồ thì phí bồi thường tính như thế nào?',
       answer: 'Nếu đồ bị hư hỏng trong thời gian thuê, bạn báo shop sớm để được hướng dẫn. Phí xử lý sẽ dựa trên mức độ hư hỏng và chính sách áp dụng cho đơn của bạn.',
       score: 0.95,
+    };
+  }
+
+  if (includesAny(normalized, ['lam mat', 'mat do', 'mat ao', 'that lac'])) {
+    return {
+      question: 'Nếu làm mất đồ thuê thì xử lý thế nào?',
+      answer: 'Khi làm mất đồ thuê, bạn nên báo ngay để shop hỗ trợ quy trình đối soát. Tiền cọc sẽ được bù trừ trước, phần chênh lệch sẽ xử lý theo chính sách bồi thường của đơn.',
+      score: 0.95,
+    };
+  }
+
+  if (includesAny(normalized, ['den lay muon', 'lay muon', 'tre gio lay'])) {
+    return {
+      question: 'Đến lấy đồ muộn có sao không?',
+      answer: 'Bạn nên báo sớm để shop kiểm tra khả năng giữ đơn theo khung giờ mới. Nếu quá thời gian giữ chỗ của đơn, đơn có thể bị xử lý theo chính sách không đến nhận.',
+      score: 0.9,
+    };
+  }
+
+  if (includesAny(normalized, ['khong den nhan', 'no show', 'noshow'])) {
+    return {
+      question: 'Không đến nhận đồ có bị mất cọc không?',
+      answer: 'Nếu không đến nhận và không thông báo trước, đơn có thể bị đóng theo diện no-show. Tiền cọc sẽ được xử lý theo quy định áp dụng cho đơn tại thời điểm đó.',
+      score: 0.9,
     };
   }
 

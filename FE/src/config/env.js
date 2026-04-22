@@ -1,13 +1,25 @@
 const asText = (value) => String(value || '').trim();
 
+// ❌ KHÔNG dùng localhost trong production
 const devApiBaseUrl = 'http://localhost:9000/api';
+
+// ✅ ENV từ Vercel
 const runtimeApiBaseUrl = asText(import.meta.env.VITE_API_BASE_URL);
 
-if (!runtimeApiBaseUrl && import.meta.env.PROD) {
-  throw new Error('Missing required env: VITE_API_BASE_URL');
-}
+// ✅ fallback production (QUAN TRỌNG)
+const productionApiFallback = 'https://hoianstyle.onrender.com/api';
 
-export const API_BASE_URL = runtimeApiBaseUrl || devApiBaseUrl;
+// 🎯 FINAL BASE URL (KHÔNG BAO GIỜ RỖNG)
+// ⚠️ CRITICAL: Must be full URL (e.g., https://hoianstyle.onrender.com/api)
+// ⚠️ NEVER use relative paths like "/api" - causes OAuth origin_mismatch errors
+export const API_BASE_URL =
+  runtimeApiBaseUrl !== ''
+    ? runtimeApiBaseUrl
+    : import.meta.env.PROD
+      ? productionApiFallback
+      : devApiBaseUrl;
+
+// ================= LINKS =================
 
 export const EXTERNAL_LINKS = {
   zalo: asText(import.meta.env.VITE_ZALO_URL) || 'https://zalo.me/0898199099',
@@ -18,6 +30,8 @@ export const EXTERNAL_LINKS = {
     asText(import.meta.env.VITE_INSTAGRAM_URL) ||
     'https://www.instagram.com/inhere_trangphuchoian/',
 };
+
+// ================= IMAGES =================
 
 export const IMAGE_FALLBACKS = {
   ownerProductCard:

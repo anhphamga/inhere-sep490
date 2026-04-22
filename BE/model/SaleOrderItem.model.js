@@ -20,6 +20,11 @@ const saleOrderItemSchema = new mongoose.Schema({
     required: true,
     default: 1
   },
+  conditionLevel: {
+    type: String,
+    enum: ['New', 'Used'],
+    default: 'New'
+  },
   size: {
     type: String,
     required: true

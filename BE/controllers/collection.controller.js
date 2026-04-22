@@ -24,6 +24,20 @@ const normalizeColorVariants = (product = {}) => {
     .filter((variant) => variant.name);
 };
 
+const normalizeSizeRows = (product = {}) => {
+  const rows = Array.isArray(product?.sizes) ? product.sizes : [];
+  const normalized = rows
+    .map((row) => ({
+      size: toText(row?.size || row),
+      quantity: Math.max(Number(row?.quantity || 0), 0),
+    }))
+    .filter((row) => row.size);
+  if (normalized.length > 0) return normalized;
+
+  const fallback = toText(product?.size);
+  return fallback ? [{ size: fallback, quantity: Math.max(Number(product?.quantity || 0), 0) }] : [];
+};
+
 const normalizeProduct = (product = {}) => {
   const image =
     (Array.isArray(product?.images) && product.images.find(Boolean)) ||
@@ -42,7 +56,10 @@ const normalizeProduct = (product = {}) => {
     baseRentPrice: Number(product?.baseRentPrice || 0),
     baseSalePrice: Number(product?.baseSalePrice || 0),
     price: Number(product?.baseRentPrice || product?.baseSalePrice || 0),
-    sizes: Array.isArray(product?.sizes) ? product.sizes.filter(Boolean).map(String) : [],
+    hasSizes: Boolean(product?.hasSizes) || normalizeSizeRows(product).length > 0,
+    sizes: normalizeSizeRows(product),
+    sizeOptions: normalizeSizeRows(product).map((item) => item.size),
+    quantity: Math.max(Number(product?.quantity || 0), 0),
     colorVariants: normalizeColorVariants(product),
     color: toText(product?.color),
     createdAt: product?.createdAt || null,
@@ -70,8 +87,8 @@ const buildFilters = (products = []) => {
       if (variantSize) sizes.add(variantSize);
     });
 
-    (Array.isArray(product?.sizes) ? product.sizes : []).forEach((size) => {
-      const normalized = toText(size);
+    normalizeSizeRows(product).forEach((row) => {
+      const normalized = toText(row?.size);
       if (normalized) sizes.add(normalized);
     });
 

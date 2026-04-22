@@ -9,6 +9,7 @@ import RentHero from '../../components/catalog/rent/RentHero';
 import OutfitCarousel from '../../components/catalog/rent/OutfitCarousel';
 import StickyRentCTA from '../../components/catalog/rent/StickyRentCTA';
 import SortDropdown from '../../components/catalog/shop/SortDropdown';
+import Pagination from '../../components/catalog/shop/Pagination';
 import BookingModal from '../../components/booking/BookingModal';
 import {
   buildSidebarTree,
@@ -19,8 +20,10 @@ import {
   resolveCategoryValueFromKeyword,
 } from './catalogHelpers';
 import { useFavorites } from '../../contexts/FavoritesContext';
+import { API_BASE_URL } from '../../config/env';
 
 const DEFAULT_FILTERS = { occasion: '', category: '', color: '', size: '', price: '' };
+const RENT_PAGE_SIZE = 12;
 
 const OCCASION_KEYWORDS = {
   wedding: ['cuoi', 'wedding', 'le cuoi', 'an hoi'],
@@ -51,6 +54,8 @@ const getLikeCount = (product = {}) => {
   return 0;
 };
 
+const toApiUrl = (path) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+
 const buildOccasionText = (product = {}) => {
   const tags = Array.isArray(product?.tags) ? product.tags.join(' ') : '';
   return normalizeText(
@@ -76,6 +81,7 @@ export default function RentPage() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('top_liked');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [startDate, setStartDate] = useState('');
@@ -115,7 +121,7 @@ export default function RentPage() {
     let mounted = true;
     const run = async () => {
       try {
-        const response = await fetch('/api/categories?lang=vi&purpose=rent');
+        const response = await fetch(toApiUrl('/categories?lang=vi&purpose=rent'));
         const payload = response.ok ? await response.json() : { categories: [] };
         if (!mounted) return;
         setCategories(Array.isArray(payload?.categories) ? payload.categories : []);
@@ -165,7 +171,7 @@ export default function RentPage() {
         if (filters.category) params.set('category', filters.category);
         if (startDate) params.set('startDate', startDate);
         if (endDate) params.set('endDate', endDate);
-        const response = await fetch(`/api/products?${params.toString()}`);
+        const response = await fetch(toApiUrl(`/products?${params.toString()}`));
         const payload = response.ok ? await response.json() : { data: [] };
         if (!mounted) return;
         const rawProducts = Array.isArray(payload?.data) ? payload.data : [];
@@ -190,7 +196,11 @@ export default function RentPage() {
         : true;
       const bySize = filters.size
         ? normalizeText(
-            `${product?.size || ''} ${Array.isArray(product?.sizes) ? product.sizes.join(' ') : ''} ${
+            `${product?.size || ''} ${Array.isArray(product?.sizeOptions) ? product.sizeOptions.join(' ') : ''} ${
+              Array.isArray(product?.sizes)
+                ? product.sizes.map((row) => (typeof row === 'object' ? row?.size : row)).join(' ')
+                : ''
+            } ${
               Array.isArray(product?.colorVariants)
                 ? product.colorVariants.map((variant) => variant?.size || '').join(' ')
                 : ''
@@ -233,6 +243,26 @@ export default function RentPage() {
 
     return list;
   }, [products, filters, sortBy, searchKeyword, startDate, endDate]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredProducts.length / RENT_PAGE_SIZE)),
+    [filteredProducts.length]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchKeyword, filters, sortBy, startDate, endDate]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const paginatedProducts = useMemo(() => {
+    const start = (page - 1) * RENT_PAGE_SIZE;
+    return filteredProducts.slice(start, start + RENT_PAGE_SIZE);
+  }, [filteredProducts, page]);
 
   const favoriteIds = useMemo(() => {
     const ids = new Set();
@@ -362,7 +392,7 @@ export default function RentPage() {
           <div className="space-y-5">
             <ProductGrid
               mode="rent"
-              products={filteredProducts}
+              products={paginatedProducts}
               loading={loading}
               favoriteIds={favoriteIds}
               favoriteLoadingIds={favoriteLoadingIds}
@@ -372,6 +402,8 @@ export default function RentPage() {
               onSecondaryAction={handleBookFitting}
               emptyText="Không có trang phục phù hợp với bộ lọc thuê."
             />
+
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
           </div>
         </section>

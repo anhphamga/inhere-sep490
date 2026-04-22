@@ -10,6 +10,7 @@ import {
 import { currencyFormatter, toArray } from '../../utils/owner.utils'
 import { flattenCategoryNames, normalizeCategoryTree } from '../../utils/categoryTree'
 import AddProductModal from './AddProductModal'
+import OwnerGlobalSizeGuideModal from './OwnerGlobalSizeGuideModal'
 import { UI_IMAGE_FALLBACKS } from '../../constants/ui'
 
 const lifecycleOptions = ['', 'Available', 'Rented', 'Washing', 'Repair', 'Lost']
@@ -50,19 +51,53 @@ const toDisplayText = (value) => {
 }
 
 const getDisplaySizes = (product) => {
-    const fromSizes = toArray(product?.sizes)
-        .map((item) => toDisplayText(item))
-        .filter(Boolean)
+    const fromStock = Array.isArray(product?.sizeStock)
+        ? product.sizeStock
+            .filter((row) => row && Number(row.quantity || 0) > 0)
+            .map((row) => toDisplayText(row.size))
+            .filter(Boolean)
+        : []
 
-    if (fromSizes.length > 0) {
-        return [...new Set(fromSizes)].join(', ')
+    if (fromStock.length > 0) {
+        return [...new Set(fromStock)].join(', ')
     }
-
-    const singleSize = toDisplayText(product?.size)
-    return singleSize || 'Không có'
+    // No fallback: only show actual sizes derived from ProductInstance -> sizeStock.
+    return '—'
 }
 
-export default function ProductsList({ onSelectProduct }) {
+/** Tồn thực tế trong kho theo từng size (API owner: sizeStock), không tính đã bán */
+const renderOwnerSizeStock = (product) => {
+    const rows = Array.isArray(product?.sizeStock) ? product.sizeStock : []
+    if (rows.length > 0) {
+        const total = rows.reduce((sum, row) => sum + Number(row?.quantity || 0), 0)
+        const available = rows.reduce((sum, row) => sum + Number(row?.available || 0), 0)
+        const headline = total === 0
+            ? 'Hết hàng'
+            : (available === 0 ? 'Đang thuê hết' : null)
+        return (
+            <div className="flex flex-col gap-0.5 text-sm text-slate-800">
+                <div className="text-slate-700">
+                    {headline ? <span className="font-semibold">{headline} · </span> : null}
+                    <span className="text-slate-600">Tổng:</span> <span className="font-semibold">{total}</span>
+                    <span className="text-slate-400"> | </span>
+                    <span className="text-slate-600">Có sẵn:</span> <span className="font-semibold">{available}</span>
+                </div>
+                {rows.map((row) => (
+                    <div key={`${row.size}-${row.quantity}`}>
+                        <span className="font-semibold text-slate-800">{row.size}</span>
+                        <span className="text-slate-500"> — </span>
+                        <span>{Number(row.quantity || 0)}</span>
+                        <span className="text-slate-400"> (có sẵn {Number(row.available || 0)})</span>
+                    </div>
+                ))}
+            </div>
+        )
+    }
+    // No fallback: show actual inventory only (derived from ProductInstance -> sizeStock).
+    return <span className="text-sm text-slate-600">Hết hàng · Tổng: 0 | Có sẵn: 0</span>
+}
+
+export default function ProductsList({ onSelectProduct, initialPage = 1 }) {
     const location = useLocation()
     const [products, setProducts] = useState([])
     const [viewMode, setViewMode] = useState('list')
@@ -70,9 +105,11 @@ export default function ProductsList({ onSelectProduct }) {
     const [error, setError] = useState('')
     const [filters, setFilters] = useState(initialFilters)
     const [openCreateModal, setOpenCreateModal] = useState(false)
+    const [openGlobalSizeGuideModal, setOpenGlobalSizeGuideModal] = useState(false)
     const [importing, setImporting] = useState(false)
+    const [importReport, setImportReport] = useState(null)
     const [exporting, setExporting] = useState(false)
-    const [currentPage, setCurrentPage] = useState(1)
+    const [currentPage, setCurrentPage] = useState(Math.max(1, Number(initialPage) || 1))
     const [deletingProductId, setDeletingProductId] = useState('')
     const [selectedProductIds, setSelectedProductIds] = useState([])
     const [categoryTree, setCategoryTree] = useState([])
@@ -128,7 +165,22 @@ export default function ProductsList({ onSelectProduct }) {
     }, [])
 
     const categoryOptions = useMemo(() => flattenCategoryNames(categoryTree), [categoryTree])
-    const sizeOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.size)).filter(Boolean))], [products])
+    const sizeOptions = useMemo(() => {
+        const set = new Set()
+        products.forEach((item) => {
+            toArray(item?.sizes).forEach((row) => {
+                const value = toDisplayText(typeof row === 'object' ? row?.size : row)
+                if (value) set.add(value)
+            })
+            toArray(item?.sizeOptions).forEach((size) => {
+                const value = toDisplayText(size)
+                if (value) set.add(value)
+            })
+            const fallback = toDisplayText(item.size)
+            if (fallback) set.add(fallback)
+        })
+        return Array.from(set)
+    }, [products])
     const colorOptions = useMemo(() => [...new Set(products.map((item) => toDisplayText(item.color)).filter(Boolean))], [products])
     const filteredProducts = useMemo(() => {
         const searchParams = new URLSearchParams(location.search)
@@ -164,7 +216,12 @@ export default function ProductsList({ onSelectProduct }) {
     const paginatedProductIds = paginatedProducts.map((product) => String(product._id || product.id)).filter(Boolean)
     const isAllPageSelected = paginatedProductIds.length > 0 && paginatedProductIds.every((id) => selectedProductIds.includes(id))
 
+    const didInitPageRef = useRef(false)
     useEffect(() => {
+        if (!didInitPageRef.current) {
+            didInitPageRef.current = true
+            return
+        }
         setCurrentPage(1)
     }, [location.search, filters])
 
@@ -209,6 +266,34 @@ export default function ProductsList({ onSelectProduct }) {
         importInputRef.current?.click()
     }
 
+    const downloadCsvTemplate = (mode = 'no-size') => {
+        const fileName = mode === 'with-size'
+            ? 'owner_product_import_template_with_size.csv'
+            : 'owner_product_import_template.csv'
+
+        const csvContent = mode === 'with-size'
+            ? [
+                'name,price,category,S,M,L,color,description',
+                '"Ao dai truyen thong",300000,"Ao Dai",2,3,1,"Do","Mau template co size"',
+                '"Ao dai su kien",450000,"Ao Dai",0,2,4,"Xanh","Mau template co size"',
+            ].join('\n')
+            : [
+                'name,price,category,quantity,color,description',
+                '"Ao dai truyen thong",300000,"Ao Dai",8,"Do","Mau template khong size"',
+                '"Ao dai su kien",450000,"Ao Dai",5,"Xanh","Mau template khong size"',
+            ].join('\n')
+
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', fileName)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+    }
+
     const handleImportProducts = async (event) => {
         const file = event.target.files?.[0]
         if (!file) {
@@ -218,9 +303,16 @@ export default function ProductsList({ onSelectProduct }) {
         try {
             setImporting(true)
             setError('')
-            await importOwnerProductsApi(file)
+            const response = await importOwnerProductsApi(file)
+            setImportReport({
+                successCount: Number(response?.successCount || 0),
+                failedCount: Number(response?.failedCount || 0),
+                errors: Array.isArray(response?.errors) ? response.errors : [],
+                message: response?.message || 'Import completed',
+            })
             await loadProducts(filters)
         } catch (apiError) {
+            setImportReport(null)
             setError(apiError?.response?.data?.message || apiError?.message || 'Không thể nhập danh sách sản phẩm.')
         } finally {
             setImporting(false)
@@ -367,7 +459,7 @@ export default function ProductsList({ onSelectProduct }) {
                         <input
                             ref={importInputRef}
                             type="file"
-                            accept=".csv,.xlsx,.xls"
+                            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                             className="hidden"
                             onChange={handleImportProducts}
                         />
@@ -379,7 +471,25 @@ export default function ProductsList({ onSelectProduct }) {
                             disabled={importing}
                         >
                             <Upload className="w-4 h-4" />
-                            {importing ? 'Đang nhập...' : 'Nhập CSV'}
+                            {importing ? 'Đang nhập...' : 'Nhập Excel'}
+                        </button>
+
+                        <button
+                            type="button"
+                            className="h-10 flex items-center gap-2 px-4 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all"
+                            onClick={() => downloadCsvTemplate('no-size')}
+                        >
+                            <Download className="w-4 h-4" />
+                            Mẫu CSV
+                        </button>
+
+                        <button
+                            type="button"
+                            className="h-10 flex items-center gap-2 px-4 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all"
+                            onClick={() => downloadCsvTemplate('with-size')}
+                        >
+                            <Download className="w-4 h-4" />
+                            Mẫu CSV (S,M,L)
                         </button>
 
                         <button
@@ -389,7 +499,15 @@ export default function ProductsList({ onSelectProduct }) {
                             disabled={exporting}
                         >
                             <Download className="w-4 h-4" />
-                            {exporting ? 'Đang xuất...' : 'Xuất CSV'}
+                            {exporting ? 'Đang xuất...' : 'Xuất Excel'}
+                        </button>
+
+                        <button
+                            type="button"
+                            className="h-10 flex items-center gap-2 px-4 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all"
+                            onClick={() => setOpenGlobalSizeGuideModal(true)}
+                        >
+                            Bảng size mặc định
                         </button>
 
                         <button
@@ -405,6 +523,21 @@ export default function ProductsList({ onSelectProduct }) {
             </div>
 
             {error ? <div className="owner-alert">{error}</div> : null}
+            {importReport ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <p className="font-semibold">{importReport.message}</p>
+                    <p className="mt-1">Thành công: {importReport.successCount} | Thất bại: {importReport.failedCount}</p>
+                    {importReport.errors.length > 0 ? (
+                        <ul className="mt-2 max-h-36 list-disc overflow-auto pl-5 text-xs text-rose-700">
+                            {importReport.errors.slice(0, 50).map((item, index) => (
+                                <li key={`import-error-${index}`}>
+                                    Dòng {item?.row || 'N/A'}: {item?.message || 'Lỗi không xác định'}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : null}
+                </div>
+            ) : null}
 
             {viewMode === 'list' ? (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -426,7 +559,7 @@ export default function ProductsList({ onSelectProduct }) {
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Màu sắc</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá thuê</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Giá bán</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Số lượng</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Tồn trong kho (theo size)</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
                                     <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Thao tác</th>
                                 </tr>
@@ -434,9 +567,17 @@ export default function ProductsList({ onSelectProduct }) {
                             <tbody className="divide-y divide-slate-100">
                                 {paginatedProducts.map((product) => {
                                     const productId = product._id || product.id
-                                    const totalQuantity = Number(product.totalQuantity || 0)
-                                    const availableQuantity = Number(product.availableQuantity || 0)
-                                    const productStatus = availableQuantity > 0 ? 'Còn hàng' : 'Hết hàng'
+                                    // Status must be derived from actual inventory (ProductInstance -> sizeStock),
+                                    // not from computed/legacy quantity fields which can drift.
+                                    const sizeStockRows = Array.isArray(product?.sizeStock) ? product.sizeStock : []
+                                    const totalQuantity = sizeStockRows.reduce((sum, row) => sum + Number(row?.quantity || 0), 0)
+                                    const availableQuantity = sizeStockRows.reduce((sum, row) => sum + Number(row?.available || 0), 0)
+                                    const productStatus =
+                                        availableQuantity > 0
+                                            ? 'Còn bản trống'
+                                            : totalQuantity > 0
+                                              ? 'Đang phân bổ'
+                                              : 'Chưa có tồn'
                                     const productName = toDisplayText(product.name) || 'Không có'
                                     const productCategory = toDisplayText(product.category) || 'Không có'
                                     const productSize = getDisplaySizes(product)
@@ -446,7 +587,7 @@ export default function ProductsList({ onSelectProduct }) {
                                         <tr
                                             key={productId}
                                             className="hover:bg-slate-50/80 transition-colors cursor-pointer"
-                                            onClick={() => onSelectProduct(productId)}
+                                            onClick={() => onSelectProduct(productId, { page: safeCurrentPage })}
                                         >
                                             <td className="px-4 py-4" onClick={(event) => event.stopPropagation()}>
                                                 <input
@@ -473,9 +614,9 @@ export default function ProductsList({ onSelectProduct }) {
                                             <td className="px-6 py-4 text-sm">{productColor}</td>
                                             <td className="px-6 py-4 text-sm font-semibold">{currencyFormatter.format(Number(product.baseRentPrice || 0))}</td>
                                             <td className="px-6 py-4 text-sm font-semibold">{currencyFormatter.format(Number(product.baseSalePrice || 0))}</td>
-                                            <td className="px-6 py-4 text-sm">{totalQuantity}</td>
+                                            <td className="px-6 py-4 align-top">{renderOwnerSizeStock(product)}</td>
                                             <td className="px-6 py-4 text-sm">
-                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'Còn hàng' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${productStatus === 'Còn bản trống' ? 'bg-green-100 text-green-700' : productStatus === 'Đang phân bổ' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                                                     {productStatus}
                                                 </span>
                                             </td>
@@ -512,7 +653,7 @@ export default function ProductsList({ onSelectProduct }) {
                     {paginatedProducts.map((product) => (
                         <div
                             key={product._id || product.id}
-                            onClick={() => onSelectProduct(product._id || product.id)}
+                            onClick={() => onSelectProduct(product._id || product.id, { page: safeCurrentPage })}
                             className="group relative bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-lg cursor-pointer"
                         >
                             <div className="relative aspect-3/4 overflow-hidden bg-slate-100">
@@ -584,11 +725,19 @@ export default function ProductsList({ onSelectProduct }) {
                     onCreated={async (createdId) => {
                         await loadProducts(filters)
                         if (createdId) {
-                            onSelectProduct(createdId)
+                            onSelectProduct(createdId, { page: safeCurrentPage })
                         }
                     }}
                 />
             ) : null}
+
+            <OwnerGlobalSizeGuideModal
+                open={openGlobalSizeGuideModal}
+                onClose={() => setOpenGlobalSizeGuideModal(false)}
+                onSaved={() => {
+                    setError('')
+                }}
+            />
         </div>
     )
 }

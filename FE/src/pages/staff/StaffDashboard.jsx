@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getStaffBookingsRequest } from '../../api/booking.api'
+import {
+  SHIFT_DASHBOARD_INTERVAL,
+  SHIFT_DASHBOARD_PAGINATION,
+  SHIFT_KPI_STATUS_GROUPS,
+  SHIFT_KPI_STATUS_VALUES,
+  STAFF_SHIFT_ROUTES,
+} from '../../constants/shiftManagement'
 import { getAllRentOrdersApi } from '../../services/rent-order.service'
-import { getMyShiftOptionsApi } from '../../services/staff-shift.service'
+import { getOwnerOrdersApi } from '../../services/owner.service'
+import { getAdminReviewStatsSummaryApi } from '../../services/review.service'
 
 const TIME_FILTERS = [
   { value: 'today', label: 'Hôm nay' },
@@ -32,15 +40,22 @@ const quickCardTone = {
   danger: 'from-rose-700 to-rose-500 text-white',
 }
 
-const SUCCESS_ORDER_STATUSES = ['WaitingPickup', 'Renting', 'WaitingReturn', 'Returned', 'Completed']
-const FINISHED_ORDER_STATUSES = ['Completed', 'Cancelled']
-const RENTING_FLOW_STATUSES = ['Renting', 'WaitingReturn', 'Late']
+const SUCCESS_ORDER_STATUSES = SHIFT_KPI_STATUS_GROUPS.successOrder
+const FINISHED_ORDER_STATUSES = SHIFT_KPI_STATUS_GROUPS.finishedOrder
+const RENTING_FLOW_STATUSES = SHIFT_KPI_STATUS_GROUPS.rentingFlow
+const SALE_PAID_STATUSES = new Set(SHIFT_KPI_STATUS_GROUPS.salePaid)
 
 const toArray = (value) => (Array.isArray(value) ? value : [])
 const toNumber = (value, fallback = 0) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
 }
+const toNullableNumber = (value) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+const toPageCount = (payload) => Math.max(1, toNumber(payload?.pagination?.pages, 1))
+const toPayloadRows = (payload) => toArray(payload?.data)
 
 const startOfDay = (date) => {
   const d = new Date(date)
@@ -112,6 +127,26 @@ const getPaidToday = (order, rangeStart, rangeEnd) => {
   return paymentAmount + depositAmount
 }
 
+const getSalePaidToday = (order, rangeStart, rangeEnd) => {
+  const totalAmount = toNumber(order?.totalAmount)
+  if (totalAmount <= 0) return 0
+
+  const historyPaidToday = toArray(order?.history).some((entry) => {
+    const action = String(entry?.action || '').toLowerCase()
+    const status = String(entry?.status || '').trim()
+    const touchedPayment = action.includes('payment') || SALE_PAID_STATUSES.has(status)
+    return touchedPayment && isWithinRange(entry?.updatedAt, rangeStart, rangeEnd)
+  })
+  if (historyPaidToday) return totalAmount
+
+  const status = String(order?.status || '').trim()
+  if (!SALE_PAID_STATUSES.has(status)) return 0
+
+  return isWithinRange(order?.paidAt || order?.updatedAt || order?.createdAt, rangeStart, rangeEnd)
+    ? totalAmount
+    : 0
+}
+
 const toHourMinute = (value) => {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
@@ -128,7 +163,7 @@ const buildUrgentSoonItems = (orders, now) => {
       const customer = getOrderCustomer(order)
       const code = getOrderCode(order)
 
-      if (start && !Number.isNaN(start.getTime()) && ['Confirmed', 'WaitingPickup'].includes(status)) {
+      if (start && !Number.isNaN(start.getTime()) && SHIFT_KPI_STATUS_GROUPS.pickupQueue.includes(status)) {
         const diff = start.getTime() - now.getTime()
         if (diff >= 0 && diff <= twoHoursMs) {
           return {
@@ -136,7 +171,7 @@ const buildUrgentSoonItems = (orders, now) => {
             title: `Đơn ${code} sắp đến giờ lấy đồ`,
             subtitle: `Khách: ${customer} • ${toHourMinute(start)}`,
             severity: 'info',
-            route: '/staff/rent-orders',
+            route: STAFF_SHIFT_ROUTES.rentOrders,
           }
         }
       }
@@ -149,7 +184,7 @@ const buildUrgentSoonItems = (orders, now) => {
             title: `Đơn ${code} sắp đến giờ trả`,
             subtitle: `Khách: ${customer} • ${toHourMinute(end)}`,
             severity: 'warning',
-            route: '/staff/return',
+            route: STAFF_SHIFT_ROUTES.returnOrders,
           }
         }
       }
@@ -164,7 +199,7 @@ const buildUrgentLateItems = (orders, now) => {
   return orders
     .filter((order) => {
       const status = String(order?.status || '')
-      if (status === 'Late') return true
+      if (status === SHIFT_KPI_STATUS_VALUES.late) return true
       if (FINISHED_ORDER_STATUSES.includes(status)) return false
       if (!order?.rentEndDate) return false
       const end = new Date(order.rentEndDate)
@@ -180,7 +215,7 @@ const buildUrgentLateItems = (orders, now) => {
         title: `Đơn ${getOrderCode(order)} đang trễ hạn`,
         subtitle: `Khách: ${getOrderCustomer(order)}${lateHours > 0 ? ` • ${lateHours} giờ` : ''}`,
         severity: 'danger',
-        route: '/staff/rent-orders',
+        route: STAFF_SHIFT_ROUTES.rentOrders,
       }
     })
     .slice(0, 8)
@@ -188,23 +223,23 @@ const buildUrgentLateItems = (orders, now) => {
 
 const buildUrgentIssueItems = (orders, bookings) => {
   const fromOrders = orders
-    .filter((order) => ['Compensation', 'NoShow', 'Cancelled'].includes(String(order?.status || '')))
+    .filter((order) => SHIFT_KPI_STATUS_GROUPS.issueOrder.includes(String(order?.status || '')))
     .map((order) => ({
       id: `I-ORDER-${order?._id}`,
       title: `Đơn ${getOrderCode(order)} cần xử lý phát sinh`,
       subtitle: `Trạng thái: ${String(order?.status || 'N/A')} • Khách: ${getOrderCustomer(order)}`,
       severity: 'warning',
-      route: '/staff/rent-orders',
+      route: STAFF_SHIFT_ROUTES.rentOrders,
     }))
 
   const fromBookings = bookings
-    .filter((booking) => String(booking?.status || '').toLowerCase() === 'pending')
+    .filter((booking) => String(booking?.status || '').toLowerCase() === SHIFT_KPI_STATUS_VALUES.bookingPending)
     .map((booking) => ({
       id: `I-BOOK-${booking?._id}`,
       title: 'Booking chưa phản hồi',
       subtitle: `Khách: ${booking?.name || 'Khách hàng'} • ${booking?.time || 'N/A'}`,
       severity: 'info',
-      route: '/staff/bookings',
+      route: STAFF_SHIFT_ROUTES.bookings,
     }))
 
   return [...fromOrders, ...fromBookings].slice(0, 8)
@@ -221,7 +256,7 @@ const buildTimelineItems = (orders, rangeStart, rangeEnd) => {
         orderCode: getOrderCode(order),
         customer: getOrderCustomer(order),
         status: String(order?.status || 'N/A'),
-        route: '/staff/rent-orders',
+        route: STAFF_SHIFT_ROUTES.rentOrders,
       })
     }
     if (isWithinRange(order?.rentEndDate, rangeStart, rangeEnd)) {
@@ -232,7 +267,7 @@ const buildTimelineItems = (orders, rangeStart, rangeEnd) => {
         orderCode: getOrderCode(order),
         customer: getOrderCustomer(order),
         status: String(order?.status || 'N/A'),
-        route: '/staff/return',
+        route: STAFF_SHIFT_ROUTES.returnOrders,
       })
     }
   })
@@ -249,27 +284,39 @@ const buildInventorySummary = (orders) => {
   const summary = orders.reduce((acc, order) => {
     const status = String(order?.status || '')
     const itemCount = countOrderItems(order)
-    if (['Confirmed', 'WaitingPickup'].includes(status)) acc.ready += itemCount
-    if (['Renting', 'WaitingReturn', 'Late'].includes(status)) acc.renting += itemCount
-    if (['Returned'].includes(status)) acc.laundry += itemCount
-    if (['Compensation'].includes(status)) acc.repair += itemCount
+    if (SHIFT_KPI_STATUS_GROUPS.inventoryReady.includes(status)) acc.ready += itemCount
+    if (SHIFT_KPI_STATUS_GROUPS.inventoryRenting.includes(status)) acc.renting += itemCount
+    if (SHIFT_KPI_STATUS_GROUPS.inventoryLaundry.includes(status)) acc.laundry += itemCount
+    if (SHIFT_KPI_STATUS_GROUPS.inventoryRepair.includes(status)) acc.repair += itemCount
     return acc
   }, initial)
 
   return [
-    { key: 'ready', label: 'Sẵn sàng giao', value: summary.ready, hint: 'Đơn ở trạng thái chờ lấy', route: '/staff/rent-orders', tone: 'success' },
-    { key: 'renting', label: 'Đang thuê', value: summary.renting, hint: 'Đơn đang trong thời gian thuê', route: '/staff/rent-orders', tone: 'info' },
-    { key: 'laundry', label: 'Đang giặt', value: summary.laundry, hint: 'Sản phẩm vừa trả cần xử lý', route: '/staff/rent-orders', tone: 'warning' },
-    { key: 'repair', label: 'Đang sửa', value: summary.repair, hint: 'Sản phẩm có phát sinh hư hỏng', route: '/staff/rent-orders', tone: 'danger' },
+    { key: 'ready', label: 'Sẵn sàng giao', value: summary.ready, hint: 'Đơn ở trạng thái chờ lấy', route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'success' },
+    { key: 'renting', label: 'Đang thuê', value: summary.renting, hint: 'Đơn đang trong thời gian thuê', route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'info' },
+    { key: 'laundry', label: 'Đang giặt', value: summary.laundry, hint: 'Sản phẩm vừa trả cần xử lý', route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'warning' },
+    { key: 'repair', label: 'Đang sửa', value: summary.repair, hint: 'Sản phẩm có phát sinh hư hỏng', route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'danger' },
   ]
 }
 
-const buildShiftPerformance = (ordersInRange, bookingsInRange, shifts, now) => {
-  const todayKey = formatDateKey(now)
-  const todayShift = shifts.find((shift) => String(shift?.workDate || '') === todayKey && Boolean(shift?.isRegistered))
-    || shifts.find((shift) => String(shift?.workDate || '') === todayKey)
-    || null
+const getAverageBookingResponseMinutes = (bookings = []) => {
+  const validDurations = bookings
+    .map((booking) => {
+      const createdAt = booking?.createdAt ? new Date(booking.createdAt) : null
+      const respondedAt = booking?.respondedAt ? new Date(booking.respondedAt) : null
+      if (!createdAt || !respondedAt) return null
+      if (Number.isNaN(createdAt.getTime()) || Number.isNaN(respondedAt.getTime())) return null
+      if (respondedAt < createdAt) return null
+      return Math.round((respondedAt.getTime() - createdAt.getTime()) / (1000 * 60))
+    })
+    .filter((value) => Number.isFinite(value))
 
+  if (validDurations.length === 0) return null
+  const total = validDurations.reduce((sum, value) => sum + value, 0)
+  return Math.round(total / validDurations.length)
+}
+
+const buildShiftPerformance = (ordersInRange, bookingsInRange, reviewStats) => {
   const completedTasks = ordersInRange.filter((order) => SUCCESS_ORDER_STATUSES.includes(String(order?.status || ''))).length
     + bookingsInRange.filter((booking) => ['confirmed', 'rejected'].includes(String(booking?.status || '').toLowerCase())).length
 
@@ -278,24 +325,20 @@ const buildShiftPerformance = (ordersInRange, bookingsInRange, shifts, now) => {
     ordersInRange.filter((order) => !FINISHED_ORDER_STATUSES.includes(String(order?.status || ''))).length,
     1
   )
-  const lateCount = ordersInRange.filter((order) => String(order?.status || '') === 'Late').length
+  const lateCount = ordersInRange.filter((order) => String(order?.status || '') === SHIFT_KPI_STATUS_VALUES.late).length
   const onTimeRate = Math.max(0, Math.min(100, Math.round(((onTimeBase - lateCount) / onTimeBase) * 100)))
 
-  const bookingResolved = bookingsInRange.filter((booking) => ['confirmed', 'rejected'].includes(String(booking?.status || '').toLowerCase()))
-  const bookingConfirmed = bookingResolved.filter((booking) => String(booking?.status || '').toLowerCase() === 'confirmed')
-  const customerSatisfaction = bookingResolved.length > 0
-    ? Number((3 + (bookingConfirmed.length / bookingResolved.length) * 2).toFixed(1))
-    : 0
+  const averageRating = toNullableNumber(reviewStats?.averageRating)
 
   return {
-    shiftName: todayShift?.name || 'Ca làm hôm nay',
-    owner: todayShift?.isRegistered ? `Đã đăng ký: ${todayShift?.code || todayShift?.name || 'Ca hiện tại'}` : 'Chưa đăng ký ca hôm nay',
+    shiftName: 'Hieu suat van hanh hom nay',
+    owner: 'Tong hop tu don hang va booking',
     completedTasks,
     targetTasks,
     onTimeRate,
-    avgProcessMinutes: 0,
-    customerSatisfaction,
-    route: '/staff/shifts',
+    avgProcessMinutes: getAverageBookingResponseMinutes(bookingsInRange),
+    customerSatisfaction: averageRating,
+    route: STAFF_SHIFT_ROUTES.rentOrders,
   }
 }
 
@@ -379,21 +422,76 @@ export default function StaffDashboard() {
     []
   )
 
+  const fetchAllRentOrders = useCallback(async () => {
+    const limit = SHIFT_DASHBOARD_PAGINATION.limit
+    let page = 1
+    let pages = 1
+    const rows = []
+
+    do {
+      const payload = await getAllRentOrdersApi({ page, limit })
+      rows.push(...toPayloadRows(payload))
+      pages = toPageCount(payload)
+      page += 1
+    } while (page <= pages && page <= SHIFT_DASHBOARD_PAGINATION.maxPages)
+
+    return rows
+  }, [])
+
+  const fetchAllStaffBookings = useCallback(async () => {
+    const limit = SHIFT_DASHBOARD_PAGINATION.limit
+    let page = 1
+    let pages = 1
+    const rows = []
+
+    do {
+      const response = await getStaffBookingsRequest({ page, limit })
+      const payload = response?.data || {}
+      rows.push(...toPayloadRows(payload))
+      pages = toPageCount(payload)
+      page += 1
+    } while (page <= pages && page <= SHIFT_DASHBOARD_PAGINATION.maxPages)
+
+    return rows
+  }, [])
+
+  const fetchAllSaleOrders = useCallback(async () => {
+    const limit = SHIFT_DASHBOARD_PAGINATION.limit
+    let page = 1
+    let pages = 1
+    const rows = []
+
+    try {
+      do {
+        const payload = await getOwnerOrdersApi({ page, limit })
+        rows.push(...toPayloadRows(payload))
+        pages = toPageCount(payload)
+        page += 1
+      } while (page <= pages && page <= SHIFT_DASHBOARD_PAGINATION.maxPages)
+    } catch {
+      return []
+    }
+
+    return rows
+  }, [])
+
   const loadDashboard = useCallback(async () => {
     setStatus('loading')
     setErrorMessage('')
 
     try {
-      const [{ start, end, now }, ordersResult, bookingsResult, shiftsResult] = await Promise.all([
+      const [{ start, end, now }, allRentOrders, allSaleOrders, allBookings, reviewStatsResult] = await Promise.all([
         Promise.resolve(getTimeFilterRange(timeFilter)),
-        getAllRentOrdersApi({}),
-        getStaffBookingsRequest({ page: 1, limit: 200 }),
-        getMyShiftOptionsApi({ page: 1, limit: 100 }),
+        fetchAllRentOrders(),
+        fetchAllSaleOrders(),
+        fetchAllStaffBookings(),
+        getAdminReviewStatsSummaryApi(),
       ])
 
-      const orders = toArray(ordersResult?.data)
-      const bookings = toArray(bookingsResult?.data?.data)
-      const shifts = toArray(shiftsResult?.data)
+      const orders = toArray(allRentOrders)
+      const saleOrders = toArray(allSaleOrders)
+      const bookings = toArray(allBookings)
+      const reviewStats = reviewStatsResult?.data || {}
 
       const ordersInRange = orders.filter((order) => isWithinRange(order?.createdAt || order?.updatedAt, start, end))
       const bookingsInRange = bookings.filter((booking) => isWithinRange(booking?.date || booking?.createdAt, start, end))
@@ -401,15 +499,18 @@ export default function StaffDashboard() {
       const todayStart = startOfDay(now)
       const todayEnd = endOfDay(now)
       const ordersToday = orders.filter((order) => isWithinRange(order?.createdAt || order?.updatedAt, todayStart, todayEnd))
-      const paidToday = orders.reduce((sum, order) => sum + getPaidToday(order, todayStart, todayEnd), 0)
+      const saleOrdersToday = saleOrders.filter((order) => isWithinRange(order?.createdAt || order?.updatedAt, todayStart, todayEnd))
+      const paidTodayFromRent = orders.reduce((sum, order) => sum + getPaidToday(order, todayStart, todayEnd), 0)
+      const paidTodayFromSale = saleOrders.reduce((sum, order) => sum + getSalePaidToday(order, todayStart, todayEnd), 0)
+      const paidToday = paidTodayFromRent + paidTodayFromSale
 
       const quickStats = [
-        { key: 'orders', label: 'Đơn hôm nay', value: ordersToday.length, route: '/staff/rent-orders', tone: 'primary', note: 'Đơn phát sinh trong ngày' },
-        { key: 'pickup', label: 'Chờ lấy đồ', value: orders.filter((order) => String(order?.status || '') === 'WaitingPickup').length, route: '/staff/rent-orders', tone: 'info', note: 'Ưu tiên theo giờ hẹn' },
-        { key: 'renting', label: 'Đang thuê', value: orders.filter((order) => String(order?.status || '') === 'Renting').length, route: '/staff/rent-orders', tone: 'success', note: 'Đang trong thời hạn thuê' },
-        { key: 'return', label: 'Chờ trả', value: orders.filter((order) => String(order?.status || '') === 'WaitingReturn').length, route: '/staff/return', tone: 'warning', note: 'Cần kiểm đồ khi nhận' },
-        { key: 'late', label: 'Trễ hạn', value: orders.filter((order) => String(order?.status || '') === 'Late').length, route: '/staff/rent-orders', tone: 'danger', note: 'Cần liên hệ khách ngay' },
-        { key: 'money', label: 'Tiền thu hôm nay', value: paidToday, route: '/staff/sale-order', tone: 'primary', note: 'Tổng thu đã thanh toán trong ngày' },
+        { key: 'orders', label: 'Đơn hôm nay', value: ordersToday.length + saleOrdersToday.length, route: STAFF_SHIFT_ROUTES.saleOrders, tone: 'primary', note: 'Tổng đơn thuê + đơn bán trong ngày' },
+        { key: 'pickup', label: 'Chờ lấy đồ', value: orders.filter((order) => SHIFT_KPI_STATUS_GROUPS.pickupQueue.includes(String(order?.status || ''))).length, route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'info', note: 'Ưu tiên theo giờ hẹn' },
+        { key: 'renting', label: 'Đang thuê', value: orders.filter((order) => String(order?.status || '') === SHIFT_KPI_STATUS_VALUES.renting).length, route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'success', note: 'Đang trong thời hạn thuê' },
+        { key: 'return', label: 'Chờ trả', value: orders.filter((order) => String(order?.status || '') === SHIFT_KPI_STATUS_VALUES.waitingReturn).length, route: STAFF_SHIFT_ROUTES.returnOrders, tone: 'warning', note: 'Cần kiểm đồ khi nhận' },
+        { key: 'late', label: 'Trễ hạn', value: orders.filter((order) => String(order?.status || '') === SHIFT_KPI_STATUS_VALUES.late).length, route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'danger', note: 'Cần liên hệ khách ngay' },
+        { key: 'money', label: 'Tiền thu hôm nay', value: paidToday, route: STAFF_SHIFT_ROUTES.saleOrders, tone: 'primary', note: 'Tổng thu đã thanh toán trong ngày' },
       ]
 
       const urgent = {
@@ -420,7 +521,7 @@ export default function StaffDashboard() {
 
       const timeline = buildTimelineItems(orders, start, end)
       const inventory = buildInventorySummary(orders)
-      const shiftPerformance = buildShiftPerformance(ordersInRange, bookingsInRange, shifts, now)
+      const shiftPerformance = buildShiftPerformance(ordersInRange, bookingsInRange, reviewStats)
 
       const payload = { quickStats, urgent, timeline, inventory, shiftPerformance }
       const hasAnyData = Boolean(
@@ -437,10 +538,24 @@ export default function StaffDashboard() {
       setStatus('error')
       setErrorMessage(error?.response?.data?.message || error?.message || 'Không thể lấy dữ liệu dashboard.')
     }
-  }, [timeFilter])
+  }, [timeFilter, fetchAllRentOrders, fetchAllSaleOrders, fetchAllStaffBookings])
 
   useEffect(() => {
     loadDashboard()
+  }, [loadDashboard])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      loadDashboard()
+    }, SHIFT_DASHBOARD_INTERVAL.autoRefreshMs)
+
+    const onFocus = () => loadDashboard()
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [loadDashboard])
 
   const urgentItems = useMemo(() => {
@@ -619,7 +734,7 @@ export default function StaffDashboard() {
                   </p>
                 </div>
                 <div className="rounded-xl bg-white p-3">
-                  <p className="text-xs text-slate-500">Thời gian xử lý TB</p>
+                  <p className="text-xs text-slate-500">Phản hồi booking TB</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">
                     {data.shiftPerformance.avgProcessMinutes > 0 ? `${data.shiftPerformance.avgProcessMinutes} phút` : 'Chưa đủ dữ liệu'}
                   </p>
@@ -651,3 +766,4 @@ export default function StaffDashboard() {
     </div>
   )
 }
+

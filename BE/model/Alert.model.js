@@ -1,4 +1,10 @@
 const mongoose = require('mongoose');
+const {
+  ALERT_TYPES,
+  ALERT_PRIORITY,
+  ALERT_STATUS,
+  ALERT_TARGET_TYPES,
+} = require('../constants/alert.constants');
 
 const alertActivitySchema = new mongoose.Schema({
   action: {
@@ -21,12 +27,12 @@ const alertActivitySchema = new mongoose.Schema({
   },
   fromStatus: {
     type: String,
-    enum: ['New', 'Seen', 'Done', ''],
+    enum: [...Object.values(ALERT_STATUS), ''],
     default: ''
   },
   toStatus: {
     type: String,
-    enum: ['New', 'Seen', 'Done', ''],
+    enum: [...Object.values(ALERT_STATUS), ''],
     default: ''
   },
   at: {
@@ -38,12 +44,12 @@ const alertActivitySchema = new mongoose.Schema({
 const alertSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['PickupSoon', 'ReturnSoon', 'Late', 'NoShow', 'Compensation', 'Task'],
+    enum: Object.values(ALERT_TYPES),
     required: true
   },
   targetType: {
     type: String,
-    enum: ['RentOrder', 'SaleOrder', 'Product', 'FittingBooking'],
+    enum: Object.values(ALERT_TARGET_TYPES),
     required: true
   },
   targetId: {
@@ -53,12 +59,33 @@ const alertSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['New', 'Seen', 'Done'],
-    default: 'New'
+    enum: Object.values(ALERT_STATUS),
+    default: ALERT_STATUS.NEW
+  },
+  priority: {
+    type: String,
+    enum: Object.values(ALERT_PRIORITY),
+    default: ALERT_PRIORITY.MEDIUM
   },
   message: {
     type: String,
     default: ''
+  },
+  title: {
+    type: String,
+    default: ''
+  },
+  groupKey: {
+    type: String,
+    default: ''
+  },
+  data: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  expiresAt: {
+    type: Date,
+    default: null
   },
   actionRequired: {
     type: Boolean,
@@ -89,5 +116,16 @@ const alertSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+alertSchema.index({ status: 1, createdAt: -1 });
+alertSchema.index({ createdAt: -1 });
+alertSchema.index({ groupKey: 1, createdAt: -1 });
+alertSchema.index(
+  { expiresAt: 1 },
+  {
+    expireAfterSeconds: 0,
+    partialFilterExpression: { expiresAt: { $type: 'date' } },
+  }
+);
 
 module.exports = mongoose.model('Alert', alertSchema);

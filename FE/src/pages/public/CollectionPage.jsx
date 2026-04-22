@@ -36,7 +36,10 @@ const getProductColors = (product = {}) => {
 };
 
 const getProductSizes = (product = {}) => {
-  const fromSizes = toArray(product?.sizes).map((item) => toText(item)).filter(Boolean);
+  const fromSizes = toArray(product?.sizes)
+    .map((item) => (typeof item === 'object' ? toText(item?.size) : toText(item)))
+    .filter(Boolean);
+  const fromOptions = toArray(product?.sizeOptions).map((item) => toText(item)).filter(Boolean);
   const fromVariants = toArray(product?.colorVariants)
     .map((item) => toText(item?.size))
     .filter(Boolean);
@@ -44,7 +47,7 @@ const getProductSizes = (product = {}) => {
     .split(/[|,;/]/)
     .map((item) => item.trim())
     .filter(Boolean);
-  return [...new Set([...fromSizes, ...fromVariants, ...fallback])];
+  return [...new Set([...fromSizes, ...fromOptions, ...fromVariants, ...fallback])];
 };
 
 const facetFromApiOrProducts = ({ apiOptions, products, extractor }) => {

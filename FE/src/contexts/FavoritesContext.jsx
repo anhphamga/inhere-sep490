@@ -59,7 +59,7 @@ const mapProductToFavoriteItem = (product = {}) => {
 }
 
 export const FavoritesProvider = ({ children }) => {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, user, loading: authLoading } = useAuth()
   const [favoriteMap, setFavoriteMap] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -73,6 +73,10 @@ export const FavoritesProvider = ({ children }) => {
   }, [])
 
   const hydrateFavorites = useCallback(async () => {
+    if (authLoading) {
+      return
+    }
+
     if (!isAuthenticated) {
       resetState()
       return
@@ -96,7 +100,7 @@ export const FavoritesProvider = ({ children }) => {
     } finally {
       setLoading(false)
     }
-  }, [isAuthenticated, resetState])
+  }, [authLoading, isAuthenticated, resetState])
 
   useEffect(() => {
     hydrateFavorites()

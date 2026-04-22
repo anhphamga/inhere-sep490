@@ -1,6 +1,6 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, ChevronRight } from 'lucide-react'
 
-const AlertBox = ({ alerts }) => {
+const AlertBox = ({ alerts = [], onAlertClick }) => {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
@@ -10,9 +10,15 @@ const AlertBox = ({ alerts }) => {
 
       <div className="space-y-3">
         {alerts.map((alert, index) => (
-          <div key={`${alert}-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700 transition-all hover:border-emerald-200 hover:bg-emerald-50/50">
-            {alert}
-          </div>
+          <button
+            key={`${alert?.id || alert?.label || 'alert'}-${index}`}
+            type="button"
+            onClick={() => onAlertClick?.(alert)}
+            className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3 text-left text-sm text-slate-700 transition-all hover:border-emerald-200 hover:bg-emerald-50/50"
+          >
+            <span>{alert?.label || ''}</span>
+            <ChevronRight className="h-4 w-4 text-slate-400" />
+          </button>
         ))}
       </div>
     </section>

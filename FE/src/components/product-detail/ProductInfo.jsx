@@ -7,7 +7,6 @@ export default function ProductInfo({
 }) {
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <span className="inline-flex h-6 items-center rounded-md bg-emerald-50 px-2 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
@@ -21,11 +20,8 @@ export default function ProductInfo({
         <p className="text-sm text-slate-500">Bởi Inhere Collection</p>
       </div>
 
-      {/* Price block */}
       <div className="rounded-xl border border-slate-200 p-4">
         <div className="grid grid-cols-2 gap-4">
-
-          {/* Giá thuê */}
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
               Giá thuê / ngày
@@ -35,7 +31,6 @@ export default function ProductInfo({
             </p>
           </div>
 
-          {/* Giá mua */}
           <div className="border-l border-slate-200 pl-4">
             <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
               Giá mua
@@ -44,7 +39,6 @@ export default function ProductInfo({
               {salePriceText}
             </p>
           </div>
-
         </div>
       </div>
 

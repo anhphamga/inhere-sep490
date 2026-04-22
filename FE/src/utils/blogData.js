@@ -30,14 +30,25 @@ export const formatBlogDateLabel = (value) => {
   }).format(date);
 };
 
+/** Lấy text thuần từ HTML editor (Quill) để excerpt / đếm từ không dính thẻ */
+const stripBlogHtmlToPlainText = (html = "") =>
+  String(html || "")
+    .replace(/<p><br\s*\/?><\/p>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, " ")
+    .replace(/<\/?[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 export const buildBlogExcerpt = (content = "") => {
-  const text = String(content || "").replace(/\s+/g, " ").trim();
+  const text = stripBlogHtmlToPlainText(content);
   if (!text) return "Bài viết đang được cập nhật nội dung.";
   return text.length > 150 ? `${text.slice(0, 147).trim()}...` : text;
 };
 
 export const buildBlogReadTime = (content = "") => {
-  const text = String(content || "").trim();
+  const text = stripBlogHtmlToPlainText(content);
   const words = text ? text.split(/\s+/).length : 0;
   const minutes = Math.max(3, Math.ceil(words / 180));
   return `${minutes} phút đọc`;

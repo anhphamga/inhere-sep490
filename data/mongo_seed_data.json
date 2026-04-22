@@ -296,7 +296,6 @@
       },
       "depositAmount": 300000,
       "remainingAmount": 400000,
-      "washingFee": 0,
       "damageFee": 0,
       "totalAmount": 700000,
       "createdAt": {
@@ -426,9 +425,8 @@
         "$date": "2026-03-04T10:00:00Z"
       },
       "condition": "Dirty",
-      "washingFee": 50000,
       "damageFee": 0,
-      "note": "Váy dính nhẹ bụi đường, tính phí giặt.",
+      "note": "Váy dính nhẹ bụi đường.",
       "staffId": {
         "$oid": "65f000000000000000000002"
       },

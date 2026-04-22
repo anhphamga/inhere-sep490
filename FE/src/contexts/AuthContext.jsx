@@ -129,11 +129,35 @@ export const AuthProvider = ({ children }) => {
     }, [persistSession])
 
     const loginWithGoogle = useCallback(async (payload, options = {}) => {
-        const response = await googleLoginApi(payload)
-        persistSession(response.data.accessToken, response.data.refreshToken, response.data.user, {
-            rememberMe: options.rememberMe ?? true
-        })
-        return response.data
+        try {
+            console.log('🔐 [OAuth] Initiating Google login:', {
+                portal: payload?.portal,
+                hasIdToken: Boolean(payload?.idToken),
+                timestamp: new Date().toISOString()
+            })
+            
+            const response = await googleLoginApi(payload)
+            
+            console.log('🔐 [OAuth] Google login successful:', {
+                userId: response.data?.user?.id,
+                email: response.data?.user?.email,
+                role: response.data?.user?.role,
+                timestamp: new Date().toISOString()
+            })
+            
+            persistSession(response.data.accessToken, response.data.refreshToken, response.data.user, {
+                rememberMe: options.rememberMe ?? true
+            })
+            return response.data
+        } catch (error) {
+            console.error('🔐 [OAuth] Google login failed:', {
+                status: error?.response?.status,
+                message: error?.response?.data?.message || error?.message,
+                url: error?.config?.url,
+                timestamp: new Date().toISOString()
+            })
+            throw error
+        }
     }, [persistSession])
 
     const signup = useCallback(async (payload) => {

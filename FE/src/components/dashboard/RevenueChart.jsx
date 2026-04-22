@@ -15,19 +15,19 @@ const vndCompact = new Intl.NumberFormat('vi-VN', {
   notation: 'compact'
 })
 
-const RevenueChart = ({ data }) => {
+const RevenueChart = ({ data, title = 'Doanh thu theo ngày', subtitle = 'Biểu đồ doanh thu theo khoảng thời gian đã chọn' }) => {
   const hasData = Array.isArray(data) && data.length > 0
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4">
-        <h3 className="text-base font-semibold text-slate-900">Doanh thu theo ngày</h3>
-        <p className="text-sm text-slate-500">Theo dõi biến động doanh thu trong 7 ngày gần nhất</p>
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        <p className="text-sm text-slate-500">{subtitle}</p>
       </div>
 
       {hasData ? (
-        <div className="h-80 w-full min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full min-w-0 overflow-hidden">
+          <ResponsiveContainer width="100%" height={320} minWidth={0}>
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="day" stroke="#64748b" tickLine={false} axisLine={false} />
@@ -38,6 +38,7 @@ const RevenueChart = ({ data }) => {
                 tickFormatter={(value) => vndCompact.format(value)}
               />
               <Tooltip
+                cursor={{ stroke: '#bbf7d0', strokeDasharray: '4 4' }}
                 formatter={(value) => [new Intl.NumberFormat('vi-VN', {
                   style: 'currency',
                   currency: 'VND',

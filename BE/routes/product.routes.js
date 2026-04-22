@@ -2,11 +2,16 @@ const express = require('express');
 const router = express.Router();
 
 const productController = require('../controllers/product.controller');
+const sizeGuideController = require('../controllers/sizeGuide.controller');
 const {
   authenticate,
   authorizeAnyPermission,
   authorizePermission,
 } = require('../middleware/auth.middleware');
+
+// Import inventory routes
+const inventoryRoutes = require('./product.inventory.routes');
+router.use('/', inventoryRoutes);
 
 router.get(
   '/instances',
@@ -45,6 +50,7 @@ router.delete(
 
 router.get('/:productId/available-instances', productController.getAvailableInstances);
 router.get('/:id/similar', productController.getSimilarProducts);
+router.get('/:id/size-guide', sizeGuideController.getProductSizeGuide);
 router.get('/', productController.getProducts);
 router.get('/top-rented', productController.getTopRentedProducts);
 router.get('/top-liked', productController.getTopLikedProducts);

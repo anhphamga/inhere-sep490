@@ -983,6 +983,15 @@ const validateVoucher = async ({
     }
 
     const userUsageCount = await countVoucherUsage({ voucher, userId });
+    if (['1', 'true', 'yes'].includes(String(process.env.LOG_VOUCHER_USAGE || '').toLowerCase())) {
+      console.info('[VoucherUsage]', {
+        voucherId: String(voucher?._id || ''),
+        code: voucher?.code,
+        userId: String(userId || ''),
+        usageLimitPerUser: Number(voucher?.usageLimitPerUser || 0),
+        userUsageCount,
+      });
+    }
     if (userUsageCount >= Number(voucher.usageLimitPerUser)) {
       return buildInvalidResponse('USAGE_LIMIT_PER_USER_EXCEEDED', { voucher, subtotal: normalizedSubtotal });
     }

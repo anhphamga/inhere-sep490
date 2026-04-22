@@ -339,13 +339,39 @@ const getCustomerDetail = async (req, res) => {
       SaleOrder.find({ customerId: customer._id }).sort({ createdAt: -1 })
     ]);
 
+    // ─── Tính tổng chi tiêu chính xác ───
+    // Đơn mua: chỉ đếm nếu đã xác nhận thanh toán (không đếm Pending/Cancelled/Failed)
+    const SALE_PAID_STATUSES = ['PendingConfirmation', 'Confirmed', 'Shipping', 'Completed', 'Returned', 'Refunded'];
+    // Đơn thuê: chỉ đếm khi đã đặt cọc thành công trở đi
+    const RENT_PAID_STATUSES = ['Deposited', 'Confirmed', 'WaitingPickup', 'Renting', 'WaitingReturn', 'Returned', 'Completed', 'Compensation'];
+
+    const saleSpent = saleOrders
+      .filter((o) => SALE_PAID_STATUSES.includes(o.status))
+      .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+
+    const rentSpent = rentOrders
+      .filter((o) => RENT_PAID_STATUSES.includes(o.status))
+      .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+
+    const totalSpent = saleSpent + rentSpent;
+
+    const summary = {
+      totalOrders: rentOrders.length + saleOrders.length,
+      totalRentOrders: rentOrders.length,
+      totalSaleOrders: saleOrders.length,
+      totalSpent,
+      saleSpent,
+      rentSpent,
+    };
+
     return res.status(200).json({
       success: true,
       message: 'Get customer detail successfully',
       data: {
         customer: sanitizeCustomer(customer),
         rentOrders,
-        saleOrders
+        saleOrders,
+        summary,
       }
     });
   } catch (error) {

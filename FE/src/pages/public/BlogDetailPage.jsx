@@ -4,13 +4,8 @@ import { ArrowLeft, Clock3, Share2, Sparkles } from "lucide-react";
 import Header from "../../components/common/Header";
 import BlogGrid from "../../components/blog/BlogGrid";
 import { normalizeBlogPosts } from "../../utils/blogData";
+import { sanitizeBlogHtml } from "../../utils/sanitizeBlogHtml";
 import { getBlogBySlugApi, getPublishedBlogsApi } from "../../services/blog.service";
-
-const splitContentToParagraphs = (content = "") =>
-  String(content || "")
-    .split(/\n+/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
 
 export default function BlogDetailPage() {
   const navigate = useNavigate();
@@ -63,7 +58,7 @@ export default function BlogDetailPage() {
     };
   }, [slug]);
 
-  const paragraphs = useMemo(() => splitContentToParagraphs(post?.content), [post?.content]);
+  const bodyHtml = useMemo(() => sanitizeBlogHtml(post?.content), [post?.content]);
 
   if (loading) {
     return (
@@ -172,11 +167,14 @@ export default function BlogDetailPage() {
 
           <section className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
             <article className="rounded-[30px] border border-[#eadfce] bg-white p-8 shadow-[0_20px_48px_rgba(66,46,18,0.06)] md:p-10">
-              <div className="mx-auto max-w-3xl space-y-6 text-[16px] leading-8 text-[#4e4338]">
-                {paragraphs.map((paragraph, index) => (
-                  <p key={`${post.id}-paragraph-${index}`}>{paragraph}</p>
-                ))}
-              </div>
+              <div
+                className="blog-content mx-auto max-w-3xl text-[16px] leading-8 text-[#4e4338] [&_a]:text-[#a07b4f] [&_a]:underline [&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-[#dcc6a5] [&_blockquote]:pl-4 [&_blockquote]:italic [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:text-[#2f251c] [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-semibold [&_li]:my-1 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-5 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6"
+                dangerouslySetInnerHTML={{
+                  __html:
+                    bodyHtml.trim() ||
+                    '<p class="text-[#7b6654]">Nội dung bài viết đang được cập nhật.</p>',
+                }}
+              />
             </article>
 
             <aside className="space-y-5">

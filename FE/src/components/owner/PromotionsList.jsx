@@ -772,11 +772,12 @@ export default function PromotionsList() {
 }
 
 function MetricCard({ icon: Icon, label, value }) {
+    const IconComponent = Icon
     return (
         <div className="rounded-[24px] border border-white/15 bg-white/10 px-4 py-4 backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-white/70">{label}</p>
-                <Icon className="h-4 w-4 text-white/70" />
+                <IconComponent className="h-4 w-4 text-white/70" />
             </div>
             <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
         </div>
@@ -794,11 +795,12 @@ function StatsTile({ label, value, helper }) {
 }
 
 function FormSection({ title, description, icon: Icon, children }) {
+    const IconComponent = Icon
     return (
         <section className="rounded-[28px] border border-slate-200 bg-slate-50/70 p-5">
             <div className="flex items-start gap-4">
                 <div className="rounded-2xl bg-white p-3 text-[#1662c4] shadow-sm">
-                    <Icon className="h-5 w-5" />
+                    <IconComponent className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
                     <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
@@ -856,9 +858,10 @@ function TooltipBadge({ content }) {
 }
 
 function CompactSelect({ icon: Icon, value, onChange, options }) {
+    const IconComponent = Icon
     return (
         <div className="relative">
-            <Icon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <IconComponent className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <select
                 value={value}
                 onChange={(event) => onChange(event.target.value)}

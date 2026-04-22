@@ -4,16 +4,15 @@ import StaffLayout from './StaffLayout';
 import StaffDashboard from './StaffDashboard';
 import StaffRentOrders from './StaffRentOrders';
 import StaffWalkInPage from './StaffWalkInPage';
-import StaffShiftRegistration from './StaffShiftRegistration';
 import StaffReviewsPage from './StaffReviewsPage';
 import StaffBlogsPage from './StaffBlogsPage';
 import BookingPage from './bookings/BookingPage';
 import OrdersList from '../../components/owner/OrdersList';
+import ProfilePage from '../auth/ProfilePage';
 
 const STAFF_PLACEHOLDER_TITLES = {
   'rent-order': 'staff.createRentOrder',
   'sale-order': 'staff.createSaleOrder',
-  shifts: 'staff.shiftRegistration',
   reviews: 'staff.reviewManagement',
   blogs: 'Quản lý bài viết',
   bookings: 'staff.fittingBookings',
@@ -45,10 +44,6 @@ const StaffPage = () => {
       return <OrdersList showRentOrders={false} allowSaleStatusUpdate />;
     }
 
-    if (subPath === 'shifts') {
-      return <StaffShiftRegistration />;
-    }
-
     if (subPath === 'reviews') {
       return <StaffReviewsPage />;
     }
@@ -59,6 +54,10 @@ const StaffPage = () => {
 
     if (subPath === 'blogs') {
       return <StaffBlogsPage pathName={location.pathname} />;
+    }
+
+    if (subPath === 'profile') {
+      return <ProfilePage embedded backPath="/staff" logoutRedirect="/work/login?role=staff" />;
     }
 
     return (

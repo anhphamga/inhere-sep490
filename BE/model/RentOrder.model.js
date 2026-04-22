@@ -32,7 +32,7 @@ const rentOrderSchema = new mongoose.Schema({
       'Compensation',
       'Cancelled'
     ],
-    default: 'Draft'
+    default: 'PendingDeposit'
   },
   rentStartDate: {
     type: Date,
@@ -49,10 +49,6 @@ const rentOrderSchema = new mongoose.Schema({
   remainingAmount: {
     type: Number,
     required: true
-  },
-  washingFee: {
-    type: Number,
-    default: 0
   },
   damageFee: {
     type: Number,
@@ -131,6 +127,23 @@ const rentOrderSchema = new mongoose.Schema({
   totalAmount: {
     type: Number,
     required: true
+  },
+  // Thông tin cho đơn thuê guest (không đăng nhập) — customerId vẫn required vì BE
+  // tự tạo/tái sử dụng User dạng walk_in gắn với email đã verify.
+  guestVerificationMethod: {
+    type: String,
+    enum: ['email', 'phone', null],
+    default: null
+  },
+  guestVerificationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'GuestVerification',
+    default: null
+  },
+  guestContact: {
+    name: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    email: { type: String, default: '' }
   },
   createdAt: {
     type: Date,

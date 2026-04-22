@@ -2,6 +2,11 @@ const mongoose = require('mongoose');
 const RentOrder = require('../model/RentOrder.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const ProductInstance = require('../model/ProductInstance.model');
+const { getInstanceBaseValue } = require('../model/ProductInstance.model');
+const Product = require('../model/Product.model');
+const DamagePolicy = require('../model/DamagePolicy.model');
+const { resolvePolicyForProduct } = require('./damage-policy.controller');
+const ItemSwapHistory = require('../model/ItemSwapHistory.model');
 const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
 const Collateral = require('../model/Collateral.model');
@@ -10,12 +15,25 @@ const Alert = require('../model/Alert.model');
 const InventoryHistory = require('../model/InventoryHistory.model');
 const Voucher = require('../model/Voucher.model');
 const User = require('../model/User.model');
+const GuestVerification = require('../model/GuestVerification.model');
 const bcrypt = require('bcryptjs');
+const {
+    verifyGuestVerificationToken,
+    signGuestOrderViewToken,
+    verifyGuestOrderViewToken,
+    extractBearerToken,
+} = require('../utils/jwt');
+const { frontendUrl } = require('../config/app.config');
+const { sendRentOrderConfirmationEmail } = require('../services/mailService');
+const {
+    isValidEmail,
+    isValidPhone,
+    normalizeEmail,
+    normalizePhone,
+} = require('../utils/guestVerification');
 const { writeAuditLog } = require('../services/auditLog.service');
 const {
-    applyLatePenalty,
     computeExpectedDeposit,
-    handleNoShow,
     validateDeposit,
     validatePickup,
     validateReturn,
@@ -28,8 +46,24 @@ const {
     buildVoucherSnapshot,
     repairVoucherUsageCounterIfNeeded,
 } = require('../services/voucher.service');
-const { pendingDepositHoldMinutes } = require('../config/app.config');
 const { ORDER_TYPE } = require('../constants/order.constants');
+const { RENT_ORDER_STATUS } = require('../constants/status.constants');
+
+const RENT_STATUS_META = {
+    [RENT_ORDER_STATUS.DRAFT]: 'Nháp',
+    [RENT_ORDER_STATUS.PENDING_DEPOSIT]: 'Chờ đặt cọc',
+    [RENT_ORDER_STATUS.DEPOSITED]: 'Đã đặt cọc',
+    [RENT_ORDER_STATUS.CONFIRMED]: 'Đã xác nhận',
+    [RENT_ORDER_STATUS.WAITING_PICKUP]: 'Chờ lấy đồ',
+    [RENT_ORDER_STATUS.RENTING]: 'Đang thuê',
+    [RENT_ORDER_STATUS.WAITING_RETURN]: 'Chờ trả đồ',
+    [RENT_ORDER_STATUS.LATE]: 'Trễ hạn',
+    [RENT_ORDER_STATUS.RETURNED]: 'Đã trả đồ',
+    [RENT_ORDER_STATUS.CANCELLED]: 'Đã hủy',
+    [RENT_ORDER_STATUS.NO_SHOW]: 'Khách không đến',
+    [RENT_ORDER_STATUS.COMPENSATION]: 'Bồi thường',
+    [RENT_ORDER_STATUS.COMPLETED]: 'Hoàn tất',
+};
 
 /**
  * Sinh mã đơn thuê dạng TH-YYMMDD-XXXX
@@ -104,80 +138,244 @@ const applyVoucherForRentOrder = async ({
 /**
  * Checks whether a specific product instance is free for a given rental window.
  *
- * The availability is determined by checking for overlapping RentOrderItem records
- * (excluding cancelled orders). This avoids relying on lifecycleStatus for future
- * bookings.
+ * Chặn tuyệt đối instance Lost/Sold; các trạng thái khác (Rented, Washing, Repair, Reserved…)
+ * dựa vào chồng lấp RentOrderItem (chỉ bỏ qua đơn terminal). PendingDeposit vẫn chặn chồng lấp
+ * cho đến khi đơn bị hủy (user / auto-cancel) — tránh lỗ hổng giữa hết “soft hold” và cron hủy.
  */
 // Các trạng thái đã kết thúc vòng đời — đồ đã trả hoặc huỷ
-const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow'];
-
-// Đơn PendingDeposit hết hạn sau N phút — sau thời gian này không còn giữ chỗ
-// Đồng nhất với thời gian auto-cancel (env PENDING_DEPOSIT_HOLD_MINUTES, mặc định 5 phút để test)
-const PENDING_DEPOSIT_HOLD_MINUTES = pendingDepositHoldMinutes;
+const TERMINAL_ORDER_STATUSES = ['cancelled', 'completed', 'noshow', 'returned'];
 
 // Số ngày thuê tối đa cho 1 đơn
 const MAX_RENTAL_DAYS = parseInt(process.env.MAX_RENTAL_DAYS || '30', 10);
 
-const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDate, session) => {
-    const pendingDepositExpiry = new Date(Date.now() - PENDING_DEPOSIT_HOLD_MINUTES * 60 * 1000);
+/** Chỉ chặn tuyệt đối: mất / đã bán. Các trạng thái Rented, Washing, Repair… vẫn có thể đặt thuê tương lai nếu không overlap RentOrderItem. */
+const INSTANCE_STATUSES_BLOCKING_RENT = ['Lost', 'Sold'];
+
+const uniqueInstanceIds = (ids = []) => (
+    Array.from(new Set(ids.filter(Boolean).map((id) => id.toString())))
+);
+
+const transitionProductInstances = async ({
+    instanceIds = [],
+    from,
+    to,
+    txOptions = {},
+    conflictMessage = 'Sản phẩm không còn khả dụng.',
+    allowAlreadyTo = false,
+}) => {
+    const ids = uniqueInstanceIds(instanceIds);
+    if (ids.length === 0) return { matched: 0, modified: 0 };
+
+    const result = await ProductInstance.updateMany(
+        {
+            _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            lifecycleStatus: from,
+        },
+        { lifecycleStatus: to },
+        txOptions
+    );
+
+    const modified = Number(result.modifiedCount ?? result.nModified ?? 0);
+    if (modified === ids.length) return { matched: Number(result.matchedCount ?? result.n ?? modified), modified };
+
+    if (allowAlreadyTo) {
+        const desiredCount = await ProductInstance.countDocuments({
+            _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            lifecycleStatus: to,
+        }).session(txOptions.session || null);
+        if (desiredCount === ids.length) {
+            return { matched: ids.length, modified };
+        }
+    }
+
+    // Thu thập chi tiết instance bị chặn để log + trả cho FE
+    const currentDocs = await ProductInstance.find({
+        _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+    })
+        .select('_id code lifecycleStatus productId size')
+        .populate('productId', 'name')
+        .session(txOptions.session || null)
+        .lean();
+    const allowedStates = Array.isArray(from?.$in) ? from.$in : (allowAlreadyTo ? [from, to] : [from]);
+    const blocking = currentDocs.filter((d) => !allowedStates.includes(d.lifecycleStatus));
+    const details = blocking.map((d) => {
+        const productName = d?.productId?.name?.vi || d?.productId?.name?.en || d?.productId?.name || 'Sản phẩm';
+        const code = d?.code ? ` [${d.code}]` : '';
+        const size = d?.size ? ` size ${d.size}` : '';
+        return `${productName}${size}${code}: ${d.lifecycleStatus}`;
+    });
+
+    const err = new Error(
+        details.length > 0
+            ? `${conflictMessage} Chi tiết: ${details.join('; ')}`
+            : conflictMessage
+    );
+    err.blockingInstances = blocking.map((d) => ({
+        id: String(d._id),
+        code: d.code,
+        size: d.size,
+        lifecycleStatus: d.lifecycleStatus,
+    }));
+    throw err;
+};
+
+const reserveAvailableInstances = (instanceIds, txOptions = {}) => transitionProductInstances({
+    instanceIds,
+    from: 'Available',
+    to: 'Reserved',
+    txOptions,
+    conflictMessage: 'Có sản phẩm không còn Available để giữ chỗ.',
+});
+
+// Cho phép cả Available (chưa qua cron giữ chỗ) lẫn Reserved → Rented tại bước confirmPickup.
+// allowAlreadyTo=true để idempotent nếu pickup được gọi lặp lại.
+const markReservedInstancesRented = (instanceIds, txOptions = {}) => transitionProductInstances({
+    instanceIds,
+    from: { $in: ['Available', 'Reserved'] },
+    to: 'Rented',
+    txOptions,
+    conflictMessage: 'Có sản phẩm không thể chuyển sang trạng thái Đang thuê.',
+    allowAlreadyTo: true,
+});
+
+const releaseReservedOrRentedInstances = async (instanceIds, txOptions = {}) => {
+    const ids = uniqueInstanceIds(instanceIds);
+    if (ids.length === 0) return;
+    await ProductInstance.updateMany(
+        {
+            _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            lifecycleStatus: { $in: ['Reserved', 'Rented'] },
+        },
+        { lifecycleStatus: 'Available' },
+        txOptions
+    );
+};
+
+/**
+ * Release instance về Available CHỈ khi không còn đơn thuê active nào khác dùng instance đó.
+ *
+ * Dùng khi cancel/no-show một đơn, vì một instance có thể phục vụ nhiều đơn (khoảng ngày
+ * khác nhau). Nếu instance đang được đơn khác active sử dụng (đặc biệt đang Rented), không
+ * được chuyển về Available — cron autoReserveInstances hoặc pickup/return sẽ tự xử lý.
+ */
+const safeReleaseInstancesAfterOrderExit = async (instanceIds, excludeOrderId, txOptions = {}) => {
+    const ids = uniqueInstanceIds(instanceIds);
+    if (ids.length === 0) return;
+
+    const releasableIds = [];
+    for (const instanceId of ids) {
+        const otherItems = await RentOrderItem.find({
+            productInstanceId: instanceId,
+            ...(excludeOrderId ? { orderId: { $ne: excludeOrderId } } : {}),
+        }).populate({ path: 'orderId', select: 'status' }).lean();
+
+        const hasOtherActive = otherItems.some((item) => {
+            if (!item.orderId) return false;
+            const status = String(item.orderId.status || '').toLowerCase();
+            return !TERMINAL_ORDER_STATUSES.includes(status);
+        });
+
+        if (!hasOtherActive) {
+            releasableIds.push(instanceId);
+        }
+    }
+
+    if (releasableIds.length > 0) {
+        await ProductInstance.updateMany(
+            {
+                _id: { $in: releasableIds.map((id) => new mongoose.Types.ObjectId(id)) },
+                lifecycleStatus: { $in: ['Reserved', 'Rented'] },
+            },
+            { lifecycleStatus: 'Available' },
+            txOptions
+        );
+    }
+};
+
+/**
+ * @param {*} instanceId
+ * @param {*} rentStartDate
+ * @param {*} rentEndDate
+ * @param {*} session
+ * @param {string|null} excludeOrderId - bỏ qua đơn này khi check (dùng trong payDeposit để không tự block chính mình)
+ */
+const isInstanceAvailableForPeriod = async (instanceId, rentStartDate, rentEndDate, session, excludeOrderId = null) => {
+    if (!instanceId) return false;
+
+    const instQuery = ProductInstance.findById(instanceId).select('lifecycleStatus');
+    if (session) instQuery.session(session);
+    const inst = await instQuery.lean();
+    if (!inst) return false;
+    if (INSTANCE_STATUSES_BLOCKING_RENT.includes(inst.lifecycleStatus)) {
+        return false;
+    }
+
+    const buildItemFilter = (extra = {}) => ({
+        productInstanceId: instanceId,
+        ...(excludeOrderId ? { orderId: { $ne: excludeOrderId } } : {}),
+        ...extra,
+    });
 
     // Kiểm tra 1: chồng lấp ngày hợp đồng với đơn chưa kết thúc
-    // Dùng strict inequality ($lt/$gt): nếu đơn cũ kết thúc đúng lúc đơn mới bắt đầu → KHÔNG coi là conflict
-    const overlapQuery = RentOrderItem.find({
-        productInstanceId: instanceId,
-        rentStartDate: { $lt: rentEndDate },
-        rentEndDate: { $gt: rentStartDate }
-    }).populate({ path: 'orderId', select: 'status createdAt' });
+    // Lưu ý timezone/ranh giới ngày:
+    // - frontend/backend có thể parse date theo UTC khác UTC+7
+    // - end date trong nghiệp vụ thường mang nghĩa "đến hết ngày"
+    // => quy đổi sang "ngày lịch Việt Nam" để quyết định overlap cho đúng (cho phép thuê liên tiếp).
+    const DAY_IN_MS = 24 * 60 * 60 * 1000;
+    const VN_TZ_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
+    const toVnCalendarDay = (d) => Math.floor((new Date(d).getTime() + VN_TZ_OFFSET_MS) / DAY_IN_MS);
+
+    const requestedStartDay = toVnCalendarDay(rentStartDate);
+    const requestedEndDay = toVnCalendarDay(rentEndDate);
+
+    // Candidate window theo timestamp (để giảm số lượng record),
+    // rồi vẫn lọc lại overlap theo ngày VN (để chống sai lệch timezone/biên).
+    const requestedStartUtcMidnight = new Date(requestedStartDay * DAY_IN_MS - VN_TZ_OFFSET_MS);
+    const requestedEndUtcMidnightExclusive = new Date((requestedEndDay + 1) * DAY_IN_MS - VN_TZ_OFFSET_MS);
+
+    const overlapQuery = RentOrderItem.find(buildItemFilter({
+        rentStartDate: { $lt: requestedEndUtcMidnightExclusive },
+        rentEndDate: { $gte: requestedStartUtcMidnight },
+    })).populate({ path: 'orderId', select: 'status' });
 
     if (session) overlapQuery.session(session);
     const overlaps = await overlapQuery.lean();
 
     const conflictingOverlaps = overlaps.filter((item) => {
-        // Orphaned item (order bị xoá hoặc populate thất bại) → không chặn
         if (!item.orderId) return false;
         const status = String(item.orderId.status || '').toLowerCase();
         if (TERMINAL_ORDER_STATUSES.includes(status)) return false;
-        // Đơn PendingDeposit quá hạn giữ chỗ không còn chặn inventory
-        if (status === 'pendingdeposit' && item.orderId.createdAt && new Date(item.orderId.createdAt) < pendingDepositExpiry) {
-            return false;
-        }
-        return true;
+
+        if (!item.rentStartDate || !item.rentEndDate) return false;
+
+        const itemStartDay = toVnCalendarDay(item.rentStartDate);
+        const itemEndDay = toVnCalendarDay(item.rentEndDate);
+
+        // Overlap theo ngày lịch VN (end là inclusive theo nghiệp vụ).
+        return itemStartDay <= requestedEndDay && itemEndDay >= requestedStartDay;
     });
     if (conflictingOverlaps.length > 0) {
-        console.log(`[Availability] Instance ${instanceId} BLOCKED by Check1:`,
-            conflictingOverlaps.map((i) => ({ orderId: i.orderId?._id, status: i.orderId?.status, start: i.rentStartDate, end: i.rentEndDate }))
-        );
         return false;
     }
 
-    // Kiểm tra 2: đơn trễ hạn vẫn còn active (đồ chưa được trả dù đã quá ngày hợp đồng)
-    // Kịch bản: Khách A trễ hạn, Khách B đặt kỳ bắt đầu SAU ngày hết hạn của A
-    // → hệ thống phải chặn vì đồ vẫn đang ở tay Khách A
+    // Kiểm tra 2: đơn trễ hạn vẫn còn active
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0); // dùng UTC để nhất quán timezone
+    today.setUTCHours(0, 0, 0, 0);
 
-    const lateQuery = RentOrderItem.find({
-        productInstanceId: instanceId,
-        rentEndDate: { $lt: today }
-    }).populate({ path: 'orderId', select: 'status createdAt' });
+    const lateQuery = RentOrderItem.find(buildItemFilter({
+        rentEndDate: { $lt: today },
+    })).populate({ path: 'orderId', select: 'status' });
 
     if (session) lateQuery.session(session);
     const pastDueItems = await lateQuery.lean();
 
     const activeLateOrders = pastDueItems.filter((item) => {
-        // Orphaned item → không chặn
         if (!item.orderId) return false;
         const status = String(item.orderId.status || '').toLowerCase();
         if (TERMINAL_ORDER_STATUSES.includes(status)) return false;
-        if (status === 'pendingdeposit' && item.orderId.createdAt && new Date(item.orderId.createdAt) < pendingDepositExpiry) {
-            return false;
-        }
         return true;
     });
     if (activeLateOrders.length > 0) {
-        console.log(`[Availability] Instance ${instanceId} BLOCKED by Check2 (late):`,
-            activeLateOrders.map((i) => ({ orderId: i.orderId?._id, status: i.orderId?.status, end: i.rentEndDate }))
-        );
         return false;
     }
 
@@ -258,7 +456,6 @@ const snapshotOrderForAudit = (order) => ({
     totalAmount: Number(order?.totalAmount || 0),
     lateDays: Number(order?.lateDays || 0),
     lateFee: Number(order?.lateFee || 0),
-    washingFee: Number(order?.washingFee || 0),
     damageFee: Number(order?.damageFee || 0),
     compensationFee: Number(order?.compensationFee || 0),
     depositForfeited: Boolean(order?.depositForfeited),
@@ -268,27 +465,67 @@ const snapshotOrderForAudit = (order) => ({
 });
 
 /**
- * Kiểm tra xem MongoDB có hỗ trợ replica set không.
- * Nếu có, khởi tạo session + transaction.
+ * Kiểm tra xem MongoDB hiện tại có hỗ trợ transaction (replica set hoặc mongos) không.
+ * Kết quả được cache để tránh gọi hello command nhiều lần.
+ *
+ * - Replica set: `hello` trả về `setName`.
+ * - Sharded cluster (mongos): `hello` trả về `msg === 'isdbgrid'`.
+ * - Standalone: không có cả hai → không thể dùng transaction.
+ */
+let cachedTransactionSupport = null;
+const detectTransactionSupport = async () => {
+    if (cachedTransactionSupport !== null) {
+        return cachedTransactionSupport;
+    }
+    try {
+        const admin = mongoose.connection.db?.admin?.();
+        if (!admin) {
+            cachedTransactionSupport = false;
+            return cachedTransactionSupport;
+        }
+        const info = await admin.command({ hello: 1 });
+        const isReplicaSet = Boolean(info?.setName);
+        const isMongos = info?.msg === 'isdbgrid';
+        cachedTransactionSupport = isReplicaSet || isMongos;
+    } catch (err) {
+        console.warn('Transaction support detection failed, fallback to non-transactional mode:', err?.message || err);
+        cachedTransactionSupport = false;
+    }
+    return cachedTransactionSupport;
+};
+
+/**
+ * Khởi tạo session + transaction nếu server hỗ trợ, nếu không thì chạy chế độ không transaction.
  */
 const startTransactionIfAvailable = async () => {
-    let session = null;
-    let useTransaction = false;
-    try {
-        const isMaster = await mongoose.connection.db.admin().command({ ismaster: 1 });
-        if (isMaster?.setName) {
-            session = await mongoose.startSession();
-            try {
-                session.startTransaction();
-                useTransaction = true;
-            } catch (err) {
-                console.warn('Transaction not supported in current deployment:', err.message);
-            }
-        }
-    } catch (err) {
-        console.warn('Cannot check replica set status; proceeding without transaction:', err.message);
+    const supportsTransaction = await detectTransactionSupport();
+    if (!supportsTransaction) {
+        return { session: null, useTransaction: false };
     }
-    return { session, useTransaction };
+
+    let session = null;
+    try {
+        session = await mongoose.startSession();
+        session.startTransaction();
+        return { session, useTransaction: true };
+    } catch (err) {
+        const message = String(err?.message || '');
+        const isReplicaSetRequiredError =
+            err?.code === 20
+            || err?.codeName === 'IllegalOperation'
+            || message.includes('Transaction numbers are only allowed on a replica set member or mongos');
+
+        if (session) {
+            await session.endSession();
+        }
+
+        if (isReplicaSetRequiredError) {
+            cachedTransactionSupport = false;
+            return { session: null, useTransaction: false };
+        }
+
+        throw err;
+    }
 };
 
 /**
@@ -319,7 +556,6 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const lateFee       = Number(order.lateFee       || 0);
     const damageFee     = Number(order.damageFee     || 0);
     const compensationFee = Number(order.compensationFee || 0);
-    // washingFee luôn = 0 (phí giặt đã tính vào giá thuê), không cộng vào tổng phí
     const totalFees     = lateFee + damageFee + compensationFee;
 
     // Khi khách thanh toán QR ExtraDue, toàn bộ khoản (remaining + fees) được ghi là purpose='Remaining'.
@@ -327,17 +563,7 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const feesCoveredByRemaining = Math.max(0, paidRemainingTotal - Number(order.remainingAmount || 0));
     const unpaidFees = Math.max(0, totalFees - feesCoveredByRemaining);
 
-    // Cũng kiểm tra các bản ghi phí đã thu riêng lẻ
-    const paidFeePayments = await Payment.find({
-        orderId,
-        orderType: ORDER_TYPE.RENT,
-        purpose: { $in: ['LateFee', 'DamageFee', 'WashingFee', 'Compensation', 'ExtraFee'] },
-        status: 'Paid',
-    }).lean();
-    const paidFeesTotal = paidFeePayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-    const netUnpaidFees = Math.max(0, unpaidFees - paidFeesTotal);
-
-    const totalOutstanding = outstandingRemaining + netUnpaidFees;
+    const totalOutstanding = outstandingRemaining + unpaidFees;
 
     // Thế chấp tiền mặt
     const heldCashCollaterals = await Collateral.find({ orderId, type: 'CASH', status: 'Held' });
@@ -377,19 +603,14 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
         });
     }
 
-    // Thu thêm nếu thế chấp không đủ
     if (extraDue > 0) {
-        const purpose = lateFee > 0 ? 'LateFee'
-            : compensationFee > 0 ? 'Compensation'
-            : damageFee > 0 ? 'DamageFee'
-            : 'Remaining';
         await Payment.create({
             orderType: ORDER_TYPE.RENT,
             orderId,
             amount: extraDue,
             method,
             status: 'Paid',
-            purpose,
+            purpose: 'Remaining',
             transactionCode: `PAY_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             paidAt: new Date(),
         });
@@ -410,6 +631,10 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
 
 exports.settleDepositAndCollateral = settleDepositAndCollateral;
 
+// Export helper để payment.controller dùng kiểm tra double-booking (tránh circular dep)
+exports.isInstanceAvailableForPeriodExcluding = (instanceId, rentStartDate, rentEndDate, excludeOrderId) =>
+    isInstanceAvailableForPeriod(instanceId, rentStartDate, rentEndDate, null, excludeOrderId);
+
 const auditOrderChange = async (req, action, orderId, before, after) => (
     writeAuditLog({
         req,
@@ -422,33 +647,105 @@ const auditOrderChange = async (req, action, orderId, before, after) => (
     })
 );
 
+/**
+ * Resolve product instances cho danh sách items trong đơn thuê.
+ * Tìm instance khả dụng theo productInstanceId hoặc productId, check availability theo khoảng ngày.
+ * Dùng chung cho createRentOrder và createWalkInOrder.
+ */
+const resolveRentInstances = async (items, defaultStart, defaultEnd, session, useTransaction) => {
+    const resolvedItems = [];
+    const lockedInstanceIds = new Set();
+
+    for (const item of items) {
+        let instance = null;
+        const itemRentStart = new Date(item.rentStartDate || defaultStart);
+        const itemRentEnd = new Date(item.rentEndDate || defaultEnd);
+
+        if (Number.isNaN(itemRentStart.getTime()) || Number.isNaN(itemRentEnd.getTime()) || itemRentStart > itemRentEnd) {
+            throw new Error('Ngày thuê không hợp lệ');
+        }
+
+        const isInstanceRentable = async (inst) => {
+            if (!inst) return false;
+            // Chỉ chặn tuyệt đối Lost/Sold. Các lifecycle khác (Available/Reserved/Rented/Washing/Repair)
+            // vẫn có thể đặt thuê cho khoảng ngày KHÔNG overlap — tính khả dụng do
+            // isInstanceAvailableForPeriod quyết định dựa trên RentOrderItem.
+            if (INSTANCE_STATUSES_BLOCKING_RENT.includes(inst.lifecycleStatus)) return false;
+            return isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
+        };
+
+        const requestedSize = String(item.size || '').trim();
+        // "FREE SIZE" từ FE tương đương với không có size cụ thể — ProductInstance của sản phẩm no-size có size = ''.
+        const hasExplicitSize = requestedSize && requestedSize.toUpperCase() !== 'FREE SIZE';
+        const sizeLabel = hasExplicitSize ? requestedSize : '';
+        const sizeMismatchMessage = sizeLabel
+            ? `Sản phẩm size ${sizeLabel} không còn khả dụng hoặc đã hết hàng để thuê.`
+            : 'Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.';
+
+        if (item.productInstanceId) {
+            const inst = useTransaction
+                ? await ProductInstance.findById(item.productInstanceId).session(session)
+                : await ProductInstance.findById(item.productInstanceId);
+
+            // Đảm bảo instance khớp đúng size khách chọn, tránh gán nhầm size khác
+            if (inst && hasExplicitSize && String(inst.size || '').trim() !== sizeLabel) {
+                throw new Error(sizeMismatchMessage);
+            }
+
+            if (!(await isInstanceRentable(inst))) {
+                throw new Error(sizeMismatchMessage);
+            }
+            instance = inst;
+        } else if (item.productId) {
+            // Ưu tiên Used (conditionScore thấp) trước, nếu không đủ mới lấy New
+            // Không filter cứng theo 'Available' để 1 instance có thể phục vụ nhiều khoảng ngày
+            // khác nhau; chỉ loại các lifecycle KHÔNG thể cho thuê (Lost/Sold).
+            const candidateFilter = {
+                productId: item.productId,
+                _id: { $nin: Array.from(lockedInstanceIds) },
+                lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+            };
+            if (hasExplicitSize) {
+                candidateFilter.size = sizeLabel;
+            }
+
+            const candidatesQuery = ProductInstance.find(candidateFilter).sort({ conditionScore: 1 });
+            const candidates = useTransaction ? await candidatesQuery.session(session) : await candidatesQuery;
+            for (const cand of candidates) {
+                if (await isInstanceRentable(cand)) {
+                    instance = cand;
+                    break;
+                }
+            }
+
+            if (!instance && hasExplicitSize) {
+                // Không có instance size yêu cầu — báo rõ thay vì nuốt lỗi
+                throw new Error(sizeMismatchMessage);
+            }
+        }
+
+        if (!instance) throw new Error('Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.');
+        lockedInstanceIds.add(instance._id.toString());
+        resolvedItems.push({ source: item, instance, rentStartDate: itemRentStart, rentEndDate: itemRentEnd });
+    }
+
+    return resolvedItems;
+};
+
+/**
+ * Đánh dấu Reserved cho các instance thuộc đơn nếu ngày thuê nằm trong ngưỡng HOURS_BEFORE_RESERVED.
+ * Dùng chung cho payDeposit, staffCollectDeposit, confirmRentOrder.
+ */
 const findRentOrderByIdempotencyKey = async (idempotencyKey) => {
     if (!idempotencyKey) return null;
     return RentOrder.findOne({ idempotencyKey }).sort({ createdAt: -1 });
 };
 
 exports.createRentOrder = async (req, res) => {
-    // 1. Khởi tạo Transaction (nếu MongoDB hỗ trợ replica set)
     let session = null;
     let useTransaction = false;
+    let txOptions = {};
     let idempotencyKey = null;
-
-    try {
-        const isMaster = await mongoose.connection.db.admin().command({ ismaster: 1 });
-        if (isMaster && isMaster.setName) {
-            session = await mongoose.startSession();
-            try {
-                session.startTransaction();
-                useTransaction = true;
-            } catch (err) {
-                console.warn('MongoDB transaction not supported in current deployment; proceeding without transaction.', err.message);
-            }
-        }
-    } catch (err) {
-        console.warn('Unable to check MongoDB replica set status; proceeding without transaction.', err.message);
-    }
-
-    const txOptions = useTransaction ? { session } : {};
 
     try {
         const userId = req.user?.id;
@@ -494,78 +791,17 @@ exports.createRentOrder = async (req, res) => {
             return res.status(200).json(buildRentOrderSuccessResponse(detail));
         }
 
-        const resolvedItems = [];
-        // Dùng Set để lưu tạm các ID đồ đã được chọn trong CÙNG 1 đơn này (chống trùng)
-        const lockedInstanceIds = new Set(); 
-
-        // 2. Kiểm tra và Khóa đồ (dựa trên khoảng thời gian thuê, không dựa vào lifecycleStatus cho booking tương lai)
-        for (const item of items) {
-            let instance = null;
-            const itemRentStart = new Date(item.rentStartDate || rentStartDate);
-            const itemRentEnd = new Date(item.rentEndDate || rentEndDate);
-
-            if (Number.isNaN(itemRentStart.getTime()) || Number.isNaN(itemRentEnd.getTime()) || itemRentStart > itemRentEnd) {
-                throw new Error('Ngày thuê không hợp lệ');
-            }
-
-            const isInstanceRentable = async (inst) => {
-                if (!inst) return false;
-                if (['Washing', 'Repair', 'Lost'].includes(inst.lifecycleStatus)) return false;
-                return isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
-            };
-
-            if (item.productInstanceId) {
-                const inst = useTransaction
-                    ? await ProductInstance.findById(item.productInstanceId).session(session)
-                    : await ProductInstance.findById(item.productInstanceId);
-
-                if (!(await isInstanceRentable(inst))) {
-                    throw new Error(`Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.`);
-                }
-                instance = inst;
-            } else if (item.productId) {
-                const candidatesQuery = ProductInstance.find({
-                    productId: item.productId,
-                    _id: { $nin: Array.from(lockedInstanceIds) },
-                    lifecycleStatus: { $nin: ['Washing', 'Repair', 'Lost'] }
-                }).sort({ conditionScore: -1 });
-
-                const candidates = useTransaction
-                    ? await candidatesQuery.session(session)
-                    : await candidatesQuery;
-
-                for (const cand of candidates) {
-                    if (await isInstanceRentable(cand)) {
-                        instance = cand;
-                        break;
-                    }
-                }
-            }
-
-            if (!instance) {
-                // Nếu lỗi, throw error để rớt xuống catch và Rollback toàn bộ
-                throw new Error(`Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.`);
-            }
-
-            // Ghi nhận là đồ này đã bị pick
-            lockedInstanceIds.add(instance._id.toString());
-            resolvedItems.push({
-                source: item,
-                instance,
-                rentStartDate: itemRentStart,
-                rentEndDate: itemRentEnd
-            });
-
-            // Chỉ set trạng thái Reserved nếu đơn thuê đang diễn ra (hoặc đã bắt đầu)
-            const now = new Date();
-            if (itemRentStart <= now && now <= itemRentEnd) {
-                await ProductInstance.findByIdAndUpdate(
-                    instance._id,
-                    { lifecycleStatus: 'Reserved' },
-                    { ...txOptions, new: true }
-                );
-            }
+        const invalidPriceItem = items.find((item) => Number(item.baseRentPrice || 0) <= 0);
+        if (invalidPriceItem) {
+            return res.status(400).json({ success: false, message: 'Giá thuê không hợp lệ, vui lòng thử lại.' });
         }
+
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const resolvedItems = await resolveRentInstances(items, rentStartDate, rentEndDate, session, useTransaction);
+
+        // Reserved immediately when the rent order is created.
 
         // 3. Tính toán tiền nong (Giữ nguyên logic cực tốt của bạn)
         const computedTotalAmount = resolvedItems.reduce(
@@ -580,6 +816,11 @@ exports.createRentOrder = async (req, res) => {
         });
 
         if (voucherApplication.error) {
+            if (session) {
+                if (useTransaction) await session.abortTransaction();
+                await session.endSession();
+                session = null;
+            }
             return res.status(400).json(voucherApplication.error);
         }
 
@@ -601,12 +842,11 @@ exports.createRentOrder = async (req, res) => {
             discountAmount: voucherApplication.discountAmount,
             depositAmount,
             remainingAmount,
-            washingFee: 0,
             damageFee: 0,
             lateDays: 0,
             lateFee: 0,
             compensationFee: 0,
-            totalAmount: orderTotalAmount
+            totalAmount: orderTotalAmount,
         }], { session });
 
         // Gán mã đơn sau khi có _id
@@ -632,6 +872,11 @@ exports.createRentOrder = async (req, res) => {
             useTransaction ? { session } : {}
         );
 
+        // KHÔNG đổi lifecycleStatus của instance khi tạo đơn.
+        // Instance giữ Available cho đến khi cron autoReserveInstances quét (HOURS_BEFORE_RESERVED
+        // trước ngày thuê) hoặc staff confirmPickup — nhờ vậy 1 instance có thể phục vụ nhiều
+        // đơn thuê cho các khoảng ngày khác nhau.
+
         if (voucherApplication.voucher?._id) {
             if (useTransaction) {
                 await Voucher.findByIdAndUpdate(
@@ -652,6 +897,7 @@ exports.createRentOrder = async (req, res) => {
                 await session.commitTransaction();
             }
             await session.endSession();
+            session = null;
         }
 
         // Đoạn này lấy detail ngoài session vì data đã được commit
@@ -688,12 +934,13 @@ exports.createRentOrder = async (req, res) => {
             await session.endSession();
         }
         
-        console.error('Create rent order error:', error);
-        
         // Trả mã 400 nếu là lỗi logic (khách hàng), 500 nếu lỗi DB
         const CLIENT_ERROR_KEYWORDS = ['khả dụng', 'hết hàng', 'Ngày thuê', 'quá khứ', 'không hợp lệ'];
         const isClientError = error.isClientError === true
             || CLIENT_ERROR_KEYWORDS.some((kw) => error.message.includes(kw));
+        if (!isClientError) {
+            console.error('Create rent order error:', error);
+        }
         return res.status(isClientError ? 400 : 500).json({
             success: false,
             message: isClientError ? error.message : 'Lỗi server khi tạo đơn thuê',
@@ -779,6 +1026,9 @@ exports.getRentOrderById = async (req, res) => {
 };
 
 exports.payDeposit = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const { method = 'Cash' } = req.body;
@@ -815,15 +1065,60 @@ exports.payDeposit = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Don thue nay da co dat coc' });
         }
 
-        const deposit = await Deposit.create({
+        // Re-check availability để chống double-booking (2 user đặt cùng lúc)
+        // excludeOrderId = id → bỏ qua chính đơn này khi check tránh tự block
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const orderItemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) orderItemsQuery.session(session);
+        const orderItems = await orderItemsQuery;
+        for (const item of orderItems) {
+            const available = await isInstanceAvailableForPeriod(
+                item.productInstanceId,
+                item.rentStartDate,
+                item.rentEndDate,
+                null,
+                id
+            );
+            if (!available) {
+                order.status = 'Cancelled';
+                order.history = [
+                    ...(order.history || []),
+                    {
+                        status: 'Cancelled',
+                        action: 'double_booking_auto_cancel',
+                        description: 'Đơn bị hủy tự động do sản phẩm đã được thuê bởi khách khác.',
+                        updatedAt: new Date(),
+                    },
+                ];
+                await order.save(txOptions);
+                const conflictInstanceIds = orderItems.map((i) => i.productInstanceId).filter(Boolean);
+                if (conflictInstanceIds.length > 0) {
+                    // Chỉ release nếu instance không còn phục vụ đơn active khác.
+                    await safeReleaseInstancesAfterOrderExit(conflictInstanceIds, id, txOptions);
+                }
+                if (session) {
+                    if (useTransaction) await session.commitTransaction();
+                    await session.endSession();
+                    session = null;
+                }
+                return res.status(409).json({
+                    success: false,
+                    message: 'Sản phẩm này vừa được thuê bởi khách hàng khác. Đơn thuê của bạn đã bị hủy tự động.',
+                });
+            }
+        }
+
+        const [deposit] = await Deposit.create([{
             orderId: id,
             amount: order.depositAmount,
             method,
             status: 'Held',
             paidAt: new Date()
-        });
+        }], txOptions);
 
-        const payment = await Payment.create({
+        const [payment] = await Payment.create([{
             orderType: ORDER_TYPE.RENT,
             orderId: id,
             amount: order.depositAmount,
@@ -832,27 +1127,20 @@ exports.payDeposit = async (req, res) => {
             purpose: 'Deposit',
             transactionCode: `DEP_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             paidAt: new Date()
-        });
+        }], txOptions);
 
         const before = snapshotOrderForAudit(order);
         order.status = 'Deposited';
-        await order.save();
+        await order.save(txOptions);
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
-        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
-        if (instanceIds.length > 0) {
-            const now = new Date();
-            const orderStart = new Date(order.rentStartDate);
+        // KHÔNG đổi lifecycle instance khi nhận cọc. Cron autoReserveInstances sẽ tự
+        // chuyển Available → Reserved khi còn HOURS_BEFORE_RESERVED giờ trước ngày thuê,
+        // staff sẽ được nhắc chuẩn bị hàng qua alert RENT_PICKUP_SOON.
 
-            // Mark Reserved nếu ngày thuê trong vòng HOURS_BEFORE_RESERVED giờ tới
-            const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
-            const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
-            if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
-                await ProductInstance.updateMany(
-                    { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                    { lifecycleStatus: 'Reserved' }
-                );
-            }
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
         }
 
         await writeAuditLog({
@@ -881,6 +1169,13 @@ exports.payDeposit = async (req, res) => {
             }
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Pay deposit error:', error);
         return res.status(500).json({
             success: false,
@@ -891,6 +1186,9 @@ exports.payDeposit = async (req, res) => {
 };
 
 exports.cancelRentOrder = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const userId = req.user?.id;
@@ -914,19 +1212,31 @@ exports.cancelRentOrder = async (req, res) => {
             });
         }
 
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         const before = snapshotOrderForAudit(order);
         order.status = 'Cancelled';
-        await order.save();
+        await order.save(txOptions);
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const itemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) itemsQuery.session(session);
+        const items = await itemsQuery;
         const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
         if (instanceIds.length > 0) {
-            await ProductInstance.updateMany({ _id: { $in: instanceIds } }, { lifecycleStatus: 'Available' });
+            // Chỉ release nếu không còn đơn active khác dùng instance.
+            await safeReleaseInstancesAfterOrderExit(instanceIds, id, txOptions);
         }
 
         // Hoàn cọc khi hủy ở bất kỳ trạng thái nào đã đặt cọc
         if (['Deposited', 'Confirmed', 'WaitingPickup'].includes(previousStatus)) {
-            await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Refunded' });
+            await Deposit.updateMany({ orderId: id, status: 'Held' }, { status: 'Refunded' }, txOptions);
+        }
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
         }
 
         await auditOrderChange(req, 'orders_rent.order.cancel', order._id, before, snapshotOrderForAudit(order));
@@ -937,6 +1247,13 @@ exports.cancelRentOrder = async (req, res) => {
             data: await fetchOrderDetail(id)
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Cancel rent order error:', error);
         return res.status(500).json({
             success: false,
@@ -954,17 +1271,26 @@ exports.getAllRentOrders = async (req, res) => {
 
         const cappedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
         const skip = (Number(page) - 1) * cappedLimit;
-        const [orders, total] = await Promise.all([
+        const [orders, total, distinctStatuses] = await Promise.all([
             RentOrder.find(query)
                 .populate('customerId', 'name phone email')
                 .populate('staffId', 'name phone')
-                .sort({ createdAt: -1 })
+                .sort({ createdAt: 1, _id: 1 })
                 .skip(skip)
                 .limit(cappedLimit),
-            RentOrder.countDocuments(query)
+            RentOrder.countDocuments(query),
+            RentOrder.distinct('status', {})
         ]);
 
         const data = await attachItems(orders);
+        const statusSet = new Set(distinctStatuses.map((item) => String(item || '').trim()).filter(Boolean));
+        const statusOrder = Object.values(RENT_ORDER_STATUS);
+        const statusOptions = statusOrder
+            .filter((statusKey) => statusSet.has(statusKey))
+            .map((statusKey) => ({
+                value: statusKey,
+                label: RENT_STATUS_META[statusKey] || statusKey
+            }));
 
         return res.json({
             success: true,
@@ -974,6 +1300,9 @@ exports.getAllRentOrders = async (req, res) => {
                 limit: cappedLimit,
                 total,
                 pages: Math.ceil(total / cappedLimit)
+            },
+            meta: {
+                statusOptions
             }
         });
     } catch (error) {
@@ -992,6 +1321,9 @@ exports.getAllRentOrders = async (req, res) => {
  * Dùng khi: walk-in PayOS bị hủy, staff chuyển sang thu tiền mặt thay thế.
  */
 exports.staffCollectDeposit = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const { method = 'Cash' } = req.body;
@@ -1008,15 +1340,22 @@ exports.staffCollectDeposit = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Đơn này đã có đặt cọc' });
         }
 
-        await Deposit.create({
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const orderItemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) orderItemsQuery.session(session);
+        const orderItems = await orderItemsQuery;
+
+        await Deposit.create([{
             orderId: id,
             amount: order.depositAmount,
             method,
             status: 'Held',
             paidAt: new Date()
-        });
+        }], txOptions);
 
-        await Payment.create({
+        await Payment.create([{
             orderType: ORDER_TYPE.RENT,
             orderId: id,
             amount: order.depositAmount,
@@ -1025,26 +1364,18 @@ exports.staffCollectDeposit = async (req, res) => {
             purpose: 'Deposit',
             transactionCode: `DEP_STAFF_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             paidAt: new Date()
-        });
+        }], txOptions);
 
         const before = snapshotOrderForAudit(order);
         order.status = 'Deposited';
-        await order.save();
+        await order.save(txOptions);
 
-        // Đánh dấu Reserved nếu thuê bắt đầu trong ngưỡng giờ tới
-        const items = await RentOrderItem.find({ orderId: id }).lean();
-        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
-        if (instanceIds.length > 0) {
-            const now = new Date();
-            const orderStart = new Date(order.rentStartDate);
-            const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
-            const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
-            if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
-                await ProductInstance.updateMany(
-                    { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                    { lifecycleStatus: 'Reserved' }
-                );
-            }
+        // Tương tự payDeposit: giữ lifecycle instance, để cron / confirmPickup xử lý.
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
         }
 
         await auditOrderChange(req, 'orders_rent.deposit.staff_collect', order._id, before, snapshotOrderForAudit(order));
@@ -1056,12 +1387,22 @@ exports.staffCollectDeposit = async (req, res) => {
             data: detail
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Staff collect deposit error:', error);
         return res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
     }
 };
 
 exports.confirmRentOrder = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
     try {
         const { id } = req.params;
         const staffId = req.user?.id;
@@ -1078,26 +1419,21 @@ exports.confirmRentOrder = async (req, res) => {
             });
         }
 
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         const before = snapshotOrderForAudit(order);
         order.staffId = staffId;
         order.status = 'Confirmed';
         order.confirmedAt = new Date();
-        await order.save();
+        await order.save(txOptions);
 
-        // Cập nhật ProductInstance → Reserved nếu ngày thuê trong vòng HOURS_BEFORE_RESERVED giờ tới
-        const items = await RentOrderItem.find({ orderId: id }).lean();
-        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
-        if (instanceIds.length > 0) {
-            const now = new Date();
-            const orderStart = new Date(order.rentStartDate);
-            const hoursBeforeReserved = Number(process.env.HOURS_BEFORE_RESERVED || 24);
-            const threshold = new Date(now.getTime() + hoursBeforeReserved * 60 * 60 * 1000);
-            if (!Number.isNaN(orderStart.getTime()) && orderStart <= threshold) {
-                await ProductInstance.updateMany(
-                    { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                    { lifecycleStatus: 'Reserved' }
-                );
-            }
+        // Không đổi lifecycle instance tại bước xác nhận đơn — cron và confirmPickup sẽ đảm nhiệm.
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
         }
 
         await auditOrderChange(req, 'orders_rent.order.confirm', order._id, before, snapshotOrderForAudit(order));
@@ -1108,6 +1444,13 @@ exports.confirmRentOrder = async (req, res) => {
             data: await fetchOrderDetail(id)
         });
     } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
         console.error('Confirm rent order error:', error);
         return res.status(500).json({
             success: false,
@@ -1125,8 +1468,9 @@ const isOwnerOrStaff = (req, order) => {
 };
 
 exports.confirmPickup = async (req, res) => {
-    const { session, useTransaction } = await startTransactionIfAvailable();
-    const txOptions = useTransaction ? { session } : {};
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
 
     try {
         const { id } = req.params;
@@ -1189,6 +1533,9 @@ exports.confirmPickup = async (req, res) => {
         }
 
         // 1) Lưu thế chấp
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
         await Collateral.create([
             {
                 orderId: id,
@@ -1212,15 +1559,11 @@ exports.confirmPickup = async (req, res) => {
         order.pickupAt = new Date();
         await order.save(txOptions);
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const items = await RentOrderItem.find({ orderId: id }).session(session).lean();
         const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
 
         if (instanceIds.length > 0) {
-            await ProductInstance.updateMany(
-                { _id: { $in: instanceIds } },
-                { lifecycleStatus: 'Rented' },
-                txOptions
-            );
+            await markReservedInstancesRented(instanceIds, txOptions);
 
             const historyDocs = instanceIds.map((instanceId) => ({
                 productInstanceId: instanceId,
@@ -1237,6 +1580,7 @@ exports.confirmPickup = async (req, res) => {
         if (session) {
             if (useTransaction) await session.commitTransaction();
             await session.endSession();
+            session = null;
         }
 
         return res.json({
@@ -1250,6 +1594,13 @@ exports.confirmPickup = async (req, res) => {
             await session.endSession();
         }
         console.error('Confirm pickup error:', error);
+        if (Array.isArray(error?.blockingInstances) && error.blockingInstances.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: error.message,
+                blockingInstances: error.blockingInstances,
+            });
+        }
         return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
     }
 };
@@ -1324,12 +1675,13 @@ exports.markWaitingReturn = async (req, res) => {
 };
 
 exports.confirmReturn = async (req, res) => {
-    const { session, useTransaction } = await startTransactionIfAvailable();
-    const txOptions = useTransaction ? { session } : {};
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
 
     try {
         const { id } = req.params;
-        const { returnedItems = [], note = '', washingFee = 0, returnDate: returnDateRaw } = req.body;
+        const { returnedItems = [], note = '', returnDate: returnDateRaw } = req.body;
 
         // Ngày thực tế trả — staff có thể chỉ định; mặc định là hôm nay
         const actualReturnDate = returnDateRaw ? new Date(returnDateRaw) : new Date();
@@ -1373,6 +1725,29 @@ exports.confirmReturn = async (req, res) => {
         const totalItems = allInstanceIds.length;
         const validInstanceIdSet = new Set(allInstanceIds.map(String));
 
+        // Tải thông tin instance + product để resolve Damage Policy và base value
+        const instanceDocs = await ProductInstance.find({
+            _id: { $in: allInstanceIds },
+        }).lean();
+        const instanceById = new Map(instanceDocs.map((d) => [String(d._id), d]));
+
+        const productIds = Array.from(new Set(instanceDocs.map((d) => String(d.productId)).filter(Boolean)));
+        const productDocs = await Product.find({ _id: { $in: productIds } }).lean();
+        const productById = new Map(productDocs.map((p) => [String(p._id), p]));
+
+        // Cache policy theo productId để tránh resolve lại nhiều lần
+        const policyCache = new Map();
+        const getPolicyForProduct = async (product) => {
+            if (!product) return null;
+            const key = String(product._id);
+            if (policyCache.has(key)) return policyCache.get(key);
+            const policy = await resolvePolicyForProduct(product);
+            policyCache.set(key, policy);
+            return policy;
+        };
+
+        const enrichedItems = [];
+
         for (const item of returnedItems) {
             if (item.productInstanceId && !validInstanceIdSet.has(String(item.productInstanceId))) {
                 if (session) {
@@ -1384,33 +1759,97 @@ exports.confirmReturn = async (req, res) => {
                     message: `Sản phẩm ${item.productInstanceId} không thuộc đơn thuê này`
                 });
             }
-            if (item.damageFee !== undefined && Number(item.damageFee) < 0) {
-                if (session) {
-                    if (useTransaction) await session.abortTransaction();
-                    await session.endSession();
+
+            const instance = instanceById.get(String(item.productInstanceId));
+            const product = instance ? productById.get(String(instance.productId)) : null;
+            const policy = await getPolicyForProduct(product);
+            const baseValue = getInstanceBaseValue(instance, product);
+
+            let damageLevel = null;
+            let damageFee = 0;
+            let condition = 'Normal';
+            let triggerLifecycle = 'Washing';
+            let penaltyPercent = 0;
+            let damageLabel = '';
+            let damageLevelKey = '';
+            let policyId = null;
+
+            // Ưu tiên damageLevelKey từ policy (flow mới - auto calc)
+            if (item.damageLevelKey && policy) {
+                damageLevel = (policy.levels || []).find(
+                    (lvl) => String(lvl.key).toLowerCase() === String(item.damageLevelKey).toLowerCase()
+                );
+                if (!damageLevel) {
+                    if (session) {
+                        if (useTransaction) await session.abortTransaction();
+                        await session.endSession();
+                    }
+                    return res.status(400).json({
+                        success: false,
+                        message: `Mức hư hỏng "${item.damageLevelKey}" không thuộc chính sách đang áp dụng`,
+                    });
                 }
-                return res.status(400).json({ success: false, message: 'Phí hỏng hóc không được âm' });
-            }
-            const validConditions = ['Normal', 'Dirty', 'Damaged'];
-            if (item.condition && !validConditions.includes(item.condition)) {
-                if (session) {
-                    if (useTransaction) await session.abortTransaction();
-                    await session.endSession();
+                penaltyPercent = Number(damageLevel.penaltyPercent || 0);
+                damageFee = Math.round((baseValue * penaltyPercent) / 100);
+                condition = damageLevel.condition || 'Damaged';
+                triggerLifecycle = damageLevel.triggerLifecycle || 'Repair';
+                damageLabel = damageLevel.label || '';
+                damageLevelKey = damageLevel.key;
+                policyId = policy._id;
+            } else {
+                // Flow cũ (backward compat): nhận condition + damageFee trực tiếp
+                if (item.damageFee !== undefined && Number(item.damageFee) < 0) {
+                    if (session) {
+                        if (useTransaction) await session.abortTransaction();
+                        await session.endSession();
+                    }
+                    return res.status(400).json({ success: false, message: 'Phí hỏng hóc không được âm' });
                 }
-                return res.status(400).json({ success: false, message: `Tình trạng "${item.condition}" không hợp lệ` });
+                const validConditions = ['Normal', 'Dirty', 'Damaged', 'Lost'];
+                if (item.condition && !validConditions.includes(item.condition)) {
+                    if (session) {
+                        if (useTransaction) await session.abortTransaction();
+                        await session.endSession();
+                    }
+                    return res.status(400).json({ success: false, message: `Tình trạng "${item.condition}" không hợp lệ` });
+                }
+                condition = item.condition || 'Normal';
+                damageFee = Number(item.damageFee || 0);
+                triggerLifecycle = condition === 'Damaged'
+                    ? 'Repair'
+                    : condition === 'Lost'
+                        ? 'Lost'
+                        : 'Washing';
             }
+
+            enrichedItems.push({
+                productInstanceId: item.productInstanceId,
+                condition,
+                damageFee,
+                penaltyPercent,
+                baseValue,
+                damageLevelKey,
+                damageLabel,
+                triggerLifecycle,
+                policyId,
+                note: String(item.note || '').trim(),
+            });
         }
 
         const lateDays = Number(order.lateDays || 0);
         const lateFee = Number(order.lateFee || 0);
-        const totalDamageFee = returnedItems.reduce((sum, item) => sum + Number(item.damageFee || 0), 0);
-        const totalWashingFee = Number(washingFee || 0);
-        const conditions = new Set(returnedItems.map((item) => item.condition));
-        const returnCondition = conditions.has('Damaged')
-            ? 'Damaged'
-            : conditions.has('Dirty')
-                ? 'Dirty'
-                : 'Normal';
+        const totalDamageFee = enrichedItems.reduce((sum, it) => sum + Number(it.damageFee || 0), 0);
+        const conditions = new Set(enrichedItems.map((it) => it.condition));
+        const returnCondition = conditions.has('Lost')
+            ? 'Lost'
+            : conditions.has('Damaged')
+                ? 'Damaged'
+                : conditions.has('Dirty')
+                    ? 'Dirty'
+                    : 'Normal';
+
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
 
         const returnRecord = (await ReturnRecord.create(
             [
@@ -1418,7 +1857,6 @@ exports.confirmReturn = async (req, res) => {
                     orderId: id,
                     returnDate: actualReturnDate,
                     condition: returnCondition,
-                    washingFee: totalWashingFee,
                     damageFee: totalDamageFee,
                     lateDays,
                     lateFee,
@@ -1426,26 +1864,39 @@ exports.confirmReturn = async (req, res) => {
                     resolution: 'DepositDeducted',
                     resolvedAt: new Date(),
                     note: note || 'Return items processed',
-                    staffId: req.user?.id
+                    staffId: req.user?.id,
+                    items: enrichedItems.map((it) => ({
+                        productInstanceId: it.productInstanceId,
+                        condition: it.condition,
+                        damageLevelKey: it.damageLevelKey,
+                        damageLabel: it.damageLabel,
+                        penaltyPercent: it.penaltyPercent,
+                        baseValue: it.baseValue,
+                        damageFee: it.damageFee,
+                        triggerLifecycle: it.triggerLifecycle,
+                        policyId: it.policyId,
+                        note: it.note,
+                    })),
                 }
             ],
             txOptions
         ))[0];
 
-        const instanceIds = returnedItems.map((item) => item.productInstanceId).filter(Boolean);
+        const instanceIds = enrichedItems.map((item) => item.productInstanceId).filter(Boolean);
         const before = snapshotOrderForAudit(order);
 
-        for (const item of returnedItems) {
+        for (const item of enrichedItems) {
             const instanceId = item.productInstanceId;
             if (!instanceId) continue;
 
-            const targetLifecycle = item.condition === 'Damaged' ? 'Repair' : 'Washing';
-            const beforeInstance = await ProductInstance.findById(instanceId).lean();
+            const targetLifecycle = item.triggerLifecycle || (item.condition === 'Damaged' ? 'Repair' : 'Washing');
+            const beforeInstance = await ProductInstance.findById(instanceId).session(session).lean();
             await ProductInstance.updateOne(
                 { _id: instanceId },
-                { lifecycleStatus: targetLifecycle }
+                { lifecycleStatus: targetLifecycle },
+                txOptions
             );
-            const afterInstance = await ProductInstance.findById(instanceId).lean();
+            const afterInstance = await ProductInstance.findById(instanceId).session(session).lean();
 
             await writeAuditLog({
                 req,
@@ -1468,7 +1919,7 @@ exports.confirmReturn = async (req, res) => {
             await InventoryHistory.findOneAndUpdate(
                 { productInstanceId: instanceId, status: 'Rented', endDate: null },
                 { endDate: new Date() },
-                {}
+                txOptions
             );
         }
 
@@ -1477,12 +1928,11 @@ exports.confirmReturn = async (req, res) => {
         const stillRentingCount = await ProductInstance.countDocuments({
             _id: { $in: allInstanceIds },
             lifecycleStatus: 'Rented'
-        });
+        }).session(session);
         const returnedCount = totalItems - stillRentingCount;
 
         order.lateDays = lateDays;
         order.lateFee = lateFee;
-        order.washingFee = totalWashingFee;
         order.damageFee = totalDamageFee;
         order.actualReturnDate = actualReturnDate;
         order.returnedAt = new Date();
@@ -1504,7 +1954,6 @@ exports.confirmReturn = async (req, res) => {
                 condition: returnRecord.condition,
                 lateDays: returnRecord.lateDays,
                 lateFee: returnRecord.lateFee,
-                washingFee: returnRecord.washingFee,
                 damageFee: returnRecord.damageFee,
             },
         });
@@ -1513,6 +1962,7 @@ exports.confirmReturn = async (req, res) => {
         if (session) {
             if (useTransaction) await session.commitTransaction();
             await session.endSession();
+            session = null;
         }
 
         return res.json({
@@ -1616,6 +2066,10 @@ exports.completeRentOrder = async (req, res) => {
 };
 
 exports.markNoShow = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
+
     try {
         const { id } = req.params;
 
@@ -1632,25 +2086,41 @@ exports.markNoShow = async (req, res) => {
         }
 
         const before = snapshotOrderForAudit(order);
-        await handleNoShow(order);
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
 
-        const items = await RentOrderItem.find({ orderId: id }).lean();
+        const heldDeposits = await Deposit.find({ orderId: order._id, status: 'Held' }).session(session);
+        order.status = 'NoShow';
+        order.noShowAt = new Date();
+        order.depositForfeited = true;
+        await order.save(txOptions);
+
+        await Promise.all(heldDeposits.map((deposit) => {
+            deposit.status = 'Forfeited';
+            return deposit.save(txOptions);
+        }));
+
+        const items = await RentOrderItem.find({ orderId: id }).session(session).lean();
         const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
         if (instanceIds.length > 0) {
-            await ProductInstance.updateMany(
-                { _id: { $in: instanceIds }, lifecycleStatus: { $in: ['Reserved', 'Available'] } },
-                { lifecycleStatus: 'Available' }
-            );
+            // Chỉ release nếu không còn đơn active khác dùng instance.
+            await safeReleaseInstancesAfterOrderExit(instanceIds, id, txOptions);
         }
 
-        await Alert.create({
+        await Alert.create([{
             type: 'NoShow',
             targetType: 'RentOrder',
             targetId: order._id,
             status: 'New',
-            message: `Don ${order._id} da coc nhung khong den nhan do`,
+            message: `Đơn ${order._id} đã đặt cọc nhưng khách không đến nhận đồ`,
             actionRequired: true
-        });
+        }], txOptions);
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
 
         await auditOrderChange(req, 'orders_rent.no_show.mark', order._id, before, snapshotOrderForAudit(order));
 
@@ -1660,6 +2130,10 @@ exports.markNoShow = async (req, res) => {
             data: await fetchOrderDetail(id)
         });
     } catch (error) {
+        if (session) {
+            if (useTransaction) await session.abortTransaction();
+            await session.endSession();
+        }
         console.error('Mark no-show error:', error);
         return res.status(500).json({ success: false, message: 'Loi server', error: error.message });
     }
@@ -1749,8 +2223,9 @@ exports.searchCustomers = async (req, res) => {
  * Đơn được tạo ở trạng thái Deposited ngay (cọc thu trực tiếp bằng tiền mặt).
  */
 exports.createWalkInOrder = async (req, res) => {
-    const { session, useTransaction } = await startTransactionIfAvailable();
-    const txOptions = useTransaction ? { session } : {};
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
 
     try {
         const staffId = req.user?.id;
@@ -1778,46 +2253,10 @@ exports.createWalkInOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: `Thời gian thuê tối đa là ${MAX_RENTAL_DAYS} ngày` });
         }
 
-        // Resolve product instances (tương tự createRentOrder)
-        const resolvedItems = [];
-        const lockedInstanceIds = new Set();
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
 
-        for (const item of items) {
-            let instance = null;
-            const itemRentStart = new Date(item.rentStartDate || rentStartDate);
-            const itemRentEnd = new Date(item.rentEndDate || rentEndDate);
-
-            if (item.productInstanceId) {
-                const inst = useTransaction
-                    ? await ProductInstance.findById(item.productInstanceId).session(session)
-                    : await ProductInstance.findById(item.productInstanceId);
-                const rentable = inst
-                    && !['Washing', 'Repair', 'Lost'].includes(inst.lifecycleStatus)
-                    && await isInstanceAvailableForPeriod(inst._id, itemRentStart, itemRentEnd, useTransaction ? session : null);
-                if (!rentable) throw new Error('Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.');
-                instance = inst;
-            } else if (item.productId) {
-                const candidatesQuery = ProductInstance.find({
-                    productId: item.productId,
-                    _id: { $nin: Array.from(lockedInstanceIds) },
-                    lifecycleStatus: { $nin: ['Washing', 'Repair', 'Lost'] }
-                }).sort({ conditionScore: -1 });
-                const candidates = useTransaction ? await candidatesQuery.session(session) : await candidatesQuery;
-                console.log(`[WalkIn] productId=${item.productId} — found ${candidates.length} candidates:`,
-                    candidates.map((c) => ({ id: c._id, status: c.lifecycleStatus }))
-                );
-                for (const cand of candidates) {
-                    if (await isInstanceAvailableForPeriod(cand._id, itemRentStart, itemRentEnd, useTransaction ? session : null)) {
-                        instance = cand;
-                        break;
-                    }
-                }
-            }
-
-            if (!instance) throw new Error('Có sản phẩm không khả dụng hoặc đã hết hàng để thuê.');
-            lockedInstanceIds.add(instance._id.toString());
-            resolvedItems.push({ source: item, instance, rentStartDate: itemRentStart, rentEndDate: itemRentEnd });
-        }
+        const resolvedItems = await resolveRentInstances(items, rentStartDate, rentEndDate, session, useTransaction);
 
         // Tính tiền
         const computedTotalAmount = resolvedItems.reduce(
@@ -1840,7 +2279,6 @@ exports.createWalkInOrder = async (req, res) => {
             depositAmount,
             remainingAmount,
             totalAmount: computedTotalAmount,
-            washingFee: 0,
             damageFee: 0,
             lateDays: 0,
             lateFee: 0,
@@ -1861,6 +2299,7 @@ exports.createWalkInOrder = async (req, res) => {
                 rentEndDate: item.rentEndDate,
                 condition: item.instance.conditionLevel,
                 appliedRuleIds: item.source.appliedRuleIds || [],
+                selectLevel: item.source.selectLevel || '',
                 size: item.source.size || '',
                 color: item.source.color || '',
                 note: item.source.note || ''
@@ -1891,20 +2330,13 @@ exports.createWalkInOrder = async (req, res) => {
             }], txOptions);
         }
 
-        // Đánh dấu Reserved nếu thuê bắt đầu hôm nay (áp dụng cả Cash lẫn PayOS)
-        const now = new Date();
-        if (parsedStart <= now) {
-            const instanceIds = resolvedItems.map((i) => i.instance._id);
-            await ProductInstance.updateMany(
-                { _id: { $in: instanceIds }, lifecycleStatus: 'Available' },
-                { lifecycleStatus: 'Reserved' },
-                txOptions
-            );
-        }
+        // Không đổi lifecycle instance tại đây. Walk-in chuẩn sẽ tiếp tục qua bước confirmPickup
+        // để đánh dấu Rented khi khách thực sự nhận đồ.
 
         if (session) {
             if (useTransaction) await session.commitTransaction();
             await session.endSession();
+            session = null;
         }
 
         const detail = await fetchOrderDetail(rentOrder._id);
@@ -1940,6 +2372,554 @@ exports.createWalkInOrder = async (req, res) => {
  * Email được auto-generate dạng guest_<timestamp>@inhere.guest.
  * Khách có thể đăng ký lại với SĐT để claim tài khoản đầy đủ sau.
  */
+/**
+ * Tìm hoặc tạo tài khoản User dạng walk_in theo email đã verify.
+ * Dùng chung cho flow guest tự thuê online (giữ schema customerId required).
+ */
+const findOrCreateGuestCustomer = async ({ email, name, phone }) => {
+    const normalizedEmail = normalizeEmail(email);
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+        // Cập nhật snapshot tên/SĐT nếu khách đổi giữa các lần đặt — không đụng password/role
+        const updates = {};
+        if (name && String(existing.name || '').trim() !== String(name).trim()) {
+            updates.name = String(name).trim();
+        }
+        const normalizedPhone = normalizePhone(phone);
+        if (normalizedPhone && existing.phone !== normalizedPhone) {
+            updates.phone = normalizedPhone;
+        }
+        if (Object.keys(updates).length > 0) {
+            await User.updateOne({ _id: existing._id }, { $set: updates });
+        }
+        return existing;
+    }
+
+    const randomPassword = Math.random().toString(36).slice(2, 12);
+    const passwordHash = await bcrypt.hash(randomPassword, 10);
+    const created = await User.create({
+        name: String(name || '').trim() || 'Khách vãng lai',
+        phone: normalizePhone(phone) || null,
+        email: normalizedEmail,
+        passwordHash,
+        role: 'customer',
+        segment: 'walk_in',
+        status: 'active',
+    });
+    return created;
+};
+
+/**
+ * POST /api/rent-orders/guest
+ * Tạo đơn thuê cho guest chưa đăng nhập. Yêu cầu verificationToken (email OTP).
+ * BE tự gắn đơn vào User walk_in ứng với email đã verify.
+ */
+exports.createGuestRentOrder = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
+    let idempotencyKey = null;
+
+    try {
+        const {
+            verificationToken,
+            name = '',
+            phone = '',
+            email = '',
+            rentStartDate,
+            rentEndDate,
+            items = [],
+            voucherCode = '',
+        } = req.body || {};
+
+        if (!verificationToken) {
+            return res.status(400).json({ success: false, message: 'Thiếu token xác minh guest.' });
+        }
+        if (!rentStartDate || !rentEndDate || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'Vui lòng cung cấp đầy đủ thông tin thuê.' });
+        }
+
+        const normalizedName = String(name || '').trim();
+        const normalizedPhone = normalizePhone(phone);
+        const normalizedEmail = normalizeEmail(email);
+
+        if (!normalizedName) {
+            return res.status(400).json({ success: false, message: 'Vui lòng nhập họ tên.' });
+        }
+        if (!isValidPhone(normalizedPhone)) {
+            return res.status(400).json({ success: false, message: 'Số điện thoại không hợp lệ.' });
+        }
+        if (!isValidEmail(normalizedEmail)) {
+            return res.status(400).json({ success: false, message: 'Email không hợp lệ.' });
+        }
+
+        // 1) Xác minh token + GuestVerification record
+        let tokenPayload;
+        try {
+            tokenPayload = verifyGuestVerificationToken(verificationToken);
+        } catch {
+            return res.status(401).json({ success: false, message: 'Token xác minh guest không hợp lệ hoặc đã hết hạn.' });
+        }
+        const verification = await GuestVerification.findById(tokenPayload.verificationId);
+        if (
+            !verification ||
+            !verification.verified ||
+            verification.consumedAt ||
+            verification.method !== tokenPayload.method
+        ) {
+            return res.status(401).json({ success: false, message: 'Phiên xác minh guest không hợp lệ.' });
+        }
+        if (!verification.expiresAt || new Date(verification.expiresAt) <= new Date()) {
+            return res.status(401).json({ success: false, message: 'Phiên xác minh guest đã hết hạn.' });
+        }
+        if (verification.method !== 'email') {
+            return res.status(400).json({
+                success: false,
+                message: 'Đơn thuê chưa đăng nhập chỉ hỗ trợ xác minh bằng email.',
+            });
+        }
+        const verifiedEmail = normalizeEmail(verification.email || normalizedEmail);
+        if (verifiedEmail !== normalizedEmail) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email đặt đơn phải trùng với email đã xác minh.',
+            });
+        }
+
+        // 2) Validate ngày thuê (copy từ createRentOrder để giữ nguyên nghiệp vụ)
+        const parsedStart = new Date(rentStartDate);
+        const parsedEnd = new Date(rentEndDate);
+        if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) {
+            return res.status(400).json({ success: false, message: 'Ngày thuê không hợp lệ.' });
+        }
+        if (parsedEnd < parsedStart) {
+            return res.status(400).json({ success: false, message: 'Ngày kết thúc không thể trước ngày bắt đầu.' });
+        }
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const startDay = new Date(parsedStart);
+        startDay.setHours(0, 0, 0, 0);
+        if (startDay < todayStart) {
+            return res.status(400).json({ success: false, message: 'Ngày bắt đầu thuê không thể là ngày trong quá khứ.' });
+        }
+        const rentalDays = Math.ceil((parsedEnd - parsedStart) / (24 * 60 * 60 * 1000));
+        if (rentalDays > MAX_RENTAL_DAYS) {
+            return res.status(400).json({ success: false, message: `Thời gian thuê tối đa là ${MAX_RENTAL_DAYS} ngày.` });
+        }
+
+        idempotencyKey = normalizeIdempotencyKey(req);
+        const existingOrder = await findRentOrderByIdempotencyKey(idempotencyKey);
+        if (existingOrder) {
+            if (existingOrder.voucherId || existingOrder.voucherCode) {
+                await repairVoucherUsageCounterIfNeeded({
+                    voucherId: existingOrder.voucherId,
+                    voucherCode: existingOrder.voucherCode,
+                });
+            }
+            const detail = await fetchOrderDetail(existingOrder._id);
+            return res.status(200).json(buildRentOrderSuccessResponse(detail));
+        }
+
+        const invalidPriceItem = items.find((item) => Number(item.baseRentPrice || 0) <= 0);
+        if (invalidPriceItem) {
+            return res.status(400).json({ success: false, message: 'Giá thuê không hợp lệ, vui lòng thử lại.' });
+        }
+
+        // 3) Tìm/tạo User walk_in gắn với email đã verify
+        const guestUser = await findOrCreateGuestCustomer({
+            email: verifiedEmail,
+            name: normalizedName,
+            phone: normalizedPhone,
+        });
+
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const resolvedItems = await resolveRentInstances(items, rentStartDate, rentEndDate, session, useTransaction);
+
+        const computedTotalAmount = resolvedItems.reduce(
+            (sum, item) => sum + Number(item.source.finalPrice || item.source.baseRentPrice || item.instance.currentRentPrice || 0),
+            0
+        );
+        const voucherApplication = await applyVoucherForRentOrder({
+            voucherCode,
+            user: { id: guestUser._id, role: 'customer' },
+            items,
+            subtotal: computedTotalAmount,
+        });
+        if (voucherApplication.error) {
+            if (session) {
+                if (useTransaction) await session.abortTransaction();
+                await session.endSession();
+                session = null;
+            }
+            return res.status(400).json(voucherApplication.error);
+        }
+
+        const orderTotalAmount = Number(voucherApplication.finalSubtotal || 0);
+        const depositAmount = computeExpectedDeposit({ totalAmount: orderTotalAmount });
+        const remainingAmount = Math.max(orderTotalAmount - depositAmount, 0);
+
+        const [rentOrder] = await RentOrder.create([{
+            customerId: guestUser._id,
+            staffId: null,
+            status: 'PendingDeposit',
+            rentStartDate,
+            rentEndDate,
+            idempotencyKey,
+            voucherCode: voucherApplication.voucherCode,
+            voucherId: voucherApplication.voucher?._id || null,
+            voucherSnapshot: voucherApplication.voucherSnapshot,
+            discountAmount: voucherApplication.discountAmount,
+            depositAmount,
+            remainingAmount,
+            damageFee: 0,
+            lateDays: 0,
+            lateFee: 0,
+            compensationFee: 0,
+            totalAmount: orderTotalAmount,
+            guestVerificationMethod: verification.method,
+            guestVerificationId: verification._id,
+            guestContact: {
+                name: normalizedName,
+                phone: normalizedPhone,
+                email: verifiedEmail,
+            },
+        }], { session });
+
+        rentOrder.orderCode = generateOrderCode(rentOrder._id);
+        await rentOrder.save(useTransaction ? { session } : {});
+
+        await RentOrderItem.insertMany(
+            resolvedItems.map((item) => ({
+                orderId: rentOrder._id,
+                productInstanceId: item.instance._id,
+                baseRentPrice: item.source.baseRentPrice || item.instance.currentRentPrice,
+                finalPrice: item.source.finalPrice || item.instance.currentRentPrice,
+                rentStartDate: item.rentStartDate || item.source.rentStartDate || rentStartDate,
+                rentEndDate: item.rentEndDate || item.source.rentEndDate || rentEndDate,
+                condition: item.instance.conditionLevel,
+                appliedRuleIds: item.source.appliedRuleIds || [],
+                selectLevel: item.source.selectLevel || '',
+                size: item.source.size,
+                color: item.source.color,
+                note: item.source.note || '',
+            })),
+            useTransaction ? { session } : {}
+        );
+
+        if (voucherApplication.voucher?._id) {
+            if (useTransaction) {
+                await Voucher.findByIdAndUpdate(
+                    voucherApplication.voucher._id,
+                    { $inc: { usedCount: 1 } },
+                    { session }
+                );
+            } else {
+                await Voucher.findByIdAndUpdate(voucherApplication.voucher._id, {
+                    $inc: { usedCount: 1 },
+                });
+            }
+        }
+
+        // Đánh dấu verification đã dùng để tránh reuse
+        verification.consumedAt = new Date();
+        await verification.save();
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
+
+        const detail = await fetchOrderDetail(rentOrder._id);
+
+        // Gửi email xác nhận đơn thuê guest (không block, không throw)
+        sendGuestRentOrderConfirmationEmailSafely({ rentOrder, detail });
+
+        return res.status(201).json(buildRentOrderSuccessResponse(detail));
+    } catch (error) {
+        if (idempotencyKey && isDuplicateIdempotencyError(error)) {
+            const existingOrder = await findRentOrderByIdempotencyKey(idempotencyKey);
+            if (existingOrder) {
+                if (existingOrder.voucherId || existingOrder.voucherCode) {
+                    await repairVoucherUsageCounterIfNeeded({
+                        voucherId: existingOrder.voucherId,
+                        voucherCode: existingOrder.voucherCode,
+                    });
+                }
+                const detail = await fetchOrderDetail(existingOrder._id);
+                if (session) {
+                    if (useTransaction) await session.abortTransaction();
+                    await session.endSession();
+                }
+                return res.status(200).json(buildRentOrderSuccessResponse(detail));
+            }
+        }
+        if (session) {
+            if (useTransaction) await session.abortTransaction();
+            await session.endSession();
+        }
+        const CLIENT_ERROR_KEYWORDS = ['khả dụng', 'hết hàng', 'Ngày thuê', 'quá khứ', 'không hợp lệ', 'xác minh', 'Email'];
+        const isClientError = error.isClientError === true
+            || CLIENT_ERROR_KEYWORDS.some((kw) => String(error.message || '').includes(kw));
+        if (!isClientError) console.error('Create guest rent order error:', error);
+        return res.status(isClientError ? 400 : 500).json({
+            success: false,
+            message: isClientError ? error.message : 'Lỗi server khi tạo đơn thuê guest.',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * GET /api/rent-orders/guest/lookup?orderCode=...&email=...
+ * Cho phép guest tra cứu đơn qua mã đơn + email đã verify.
+ * Chỉ trả về đơn có guestContact.email khớp.
+ */
+exports.getGuestRentOrder = async (req, res) => {
+    try {
+        const orderCode = String(req.query.orderCode || '').trim();
+        const email = normalizeEmail(req.query.email || '');
+        if (!orderCode) {
+            return res.status(400).json({ success: false, message: 'Thiếu mã đơn thuê.' });
+        }
+        if (!isValidEmail(email)) {
+            return res.status(400).json({ success: false, message: 'Email không hợp lệ.' });
+        }
+
+        const order = await RentOrder.findOne({ orderCode }).lean();
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê.' });
+        }
+
+        const contactEmail = normalizeEmail(order.guestContact?.email || '');
+        // Fallback: nếu đơn không có guestContact (đơn member), từ chối lookup guest
+        if (!contactEmail || contactEmail !== email) {
+            return res.status(403).json({ success: false, message: 'Email không khớp với đơn thuê.' });
+        }
+
+        const detail = await fetchOrderDetail(order._id);
+        return res.json({ success: true, data: detail });
+    } catch (error) {
+        console.error('Get guest rent order error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server khi tra cứu đơn thuê.', error: error.message });
+    }
+};
+
+/**
+ * Sinh URL xem đơn thuê guest (magic link, JWT 7 ngày)
+ */
+const buildGuestRentOrderViewUrl = (rentOrder = {}) => {
+    const orderId = String(rentOrder?._id || '').trim();
+    if (!orderId) return `${frontendUrl}/track-order`;
+
+    const token = signGuestOrderViewToken({
+        orderId,
+        guestVerificationId: rentOrder?.guestVerificationId ? String(rentOrder.guestVerificationId) : '',
+        guestEmail: normalizeEmail(rentOrder?.guestContact?.email || ''),
+        orderType: ORDER_TYPE.RENT,
+    });
+
+    return `${frontendUrl}/rental/guest/${orderId}?token=${encodeURIComponent(token)}`;
+};
+
+const getGuestRentOrderViewTokenFromRequest = (req) => {
+    const queryToken = String(req?.query?.token || '').trim();
+    if (queryToken) return queryToken;
+    return extractBearerToken(req?.headers?.authorization);
+};
+
+/**
+ * Gửi email xác nhận đơn thuê guest (không throw — chỉ log)
+ */
+const sendGuestRentOrderConfirmationEmailSafely = async ({ rentOrder, detail }) => {
+    try {
+        if (!rentOrder?.guestContact?.email) return;
+
+        const items = (detail?.items || []).map((item) => {
+            const product = item?.productInstanceId?.productId || {};
+            const rawName = typeof product?.name === 'string'
+                ? product.name
+                : (product?.name?.vi || product?.name?.en || '');
+            return {
+                productName: String(rawName || '').trim() || 'Sản phẩm',
+                size: item?.size || item?.productInstanceId?.size || '',
+                quantity: 1,
+                price: Number(item?.finalPrice || item?.baseRentPrice || 0),
+                image: Array.isArray(product?.images) ? product.images[0] : '',
+            };
+        });
+
+        const orderUrl = buildGuestRentOrderViewUrl(rentOrder);
+        const trackUrl = `${frontendUrl}/track-order?orderCode=${encodeURIComponent(rentOrder.orderCode || '')}`;
+
+        await sendRentOrderConfirmationEmail({
+            _id: rentOrder._id,
+            orderCode: rentOrder.orderCode,
+            status: rentOrder.status,
+            createdAt: rentOrder.createdAt,
+            rentStartDate: rentOrder.rentStartDate,
+            rentEndDate: rentOrder.rentEndDate,
+            depositAmount: rentOrder.depositAmount,
+            totalAmount: rentOrder.totalAmount,
+            customer: {
+                name: rentOrder.guestContact?.name || '',
+                email: rentOrder.guestContact?.email || '',
+                phone: rentOrder.guestContact?.phone || '',
+            },
+            items,
+            orderUrl,
+            trackUrl,
+        });
+    } catch (mailError) {
+        console.error('Send guest rent order email error:', mailError);
+    }
+};
+
+/**
+ * GET /api/rent-orders/guest/:id?token=...
+ * Xem chi tiết đơn thuê guest qua magic link (JWT).
+ */
+exports.getGuestRentOrderById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const token = getGuestRentOrderViewTokenFromRequest(req);
+
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'Thiếu token xem đơn thuê guest.' });
+        }
+
+        let payload;
+        try {
+            payload = verifyGuestOrderViewToken(token);
+        } catch {
+            return res.status(401).json({ success: false, message: 'Liên kết xem đơn đã hết hạn hoặc không hợp lệ.' });
+        }
+
+        if (String(payload?.orderId || '') !== String(id || '')) {
+            return res.status(403).json({ success: false, message: 'Token không khớp với đơn thuê.' });
+        }
+
+        const order = await RentOrder.findById(id).lean();
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê.' });
+        }
+
+        if (!order.guestContact?.email) {
+            return res.status(403).json({ success: false, message: 'Đơn này không phải đơn thuê guest.' });
+        }
+
+        if (payload?.guestVerificationId && String(order.guestVerificationId || '') !== String(payload.guestVerificationId)) {
+            return res.status(403).json({ success: false, message: 'Token không hợp lệ cho đơn thuê này.' });
+        }
+
+        const payloadEmail = normalizeEmail(payload?.guestEmail || '');
+        const orderEmail = normalizeEmail(order.guestContact?.email || '');
+        if (payloadEmail && orderEmail && payloadEmail !== orderEmail) {
+            return res.status(403).json({ success: false, message: 'Token không hợp lệ cho đơn thuê này.' });
+        }
+
+        const detail = await fetchOrderDetail(order._id);
+        return res.json({ success: true, data: detail });
+    } catch (error) {
+        console.error('Get guest rent order by id error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server khi lấy chi tiết đơn thuê guest.', error: error.message });
+    }
+};
+
+/**
+ * PUT /api/rent-orders/guest/:id/cancel
+ * Body: { email }
+ * Hoặc header Authorization / query token (magic link).
+ * Cho phép khách guest tự hủy đơn khi còn ở trạng thái PendingDeposit.
+ */
+exports.cancelGuestRentOrder = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
+
+    try {
+        const { id } = req.params;
+        const rawEmail = normalizeEmail(req.body?.email || req.query?.email || '');
+
+        // Ưu tiên xác thực bằng token magic-link nếu có; fallback về email
+        const token = getGuestRentOrderViewTokenFromRequest(req);
+        let tokenEmail = '';
+        let tokenOrderId = '';
+        if (token) {
+            try {
+                const payload = verifyGuestOrderViewToken(token);
+                tokenOrderId = String(payload?.orderId || '');
+                tokenEmail = normalizeEmail(payload?.guestEmail || '');
+            } catch {
+                // token lỗi/hết hạn → bỏ qua, fallback email
+            }
+        }
+
+        const order = await RentOrder.findById(id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê.' });
+        }
+
+        const contactEmail = normalizeEmail(order.guestContact?.email || '');
+        if (!contactEmail) {
+            return res.status(403).json({ success: false, message: 'Đơn này không phải đơn thuê guest.' });
+        }
+
+        // Xác thực: token khớp orderId + email, HOẶC email body khớp
+        const authedByToken = token && tokenOrderId === String(id) && tokenEmail && tokenEmail === contactEmail;
+        const authedByEmail = rawEmail && rawEmail === contactEmail;
+        if (!authedByToken && !authedByEmail) {
+            return res.status(403).json({ success: false, message: 'Không có quyền hủy đơn thuê này.' });
+        }
+
+        const previousStatus = order.status;
+        if (!['Draft', 'PendingDeposit'].includes(previousStatus)) {
+            return res.status(400).json({
+                success: false,
+                message: `Không thể tự hủy đơn ở trạng thái "${previousStatus}". Vui lòng liên hệ cửa hàng.`,
+            });
+        }
+
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        order.status = 'Cancelled';
+        await order.save(txOptions);
+
+        const itemsQuery = RentOrderItem.find({ orderId: id }).lean();
+        if (useTransaction) itemsQuery.session(session);
+        const items = await itemsQuery;
+        const instanceIds = items.map((i) => i.productInstanceId).filter(Boolean);
+        if (instanceIds.length > 0) {
+            await safeReleaseInstancesAfterOrderExit(instanceIds, id, txOptions);
+        }
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
+
+        return res.json({
+            success: true,
+            message: 'Hủy đơn thuê thành công.',
+            data: await fetchOrderDetail(id),
+        });
+    } catch (error) {
+        if (session) {
+            try {
+                if (useTransaction) await session.abortTransaction();
+            } finally {
+                await session.endSession();
+            }
+        }
+        console.error('Cancel guest rent order error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server khi hủy đơn thuê guest.', error: error.message });
+    }
+};
+
 exports.createGuestCustomer = async (req, res) => {
     try {
         const { name, phone } = req.body;
@@ -1997,5 +2977,437 @@ exports.createGuestCustomer = async (req, res) => {
     } catch (error) {
         console.error('Create guest customer error:', error);
         return res.status(500).json({ success: false, message: 'Lỗi server khi tạo hồ sơ khách', error: error.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────
+// SWAP ITEM – đổi sản phẩm trong đơn thuê tại thời điểm bàn giao
+// ─────────────────────────────────────────────────────────────────
+
+const SWAPPABLE_ORDER_STATUSES = ['Deposited', 'Confirmed', 'WaitingPickup'];
+
+/**
+ * Tách category text từ Product để so sánh "cùng loại".
+ * Hỗ trợ cả string lẫn i18n object.
+ */
+const extractCategoryKey = (product) => {
+    if (!product) return '';
+    const cat = product.category;
+    if (!cat) return '';
+    if (typeof cat === 'string') return cat.trim().toLowerCase();
+    const text = cat?.vi || cat?.en || Object.values(cat)[0] || '';
+    return String(text).trim().toLowerCase();
+};
+
+/**
+ * GET /:id/items/:itemId/swap-candidates
+ * Trả về 3 nhóm ứng viên: size_swap, model_swap, upgrade.
+ * Thứ tự ưu tiên: size_swap → model_swap → upgrade.
+ */
+exports.getSwapCandidates = async (req, res) => {
+    try {
+        const { id, itemId } = req.params;
+
+        const order = await RentOrder.findById(id).lean();
+        if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
+
+        if (!SWAPPABLE_ORDER_STATUSES.includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Chỉ có thể đổi sản phẩm khi đơn ở trạng thái ${SWAPPABLE_ORDER_STATUSES.join('/')}`,
+            });
+        }
+
+        const currentItem = await RentOrderItem.findById(itemId)
+            .populate({ path: 'productInstanceId', populate: { path: 'productId' } })
+            .lean();
+        if (!currentItem || String(currentItem.orderId) !== String(id)) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm trong đơn' });
+        }
+
+        const currentInstance = currentItem.productInstanceId;
+        const currentProduct = currentInstance?.productId || {};
+        const currentProductId = String(currentProduct._id || currentInstance?.productId || '');
+        const currentCategoryKey = extractCategoryKey(currentProduct);
+        const itemSize = String(currentItem.size || currentInstance?.size || '').trim();
+        const hasExplicitSize = itemSize && itemSize.toUpperCase() !== 'FREE SIZE';
+
+        const rentStart = currentItem.rentStartDate || order.rentStartDate;
+        const rentEnd = currentItem.rentEndDate || order.rentEndDate;
+
+        // Lấy tất cả instance đang dùng trong đơn để loại trừ
+        const allOrderItems = await RentOrderItem.find({ orderId: id }).lean();
+        const excludedIds = new Set(allOrderItems.map((i) => String(i.productInstanceId)));
+
+        const checkAvail = (instanceId) =>
+            isInstanceAvailableForPeriod(instanceId, rentStart, rentEnd, null, String(id));
+
+        // ── NHÓM 1: Đổi size ──────────────────────────────────────────────
+        // Cùng productId, khác size, không bị chặn
+        const sizeCandidateFilter = {
+            productId: new mongoose.Types.ObjectId(currentProductId),
+            _id: { $nin: Array.from(excludedIds).map((eid) => new mongoose.Types.ObjectId(eid)) },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+            ...(hasExplicitSize ? { size: { $ne: itemSize } } : {}),
+        };
+        const sizeRaw = await ProductInstance.find(sizeCandidateFilter)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: 1, createdAt: 1 })
+            .lean();
+        const sizeSwap = [];
+        for (const cand of sizeRaw) {
+            if (await checkAvail(cand._id)) sizeSwap.push(cand);
+        }
+
+        // ── NHÓM 2: Đổi mẫu ──────────────────────────────────────────────
+        // Cùng category, khác productId, cùng size (nếu có), không bị chặn
+        const sameCatProducts = await Product.find({
+            _id: { $ne: new mongoose.Types.ObjectId(currentProductId) },
+            isDraft: false,
+        }).lean();
+        const sameCatProductIds = sameCatProducts
+            .filter((p) => extractCategoryKey(p) === currentCategoryKey)
+            .map((p) => p._id);
+
+        let modelCandFilter = {
+            productId: { $in: sameCatProductIds },
+            _id: { $nin: Array.from(excludedIds).map((eid) => new mongoose.Types.ObjectId(eid)) },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+        };
+        if (hasExplicitSize) modelCandFilter.size = itemSize;
+
+        const modelRaw = await ProductInstance.find(modelCandFilter)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: 1, createdAt: 1 })
+            .lean();
+        const modelSwap = [];
+        for (const cand of modelRaw) {
+            if (await checkAvail(cand._id)) modelSwap.push(cand);
+        }
+
+        // ── NHÓM 3: Upgrade ───────────────────────────────────────────────
+        // Ưu tiên 1: Cùng mẫu (cùng productId), cùng size, conditionScore CAO HƠN hiện tại
+        // Ưu tiên 2: Khác mẫu nhưng cùng category, cùng size, conditionScore hoặc giá cao hơn
+        const currentConditionScore = Number(currentInstance?.conditionScore ?? 100);
+        const currentDailyPrice = Number(currentItem.baseRentPrice || currentInstance?.currentRentPrice || 0);
+        const excludedArr = Array.from(excludedIds).map((eid) => new mongoose.Types.ObjectId(eid));
+
+        // Ưu tiên 1: cùng productId, cùng size, tình trạng tốt hơn
+        const upgradeFilterSameModel = {
+            productId: new mongoose.Types.ObjectId(currentProductId),
+            _id: { $nin: excludedArr },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+            conditionScore: { $gt: currentConditionScore },
+        };
+        if (hasExplicitSize) upgradeFilterSameModel.size = itemSize;
+
+        const upgradeRawSameModel = await ProductInstance.find(upgradeFilterSameModel)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: -1, createdAt: 1 })
+            .lean();
+
+        // Ưu tiên 2: khác productId, cùng category, cùng size, tình trạng hoặc giá tốt hơn
+        const upgradeFilterOtherModel = {
+            productId: { $in: sameCatProductIds },
+            _id: { $nin: excludedArr },
+            lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT },
+            $or: [
+                { conditionScore: { $gt: currentConditionScore } },
+                { currentRentPrice: { $gt: currentDailyPrice } },
+            ],
+        };
+        if (hasExplicitSize) upgradeFilterOtherModel.size = itemSize;
+
+        const upgradeRawOtherModel = await ProductInstance.find(upgradeFilterOtherModel)
+            .populate('productId', 'name images baseRentPrice')
+            .sort({ conditionScore: -1, currentRentPrice: -1, createdAt: 1 })
+            .lean();
+
+        // Gộp: cùng mẫu lên đầu, rồi mới đến mẫu khác
+        const upgradeRaw = [...upgradeRawSameModel, ...upgradeRawOtherModel];
+        const upgradeSwap = [];
+        const seenUpgrade = new Set();
+        for (const cand of upgradeRaw) {
+            const candId = String(cand._id);
+            if (seenUpgrade.has(candId)) continue;
+            if (await checkAvail(cand._id)) {
+                seenUpgrade.add(candId);
+                upgradeSwap.push(cand);
+            }
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                currentItem,
+                rentStart,
+                rentEnd,
+                size_swap: sizeSwap,
+                model_swap: modelSwap,
+                upgrade: upgradeSwap,
+            },
+        });
+    } catch (error) {
+        console.error('getSwapCandidates error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
+    }
+};
+
+/**
+ * PUT /:id/swap-item
+ * Body: { itemId, newInstanceId, swapType, reason }
+ * swapType: 'size_swap' | 'model_swap' | 'upgrade'
+ */
+exports.swapOrderItem = async (req, res) => {
+    let session = null;
+    let useTransaction = false;
+    let txOptions = {};
+
+    try {
+        const { id } = req.params;
+        const { itemId, newInstanceId, swapType, reason = '' } = req.body || {};
+
+        if (!itemId || !newInstanceId) {
+            return res.status(400).json({ success: false, message: 'Thiếu itemId hoặc newInstanceId' });
+        }
+        if (!['size_swap', 'model_swap', 'upgrade'].includes(swapType)) {
+            return res.status(400).json({ success: false, message: 'swapType phải là size_swap / model_swap / upgrade' });
+        }
+        if (!mongoose.isValidObjectId(itemId) || !mongoose.isValidObjectId(newInstanceId)) {
+            return res.status(400).json({ success: false, message: 'ID không hợp lệ' });
+        }
+
+        const order = await RentOrder.findById(id);
+        if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
+
+        if (!isOwnerOrStaff(req, order)) {
+            return res.status(403).json({ success: false, message: 'Forbidden - Không có quyền thực hiện' });
+        }
+
+        if (!SWAPPABLE_ORDER_STATUSES.includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Chỉ có thể đổi sản phẩm khi đơn ở trạng thái ${SWAPPABLE_ORDER_STATUSES.join('/')}`,
+            });
+        }
+
+        const currentItem = await RentOrderItem.findById(itemId);
+        if (!currentItem || String(currentItem.orderId) !== String(id)) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm trong đơn' });
+        }
+        if (String(currentItem.productInstanceId) === String(newInstanceId)) {
+            return res.status(400).json({ success: false, message: 'Sản phẩm mới trùng với sản phẩm hiện tại' });
+        }
+
+        const oldInstanceId = currentItem.productInstanceId;
+        const oldInstance = await ProductInstance.findById(oldInstanceId)
+            .populate('productId', 'name images baseRentPrice category categoryPath')
+            .lean();
+        const newInstance = await ProductInstance.findById(newInstanceId)
+            .populate('productId', 'name images baseRentPrice category categoryPath')
+            .lean();
+
+        if (!newInstance) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm mới' });
+        }
+        if (INSTANCE_STATUSES_BLOCKING_RENT.includes(newInstance.lifecycleStatus)) {
+            return res.status(409).json({ success: false, message: 'Sản phẩm mới đã bị mất hoặc đã bán' });
+        }
+
+        // Validate theo swapType
+        const oldProductId = String(oldInstance?.productId?._id || oldInstance?.productId || '');
+        const newProductId = String(newInstance?.productId?._id || newInstance?.productId || '');
+        const itemSize = String(currentItem.size || oldInstance?.size || '').trim();
+        const hasExplicitSize = itemSize && itemSize.toUpperCase() !== 'FREE SIZE';
+
+        if (swapType === 'size_swap') {
+            if (oldProductId !== newProductId) {
+                return res.status(400).json({ success: false, message: 'Đổi size phải cùng mẫu sản phẩm' });
+            }
+        } else if (swapType === 'upgrade') {
+            // Upgrade cho phép:
+            // 1. Cùng mẫu (cùng productId), tình trạng tốt hơn — không cần kiểm tra category
+            // 2. Khác mẫu, cùng category — cần kiểm tra category
+            if (oldProductId !== newProductId) {
+                const oldCat = extractCategoryKey(oldInstance?.productId);
+                const newCat = extractCategoryKey(newInstance?.productId);
+                if (oldCat && newCat && oldCat !== newCat) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Upgrade sang mẫu khác phải cùng loại sản phẩm (category)',
+                    });
+                }
+            }
+        } else {
+            // model_swap: khác productId, cùng category
+            const oldCat = extractCategoryKey(oldInstance?.productId);
+            const newCat = extractCategoryKey(newInstance?.productId);
+            if (oldCat && newCat && oldCat !== newCat) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Đổi mẫu phải cùng loại sản phẩm (category)',
+                });
+            }
+            if (hasExplicitSize) {
+                const newSize = String(newInstance.size || '').trim();
+                if (newSize && newSize !== itemSize) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Đổi mẫu phải cùng size ${itemSize}. Nếu hết size hãy dùng "Đổi mẫu (size khác)".`,
+                    });
+                }
+            }
+        }
+
+        const rentStart = currentItem.rentStartDate || order.rentStartDate;
+        const rentEnd = currentItem.rentEndDate || order.rentEndDate;
+        const isAvail = await isInstanceAvailableForPeriod(newInstanceId, rentStart, rentEnd, null, String(id));
+        if (!isAvail) {
+            return res.status(409).json({ success: false, message: 'Sản phẩm mới không còn khả dụng cho khoảng ngày này' });
+        }
+
+        // ─── Transaction ──────────────────────────────────────────────────
+        ({ session, useTransaction } = await startTransactionIfAvailable());
+        txOptions = useTransaction ? { session } : {};
+
+        const before = snapshotOrderForAudit(order);
+        const oldFinalPrice = Number(currentItem.finalPrice || currentItem.baseRentPrice || 0);
+        const newDailyRate = Number(newInstance.currentRentPrice || 0);
+        const itemRentStart = new Date(rentStart);
+        const itemRentEnd = new Date(rentEnd);
+        const rentDays = Math.max(
+            1,
+            Math.ceil((itemRentEnd.getTime() - itemRentStart.getTime()) / (24 * 60 * 60 * 1000))
+        );
+        const newFinalPrice = newDailyRate > 0 ? newDailyRate * rentDays : oldFinalPrice;
+
+        // 1. Cập nhật RentOrderItem
+        await RentOrderItem.updateOne(
+            { _id: itemId },
+            {
+                productInstanceId: newInstanceId,
+                baseRentPrice: newDailyRate,
+                finalPrice: newFinalPrice,
+                size: String(newInstance.size || '').trim() || itemSize,
+                color: String(newInstance.color || currentItem.color || '').trim(),
+            },
+            txOptions
+        );
+
+        // 2. Giải phóng instance cũ → Available nếu không đơn nào khác dùng
+        const otherActiveItems = await RentOrderItem.find({
+            productInstanceId: oldInstanceId,
+            orderId: { $ne: id },
+        }).populate({ path: 'orderId', select: 'status' }).lean();
+        const hasOtherActive = otherActiveItems.some(
+            (it) => !TERMINAL_ORDER_STATUSES.includes(String(it.orderId?.status || '').toLowerCase())
+        );
+        if (!hasOtherActive && oldInstance) {
+            await ProductInstance.updateOne(
+                { _id: oldInstanceId, lifecycleStatus: { $nin: INSTANCE_STATUSES_BLOCKING_RENT } },
+                { lifecycleStatus: 'Available' },
+                txOptions
+            );
+        }
+
+        // 3. Mark instance mới → Reserved
+        await ProductInstance.updateOne(
+            { _id: newInstanceId },
+            { lifecycleStatus: 'Reserved' },
+            txOptions
+        );
+
+        // 4. InventoryHistory
+        await InventoryHistory.findOneAndUpdate(
+            { productInstanceId: oldInstanceId, status: 'Reserved', endDate: null },
+            { endDate: new Date() },
+            txOptions
+        );
+        await InventoryHistory.create(
+            [{
+                productInstanceId: newInstanceId,
+                status: 'Reserved',
+                startDate: new Date(),
+                note: `[${swapType}] Đơn ${order.orderCode || id}`,
+            }],
+            txOptions
+        );
+
+        // 5. Cập nhật tổng tiền đơn nếu giá thay đổi
+        const oldOrderTotal = Number(order.totalAmount || 0);
+        let newOrderTotal = oldOrderTotal;
+        if (newFinalPrice !== oldFinalPrice) {
+            const allItems = await RentOrderItem.find({ orderId: id }, null, txOptions).lean();
+            const rawTotal = allItems.reduce((sum, it) => {
+                const price = String(it._id) === String(itemId) ? newFinalPrice : Number(it.finalPrice || 0);
+                return sum + price;
+            }, 0);
+            newOrderTotal = Math.max(0, rawTotal - Number(order.discountAmount || 0));
+            order.totalAmount = newOrderTotal;
+            order.remainingAmount = Math.max(0, newOrderTotal - Number(order.depositAmount || 0));
+            await order.save(txOptions);
+        }
+
+        // 6. Lưu ItemSwapHistory
+        await ItemSwapHistory.create(
+            [{
+                orderId: id,
+                orderItemId: itemId,
+                swapType,
+                oldInstanceId,
+                oldProductId: oldInstance?.productId?._id || oldInstance?.productId || null,
+                oldSize: String(oldInstance?.size || '').trim(),
+                oldColor: String(oldInstance?.color || '').trim(),
+                oldDailyPrice: Number(currentItem.baseRentPrice || 0),
+                newInstanceId,
+                newProductId: newInstance?.productId?._id || newInstance?.productId || null,
+                newSize: String(newInstance.size || '').trim(),
+                newColor: String(newInstance.color || '').trim(),
+                newDailyPrice: newDailyRate,
+                oldOrderTotal,
+                newOrderTotal,
+                reason: String(reason || '').trim(),
+                staffId: req.user?.id || req.user?._id || null,
+            }],
+            txOptions
+        );
+
+        // 7. Audit log
+        await writeAuditLog({
+            req,
+            user: req.user,
+            action: `orders_rent.item.${swapType}`,
+            resource: 'RentOrderItem',
+            resourceId: itemId,
+            before: { productInstanceId: String(oldInstanceId), finalPrice: oldFinalPrice },
+            after: { productInstanceId: String(newInstanceId), finalPrice: newFinalPrice },
+        });
+        await auditOrderChange(req, 'orders_rent.item.swap', order._id, before, snapshotOrderForAudit(order));
+
+        if (session) {
+            if (useTransaction) await session.commitTransaction();
+            await session.endSession();
+            session = null;
+        }
+
+        const swapTypeLabel = { size_swap: 'Đổi size', model_swap: 'Đổi mẫu', upgrade: 'Upgrade' };
+
+        return res.json({
+            success: true,
+            message: `${swapTypeLabel[swapType] || 'Đổi sản phẩm'} thành công`,
+            priceChanged: newFinalPrice !== oldFinalPrice,
+            oldFinalPrice,
+            newFinalPrice,
+            oldOrderTotal,
+            newOrderTotal,
+            data: await fetchOrderDetail(id),
+        });
+    } catch (error) {
+        if (session) {
+            if (useTransaction) await session.abortTransaction();
+            await session.endSession();
+        }
+        console.error('swapOrderItem error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
     }
 };
