@@ -218,9 +218,14 @@ export default function Header({ active = "" }) {
               )}
             </div>
           ) : (
-            <Link to="/login" className="site-pill">
-              {LABELS.login}
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link to="/track-order" className="site-pill" title="Tra cứu đơn thuê (khách không đăng nhập)">
+                Tra cứu đơn
+              </Link>
+              <Link to="/login" className="site-pill">
+                {LABELS.login}
+              </Link>
+            </div>
           )}
         </div>
       </div>

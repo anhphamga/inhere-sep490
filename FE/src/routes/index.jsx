@@ -26,6 +26,7 @@ import OwnerProductDetailScreen from '../pages/owner/OwnerProductDetailScreen'
 import OwnerProductsScreen from '../pages/owner/OwnerProductsScreen'
 import OwnerCategoriesScreen from '../pages/owner/OwnerCategoriesScreen'
 import OwnerPromotionsScreen from '../pages/owner/OwnerPromotionsScreen'
+import OwnerDamagePoliciesScreen from '../pages/owner/OwnerDamagePoliciesScreen'
 import OwnerReportsScreen from '../pages/owner/OwnerReportsScreen'
 import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen'
 import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen'
@@ -42,6 +43,7 @@ import CartPage from '../pages/CartPage'
 import OrderHistoryPage from '../pages/OrderHistoryPage'
 import OrderDetailPage from '../pages/OrderDetailPage'
 import PaymentResultPage from '../pages/PaymentResultPage'
+import TrackOrderPage from '../pages/TrackOrderPage'
 
 const AppRoutes = () => {
     return (
@@ -67,9 +69,11 @@ const AppRoutes = () => {
             {/* Rental Routes */}
             <Route path="/rental/checkout" element={<RentalCheckoutPage />} />
             <Route path="/rental/history" element={<Navigate to="/orders/history" replace />} />
+            <Route path="/rental/guest/:id" element={<RentalDetailPage />} />
             <Route path="/rental/:id" element={<RentalDetailPage />} />
             <Route path="/payment-result" element={<PaymentResultPage />} />
             <Route path="/orders/guest/:id" element={<OrderDetailPage />} />
+            <Route path="/track-order" element={<TrackOrderPage />} />
 
             <Route element={<PrivateRoute />}>
                 <Route path="/profile" element={<ProfilePage />} />
@@ -97,6 +101,7 @@ const AppRoutes = () => {
                     <Route path="reviews" element={<OwnerReviewsScreen />} />
                     <Route path="blogs" element={<OwnerBlogsScreen />} />
                     <Route path="promotions" element={<OwnerPromotionsScreen />} />
+                    <Route path="damage-policies" element={<OwnerDamagePoliciesScreen />} />
                     <Route path="alerts" element={<OwnerAlertsScreen />} />
                     <Route path="reports" element={<OwnerReportsScreen />} />
                 </Route>

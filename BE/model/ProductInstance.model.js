@@ -64,6 +64,11 @@ const productInstanceSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  baseValue: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   note: {
     type: String,
     default: ''
@@ -76,6 +81,17 @@ const productInstanceSchema = new mongoose.Schema({
 
 const ProductInstance = mongoose.model('ProductInstance', productInstanceSchema);
 
+const getInstanceBaseValue = (instance, product = null) => {
+  if (!instance) return 0;
+  const baseValue = Number(instance.baseValue || 0);
+  if (baseValue > 0) return baseValue;
+  const salePrice = Number(instance.currentSalePrice || 0);
+  if (salePrice > 0) return salePrice;
+  const productSalePrice = Number(product?.baseSalePrice || 0);
+  return productSalePrice > 0 ? productSalePrice : 0;
+};
+
 module.exports = ProductInstance;
 module.exports.PRODUCT_INSTANCE_STATUSES = PRODUCT_INSTANCE_STATUSES;
 module.exports.ALL_INSTANCE_STATUSES = ALL_INSTANCE_STATUSES;
+module.exports.getInstanceBaseValue = getInstanceBaseValue;

@@ -32,10 +32,11 @@ const navItems = [
   { to: '/owner/inventory', labelKey: 'sidebar.inventory', icon: Package },
   { to: '/owner/staff', labelKey: 'sidebar.staff', icon: BadgeCheck },
   { to: '/owner/orders', labelKey: 'sidebar.orders', icon: ReceiptText },
-  { to: '/owner/rent-orders', label: 'Quan ly don thue', icon: Package },
-  { to: '/owner/blogs', label: 'Quan ly blog', icon: MessageSquareText },
-  { to: '/owner/reviews', label: 'Quan ly danh gia', icon: MessageSquareText },
+  { to: '/owner/rent-orders', label: 'Quản lý đơn thuê', icon: Package },
+  { to: '/owner/blogs', label: 'Quản lý blog', icon: MessageSquareText },
+  { to: '/owner/reviews', label: 'Quản lý đánh giá', icon: MessageSquareText },
   { to: '/owner/promotions', labelKey: 'sidebar.vouchers', icon: Megaphone },
+  { to: '/owner/damage-policies', label: 'Chính sách hư hỏng', icon: Settings },
   { to: '/owner/reports', labelKey: 'sidebar.analytics', icon: BarChart3 },
 ]
 
@@ -56,6 +57,7 @@ const pageTitleMap = {
   reports: 'pageTitles.analytics',
   analytics: 'pageTitles.analytics',
   vouchers: 'pageTitles.vouchers',
+  'damage-policies': 'Chính sách hư hỏng',
 }
 
 const colorOptions = [
@@ -97,7 +99,7 @@ const OwnerLayout = () => {
   const showBackButton = isUserDetail || isProductDetail || isStaffSubView
 
   let title = currentSegment === 'reviews'
-    ? 'Quan ly danh gia'
+    ? 'Quản lý đánh giá'
     : t(pageTitleMap[currentSegment], t('pageTitles.owner'))
   if (isUserDetail) title = t('pageTitles.userDetail')
   if (isProductDetail) title = t('pageTitles.productDetail')

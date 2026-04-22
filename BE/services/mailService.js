@@ -198,7 +198,191 @@ const sendOrderConfirmationEmail = async (order = {}) => {
   return true;
 };
 
+const getRentStatusLabel = (status = '') => {
+  const labels = {
+    Draft: 'Nháp',
+    PendingDeposit: 'Chờ đặt cọc',
+    Deposited: 'Đã đặt cọc',
+    Confirmed: 'Đã xác nhận',
+    WaitingPickup: 'Chờ lấy đồ',
+    Renting: 'Đang thuê',
+    WaitingReturn: 'Chờ trả',
+    Late: 'Trễ hạn',
+    Returned: 'Đã trả',
+    Compensation: 'Bồi thường',
+    NoShow: 'Không nhận đồ',
+    Completed: 'Hoàn tất',
+    Cancelled: 'Đã hủy',
+  };
+
+  return labels[status] || normalizeText(status) || 'Đang xử lý';
+};
+
+const formatDate = (value) => {
+  if (!value) return '--';
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '--';
+    return d.toLocaleString('vi-VN');
+  } catch {
+    return '--';
+  }
+};
+
+const buildRentOrderConfirmationEmail = (order = {}) => {
+  const orderCode = normalizeText(order.orderCode) || `RO-${String(order._id || '').slice(-6).toUpperCase()}`;
+  const customer = order.customer || {};
+  const items = Array.isArray(order.items) ? order.items : [];
+  const orderUrl = normalizeText(order.orderUrl) || frontendUrl;
+  const trackUrl = normalizeText(order.trackUrl) || `${frontendUrl}/track-order`;
+
+  const itemRows = items
+    .map((item) => {
+      const image = escapeHtml(item.image || orderMailImagePlaceholder);
+      const productName = escapeHtml(item.productName || 'Sản phẩm');
+      const variantText = escapeHtml(item.size || item.variant || 'Mặc định');
+      const quantity = escapeHtml(item.quantity || 1);
+      const price = escapeHtml(formatCurrency(item.price || 0));
+
+      return `
+        <tr>
+          <td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td width="84" valign="top" style="padding-right:14px;">
+                  <img src="${image}" width="70" height="70" alt="${productName}" style="display:block;border-radius:14px;object-fit:cover;border:1px solid #e5e7eb;" />
+                </td>
+                <td valign="top" style="font-family:Arial,sans-serif;color:#0f172a;">
+                  <div style="font-size:15px;font-weight:700;line-height:1.5;">${productName}</div>
+                  <div style="margin-top:4px;font-size:13px;color:#64748b;">Size / Biến thể: ${variantText}</div>
+                  <div style="margin-top:4px;font-size:13px;color:#64748b;">Số lượng: ${quantity}</div>
+                  <div style="margin-top:6px;font-size:14px;font-weight:700;color:#111827;">${price}</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const html = `
+    <div style="margin:0;padding:24px;background:#f8fafc;">
+      <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:24px;box-shadow:0 12px 40px rgba(15,23,42,0.08);overflow:hidden;">
+        <div style="padding:28px 28px 20px;background:linear-gradient(135deg,#fdf2f8,#ffffff);border-bottom:1px solid #e5e7eb;">
+          <div style="font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#db2777;">INHERE - THUÊ ĐỒ</div>
+          <h1 style="margin:12px 0 0;font-family:Arial,sans-serif;font-size:28px;line-height:1.2;color:#0f172a;">Đặt đơn thuê thành công</h1>
+          <p style="margin:10px 0 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#475569;">
+            Cảm ơn bạn đã đặt đơn thuê tại INHERE. Vui lòng hoàn tất đặt cọc để chúng tôi giữ đồ cho bạn.
+          </p>
+        </div>
+
+        <div style="padding:24px 28px 28px;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:18px 20px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;">
+              <tr>
+                <td style="padding:0 0 10px;color:#64748b;font-size:13px;">Mã đơn thuê</td>
+                <td align="right" style="padding:0 0 10px;color:#0f172a;font-size:14px;font-weight:700;">${escapeHtml(orderCode)}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 0;color:#64748b;font-size:13px;border-top:1px solid #e2e8f0;">Trạng thái</td>
+                <td align="right" style="padding:10px 0;color:#0f172a;font-size:14px;font-weight:700;border-top:1px solid #e2e8f0;">${escapeHtml(getRentStatusLabel(order.status))}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 0;color:#64748b;font-size:13px;border-top:1px solid #e2e8f0;">Thời gian thuê</td>
+                <td align="right" style="padding:10px 0;color:#0f172a;font-size:14px;font-weight:700;border-top:1px solid #e2e8f0;">
+                  ${escapeHtml(formatDate(order.rentStartDate))} → ${escapeHtml(formatDate(order.rentEndDate))}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:10px 0;color:#64748b;font-size:13px;border-top:1px solid #e2e8f0;">Tiền cọc</td>
+                <td align="right" style="padding:10px 0;color:#0f172a;font-size:14px;font-weight:700;border-top:1px solid #e2e8f0;">${escapeHtml(formatCurrency(order.depositAmount || 0))}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 0 0;color:#64748b;font-size:13px;border-top:1px solid #e2e8f0;">Tổng tiền thuê</td>
+                <td align="right" style="padding:10px 0 0;color:#0f172a;font-size:18px;font-weight:800;border-top:1px solid #e2e8f0;">${escapeHtml(formatCurrency(order.totalAmount || 0))}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top:20px;background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;">
+            <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#0f172a;">Thông tin khách hàng</div>
+            <div style="margin-top:12px;font-family:Arial,sans-serif;font-size:14px;line-height:1.8;color:#475569;">
+              <div><strong>Họ tên:</strong> ${escapeHtml(customer.name || '')}</div>
+              <div><strong>Email:</strong> ${escapeHtml(customer.email || '')}</div>
+              <div><strong>Số điện thoại:</strong> ${escapeHtml(customer.phone || '')}</div>
+            </div>
+          </div>
+
+          <div style="margin-top:20px;background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;">
+            <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#0f172a;">Danh sách sản phẩm thuê</div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
+              ${itemRows}
+            </table>
+          </div>
+
+          <div style="margin-top:24px;text-align:center;">
+            <a href="${escapeHtml(orderUrl)}" style="display:inline-block;padding:14px 28px;border-radius:999px;background:#db2777;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;">
+              Xem chi tiết đơn thuê
+            </a>
+          </div>
+          <div style="margin-top:12px;text-align:center;">
+            <a href="${escapeHtml(trackUrl)}" style="font-family:Arial,sans-serif;font-size:13px;color:#6366f1;text-decoration:underline;">
+              Hoặc tra cứu đơn bằng mã đơn và email
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    'Dat don thue thanh cong',
+    `Ma don thue: ${orderCode}`,
+    `Trang thai: ${getRentStatusLabel(order.status)}`,
+    `Khach hang: ${customer.name || ''}`,
+    `Email: ${customer.email || ''}`,
+    `So dien thoai: ${customer.phone || ''}`,
+    `Thoi gian thue: ${formatDate(order.rentStartDate)} -> ${formatDate(order.rentEndDate)}`,
+    `Tien coc: ${formatCurrency(order.depositAmount || 0)}`,
+    `Tong tien: ${formatCurrency(order.totalAmount || 0)}`,
+    '',
+    'San pham thue:',
+    ...items.map((item) => `- ${item.productName || 'San pham'} | ${item.size || 'Mac dinh'} | x${item.quantity || 1} | ${formatCurrency(item.price || 0)}`),
+    '',
+    `Xem don thue: ${orderUrl}`,
+    `Tra cuu don: ${trackUrl}`,
+  ].join('\n');
+
+  return {
+    subject: `Đặt đơn thuê thành công - ${orderCode}`,
+    html,
+    text,
+  };
+};
+
+const sendRentOrderConfirmationEmail = async (order = {}) => {
+  if (!hasSmtpConfig()) return false;
+  if (!normalizeText(order?.customer?.email)) return false;
+
+  const transporter = nodemailer.createTransport(getSmtpConfig());
+  const from = process.env.SMTP_FROM || `INHERE <${process.env.SMTP_USER}>`;
+  const { subject, html, text } = buildRentOrderConfirmationEmail(order);
+
+  await transporter.sendMail({
+    from,
+    to: order.customer.email,
+    subject,
+    html,
+    text,
+  });
+
+  return true;
+};
+
 module.exports = {
   buildOrderConfirmationEmail,
   sendOrderConfirmationEmail,
+  buildRentOrderConfirmationEmail,
+  sendRentOrderConfirmationEmail,
 };

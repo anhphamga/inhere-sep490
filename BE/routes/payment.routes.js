@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth.middleware');
 const {
     createDepositPaymentLink,
+    createGuestDepositPaymentLink,
     createExtraDuePaymentLink,
     createSalePaymentLink,
     checkPayosStatus,
@@ -17,6 +18,9 @@ router.get('/payos-status/:orderCode', checkPayosStatus);
 
 // Tạo link thanh toán cọc (customer tự đặt)
 router.post('/rent-deposit/:orderId', authenticate, createDepositPaymentLink);
+
+// Tạo link thanh toán cọc cho guest (không auth; xác thực bằng orderCode + email guest)
+router.post('/rent-deposit/guest/:orderId', createGuestDepositPaymentLink);
 
 // Tạo link thu khoản nợ (staff dùng khi quyết toán)
 router.post('/rent-extra-due/:orderId', authenticate, createExtraDuePaymentLink);

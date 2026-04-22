@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { getRentOrderByIdApi, payDepositApi, cancelRentOrderApi, confirmPickupApi, confirmReturnApi, finalizeRentOrderApi } from '../services/rent-order.service'
-import { createDepositPaymentLinkApi } from '../services/payment.service'
+import {
+  getRentOrderByIdApi,
+  getGuestRentOrderByIdApi,
+  payDepositApi,
+  cancelRentOrderApi,
+  cancelGuestRentOrderApi,
+  confirmPickupApi,
+  confirmReturnApi,
+  finalizeRentOrderApi,
+} from '../services/rent-order.service'
+import { createDepositPaymentLinkApi, createGuestDepositPaymentLinkApi } from '../services/payment.service'
 import Header from '../components/common/Header'
 
 const statusLabels = {
@@ -39,9 +48,14 @@ const statusColors = {
 
 export default function RentalDetailPage() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const { isAuthenticated, loading: authLoading, user } = useAuth()
 
-  const isStaffOrOwner = ['owner', 'staff'].includes(String(user?.role || '').toLowerCase())
+  const guestToken = searchParams.get('token') || ''
+  const isGuestView = Boolean(guestToken)
+  const paymentCancelled = searchParams.get('payment') === 'cancelled'
+
+  const isStaffOrOwner = !isGuestView && ['owner', 'staff'].includes(String(user?.role || '').toLowerCase())
 
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -64,10 +78,25 @@ export default function RentalDetailPage() {
   const [finalizeMethod, setFinalizeMethod] = useState('Cash')
 
   useEffect(() => {
+    if (isGuestView) {
+      if (id && guestToken) {
+        fetchOrderDetail()
+      } else {
+        setLoading(false)
+        setError('Thiếu thông tin để xem đơn thuê.')
+      }
+      return
+    }
+
     if (!authLoading && isAuthenticated && id) {
       fetchOrderDetail()
     }
-  }, [isAuthenticated, id, authLoading])
+
+    if (!authLoading && !isAuthenticated) {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, id, authLoading, isGuestView, guestToken])
 
   useEffect(() => {
     if (!order) return
@@ -82,14 +111,20 @@ export default function RentalDetailPage() {
     try {
       setLoading(true)
       setError('')
-      const response = await getRentOrderByIdApi(id)
+      const response = isGuestView
+        ? await getGuestRentOrderByIdApi(id, guestToken)
+        : await getRentOrderByIdApi(id)
       setOrder(response.data)
     } catch (err) {
       console.error('Error fetching order:', err)
-      if (err.response?.status === 401) {
+      if (err.response?.status === 401 && isGuestView) {
+        setError('Liên kết xem đơn thuê đã hết hạn hoặc không hợp lệ.')
+      } else if (err.response?.status === 401) {
         setError('Vui lòng đăng nhập lại')
       } else if (err.response?.status === 403) {
         setError('Bạn không có quyền xem đơn thuê này')
+      } else if (err.response?.status === 404) {
+        setError('Không tìm thấy đơn thuê')
       } else {
         setError('Không thể tải chi tiết đơn thuê')
       }
@@ -117,7 +152,10 @@ export default function RentalDetailPage() {
   const handlePayDepositOnline = async () => {
     setActionLoading(true)
     try {
-      const res = await createDepositPaymentLinkApi(id)
+      const guestEmail = order?.guestContact?.email || ''
+      const res = isGuestView
+        ? await createGuestDepositPaymentLinkApi(id, guestEmail)
+        : await createDepositPaymentLinkApi(id)
       const paymentUrl = res.data?.paymentUrl || res.paymentUrl
       if (paymentUrl) {
         window.location.href = paymentUrl
@@ -136,7 +174,12 @@ export default function RentalDetailPage() {
 
     setActionLoading(true)
     try {
-      const response = await cancelRentOrderApi(id)
+      const response = isGuestView
+        ? await cancelGuestRentOrderApi(id, {
+            token: guestToken,
+            email: order?.guestContact?.email || '',
+          })
+        : await cancelRentOrderApi(id)
       if (response.success) {
         alert('Hủy đơn thành công!')
         fetchOrderDetail()
@@ -224,7 +267,7 @@ export default function RentalDetailPage() {
     }
   }
 
-  if (!isAuthenticated) {
+  if (!isGuestView && !isAuthenticated) {
     return (
       <>
         <Header />
@@ -258,8 +301,8 @@ export default function RentalDetailPage() {
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
-          <Link to="/rental/history" className="text-pink-600 hover:underline">
-            Quay lại lịch sử thuê
+          <Link to={isGuestView ? '/track-order' : '/rental/history'} className="text-pink-600 hover:underline">
+            {isGuestView ? 'Quay lại tra cứu đơn' : 'Quay lại lịch sử thuê'}
           </Link>
         </div>
         </div>
@@ -274,8 +317,8 @@ export default function RentalDetailPage() {
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Không tìm thấy đơn thuê</p>
-          <Link to="/rental/history" className="text-pink-600 hover:underline">
-            Quay lại lịch sử thuê
+          <Link to={isGuestView ? '/track-order' : '/rental/history'} className="text-pink-600 hover:underline">
+            {isGuestView ? 'Quay lại tra cứu đơn' : 'Quay lại lịch sử thuê'}
           </Link>
         </div>
         </div>
@@ -284,7 +327,9 @@ export default function RentalDetailPage() {
   }
 
   const canPayDeposit = order.status === 'PendingDeposit'
-  const canCancel = ['Draft', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup'].includes(order.status)
+  const canCancel = isGuestView
+    ? ['Draft', 'PendingDeposit'].includes(order.status)
+    : ['Draft', 'PendingDeposit', 'Deposited', 'Confirmed', 'WaitingPickup'].includes(order.status)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -292,13 +337,34 @@ export default function RentalDetailPage() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <Link to="/rental/history" className="text-pink-600 hover:underline">
+          <Link
+            to={isGuestView ? `/track-order?orderCode=${encodeURIComponent(order?.orderCode || '')}` : '/rental/history'}
+            className="text-pink-600 hover:underline"
+          >
             ← Quay lại
           </Link>
           <span className={`px-4 py-2 rounded-full text-sm font-medium ${statusColors[order.status] || 'bg-gray-100'}`}>
             {statusLabels[order.status] || order.status}
           </span>
         </div>
+
+        {isGuestView && paymentCancelled && order.status === 'PendingDeposit' && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-semibold">Bạn đã hủy giao dịch thanh toán.</p>
+            <p className="mt-1 text-amber-700">
+              Đơn thuê vẫn ở trạng thái <span className="font-semibold">Chờ đặt cọc</span>. Bạn có thể bấm
+              <span className="font-semibold"> “Đặt cọc qua QR” </span> để thanh toán lại, hoặc chọn
+              <span className="font-semibold"> “Hủy đơn” </span> nếu không muốn tiếp tục.
+            </p>
+          </div>
+        )}
+
+        {isGuestView && !paymentCancelled && (
+          <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+            Bạn đang xem đơn thuê với tư cách khách. Liên kết này chỉ có giá trị trong 7 ngày.
+            Vui lòng lưu lại email xác nhận để tiếp tục theo dõi đơn của mình.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Thông tin đơn */}
@@ -483,13 +549,15 @@ export default function RentalDetailPage() {
                     >
                       {actionLoading ? 'Đang xử lý...' : '📱 Đặt cọc qua QR (PayOS)'}
                     </button>
-                    <button
-                      onClick={handlePayDepositCash}
-                      disabled={actionLoading}
-                      className="w-full border border-pink-600 text-pink-600 py-3 rounded-lg font-semibold hover:bg-pink-50 disabled:bg-gray-100"
-                    >
-                      {actionLoading ? 'Đang xử lý...' : '💵 Đặt cọc tiền mặt'}
-                    </button>
+                    {!isGuestView && (
+                      <button
+                        onClick={handlePayDepositCash}
+                        disabled={actionLoading}
+                        className="w-full border border-pink-600 text-pink-600 py-3 rounded-lg font-semibold hover:bg-pink-50 disabled:bg-gray-100"
+                      >
+                        {actionLoading ? 'Đang xử lý...' : '💵 Đặt cọc tiền mặt'}
+                      </button>
+                    )}
                   </div>
                 )}
 

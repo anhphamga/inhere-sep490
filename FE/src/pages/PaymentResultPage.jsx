@@ -17,8 +17,9 @@ export default function PaymentResultPage() {
     const orderCode    = searchParams.get('orderCode')
     const purpose      = searchParams.get('purpose')      // 'deposit' | 'extra-due' | 'sale'
     const urlStatus    = searchParams.get('status')       // 'cancelled'
-    const source       = searchParams.get('source')       // 'staff' = walk-in order
+    const source       = searchParams.get('source')       // 'staff' = walk-in order, 'guest' = guest rent
     const isStaffOrder = source === 'staff'
+    const isGuestOrder = source === 'guest'
 
     const [state, setState] = useState('loading') // 'loading' | 'success' | 'cancelled' | 'error'
     const [order, setOrder] = useState(null)
@@ -68,8 +69,13 @@ export default function PaymentResultPage() {
             navigate('/staff/rent-orders')
             return
         }
+        if (isGuestOrder) {
+            // Guest không xem được /rental/:id (yêu cầu auth) → chuyển sang trang tra cứu
+            const orderCode = order?.orderCode ? `?orderCode=${encodeURIComponent(order.orderCode)}` : ''
+            navigate(`/track-order${orderCode}`)
+            return
+        }
         if (purpose === 'sale' && saleOrderId) {
-            // Guest không thể xem /orders/:id (yêu cầu auth)
             if (isAuthenticated) navigate(`/orders/${saleOrderId}`)
             else navigate('/')
         } else if (orderId) navigate(`/rental/${orderId}`)
@@ -79,6 +85,11 @@ export default function PaymentResultPage() {
     const handleRetry = () => {
         if (isStaffOrder) {
             navigate('/staff/rent-orders')
+            return
+        }
+        if (isGuestOrder) {
+            const orderCode = order?.orderCode ? `?orderCode=${encodeURIComponent(order.orderCode)}` : ''
+            navigate(`/track-order${orderCode}`)
             return
         }
         if (purpose === 'sale') navigate('/cart')
@@ -148,7 +159,11 @@ export default function PaymentResultPage() {
                                 onClick={handleGoOrder}
                                 className="mt-6 w-full rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition"
                             >
-                                {isStaffOrder ? 'Xem danh sách đơn thuê' : 'Xem chi tiết đơn'}
+                                {isStaffOrder
+                                    ? 'Xem danh sách đơn thuê'
+                                    : isGuestOrder
+                                        ? 'Tra cứu đơn của tôi'
+                                        : 'Xem chi tiết đơn'}
                             </button>
                         )}
                     </>

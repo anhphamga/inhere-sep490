@@ -1,4 +1,5 @@
 import {
+  cancelGuestRentOrderRequest,
   cancelRentOrderRequest,
   completeRentOrderRequest,
   completeWashingRequest,
@@ -6,10 +7,13 @@ import {
   confirmRentOrderRequest,
   confirmReturnRequest,
   createGuestCustomerRequest,
+  createGuestRentOrderRequest,
   createRentOrderRequest,
   createWalkInOrderRequest,
   finalizeRentOrderRequest,
   getAllRentOrdersRequest,
+  getGuestRentOrderByIdRequest,
+  getGuestRentOrderRequest,
   getMyRentOrdersRequest,
   getRentOrderByIdRequest,
   markNoShowRequest,
@@ -107,6 +111,26 @@ export const createWalkInOrderApi = async (payload) => {
 
 export const createGuestCustomerApi = async (payload) => {
   const response = await createGuestCustomerRequest(payload)
+  return response.data
+}
+
+export const createGuestRentOrderApi = async (payload) => {
+  const response = await createGuestRentOrderRequest(payload)
+  return response.data
+}
+
+export const getGuestRentOrderApi = async (orderCode, email) => {
+  const response = await getGuestRentOrderRequest(orderCode, email)
+  return response.data
+}
+
+export const getGuestRentOrderByIdApi = async (id, token) => {
+  const response = await getGuestRentOrderByIdRequest(id, token)
+  return response.data
+}
+
+export const cancelGuestRentOrderApi = async (id, options = {}) => {
+  const response = await cancelGuestRentOrderRequest(id, options)
   return response.data
 }
 

@@ -56,3 +56,24 @@ export const createWalkInOrderRequest = (payload) => axiosClient.post('/rent-ord
 
 // Tạo hồ sơ khách nhanh cho khách chưa có tài khoản (Staff walk-in)
 export const createGuestCustomerRequest = (payload) => axiosClient.post('/rent-orders/customers/guest', payload)
+
+// Guest tự đặt đơn thuê online (yêu cầu verificationToken email OTP, không auth)
+export const createGuestRentOrderRequest = (payload) => axiosClient.post('/rent-orders/guest', payload)
+
+// Guest tra cứu đơn theo orderCode + email
+export const getGuestRentOrderRequest = (orderCode, email) =>
+  axiosClient.get('/rent-orders/guest/lookup', { params: { orderCode, email } })
+
+// Guest xem chi tiết đơn qua magic link (JWT token từ email)
+export const getGuestRentOrderByIdRequest = (id, token) =>
+  axiosClient.get(`/rent-orders/guest/${id}`, {
+    params: { token },
+    skipAuthRedirect: true,
+  })
+
+// Guest tự hủy đơn (xác thực bằng token magic-link hoặc email)
+export const cancelGuestRentOrderRequest = (id, { token, email } = {}) =>
+  axiosClient.put(`/rent-orders/guest/${id}/cancel`, { email }, {
+    params: token ? { token } : undefined,
+    skipAuthRedirect: true,
+  })

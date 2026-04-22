@@ -1,5 +1,6 @@
 import {
     createDepositPaymentLinkRequest,
+    createGuestDepositPaymentLinkRequest,
     createExtraDuePaymentLinkRequest,
     createSalePaymentLinkRequest,
     checkPayosStatusRequest,
@@ -7,6 +8,11 @@ import {
 
 export const createDepositPaymentLinkApi = async (orderId) => {
     const res = await createDepositPaymentLinkRequest(orderId);
+    return res.data;
+};
+
+export const createGuestDepositPaymentLinkApi = async (orderId, email) => {
+    const res = await createGuestDepositPaymentLinkRequest(orderId, email);
     return res.data;
 };
 

@@ -71,6 +71,14 @@ router.post(
 router.post('/', authenticate, rentOrderController.createRentOrder);
 router.get('/my', authenticate, rentOrderController.getMyRentOrders);
 
+// Guest rent flow (không yêu cầu đăng nhập; cần guestVerificationToken email OTP)
+router.post('/guest', rentOrderController.createGuestRentOrder);
+router.get('/guest/lookup', rentOrderController.getGuestRentOrder);
+// Xem chi tiết đơn thuê guest qua magic link (JWT)
+router.get('/guest/:id', rentOrderController.getGuestRentOrderById);
+// Guest tự hủy đơn khi còn PendingDeposit (xác thực bằng magic-link token hoặc email)
+router.put('/guest/:id/cancel', rentOrderController.cancelGuestRentOrder);
+
 router.get('/:id', authenticate, orderFieldFilter, rentOrderController.getRentOrderById);
 router.post('/:id/deposit', authenticate, rentOrderController.payDeposit);
 router.put('/:id/cancel', authenticate, rentOrderController.cancelRentOrder);

@@ -1863,8 +1863,13 @@ const deleteProductInstance = async (req, res) => {
   }
 };
 
-// LÃ¡ÂºÂ¥y danh sÃƒÂ¡ch instance cÃƒÂ²n available (dÃƒÂ¹ng cho customer thuÃƒÂª)
-// CRITICAL: Sizes/Colors/Conditions MUST be derived from ProductInstance ONLY
+// Lấy danh sách instance có thể thuê/mua (dùng cho trang chi tiết khách hàng).
+// - Size/Color/Condition phải lấy từ ProductInstance (không từ Product.sizes).
+// - Rentable: chỉ loại các lifecycle kết thúc (Lost/Sold). Một instance đang Reserved/Rented
+//   vẫn có thể thuê cho khoảng ngày khác không overlap, nên phải hiện ra ở chỗ thuê.
+// - Purchasable: chỉ Available (đồ đang thuê không bán được).
+const RENT_BLOCKING_LIFECYCLE = ['Lost', 'Sold'];
+
 const getAvailableInstances = async (req, res) => {
   try {
     const { productId } = req.params;
@@ -1872,7 +1877,7 @@ const getAvailableInstances = async (req, res) => {
 
     const filter = {
       productId,
-      lifecycleStatus: 'Available'
+      lifecycleStatus: { $nin: RENT_BLOCKING_LIFECYCLE }
     };
 
     if (conditionLevel) {
@@ -1880,15 +1885,21 @@ const getAvailableInstances = async (req, res) => {
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
         return res.status(400).json({
           success: false,
-          message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
         });
       }
       filter.conditionLevel = normalizedLevel;
     }
 
-    const instances = await ProductInstance.find(filter)
+    const rawInstances = await ProductInstance.find(filter)
       .populate('productId', 'name images')
-      .sort({ conditionScore: -1 });
+      .sort({ conditionScore: -1 })
+      .lean();
+
+    const instances = rawInstances.map((inst) => ({
+      ...inst,
+      isPurchasable: inst.lifecycleStatus === 'Available',
+    }));
 
     // EXTRACT SIZES, COLORS, CONDITIONS FROM INSTANCES ONLY
     const sizesSet = new Set();
@@ -1905,10 +1916,11 @@ const getAvailableInstances = async (req, res) => {
       if (conditionLevel) conditionsSet.add(conditionLevel);
     });
 
-    // Sort for consistency
     const sizes = Array.from(sizesSet).sort();
     const colors = Array.from(colorsSet).sort();
     const conditions = Array.from(conditionsSet).sort();
+
+    const totalPurchasable = instances.filter((inst) => inst.isPurchasable).length;
 
     res.json({
       success: true,
@@ -1917,14 +1929,15 @@ const getAvailableInstances = async (req, res) => {
         sizes,
         colors,
         conditions,
-        totalAvailable: instances.length
+        totalAvailable: instances.length,
+        totalPurchasable,
       }
     });
   } catch (error) {
     console.error('Get available instances error:', error);
     res.status(500).json({
       success: false,
-      message: 'LÃ¡Â»â€”i khi lÃ¡ÂºÂ¥y danh sÃƒÂ¡ch sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m cÃƒÂ³ sÃ¡ÂºÂµn',
+      message: 'Lỗi khi lấy danh sách sản phẩm có sẵn',
       error: error.message
     });
   }

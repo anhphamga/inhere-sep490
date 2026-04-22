@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getAllRentOrdersApi, getRentOrderByIdApi, confirmRentOrderApi, markWaitingPickupApi, markWaitingReturnApi, confirmPickupApi, confirmReturnApi, completeWashingApi, finalizeRentOrderApi, markNoShowApi, staffCollectDepositApi, cancelRentOrderApi } from '../../services/rent-order.service'
+import { resolveDamagePolicyApi } from '../../services/damage-policy.service'
 import { createDepositPaymentLinkApi, createExtraDuePaymentLinkApi } from '../../services/payment.service'
 
 const statusLabels = {
@@ -56,6 +57,21 @@ const formatMoney = (value) => `${Number(value || 0).toLocaleString('vi-VN')}đ`
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('vi-VN') : 'N/A')
 const formatDateTime = (value) => (value ? new Date(value).toLocaleString('vi-VN') : 'N/A')
 const displayOrderCode = (order) => order?.orderCode || `#${String(order?._id || '').slice(-8).toUpperCase()}`
+
+const getProductName = (product) => {
+  if (!product) return 'Sản phẩm'
+  if (typeof product.name === 'string') return product.name || 'Sản phẩm'
+  if (product.name && typeof product.name === 'object') {
+    return product.name.vi || product.name.en || 'Sản phẩm'
+  }
+  return 'Sản phẩm'
+}
+
+const getProductImage = (product) => {
+  if (!product) return ''
+  if (Array.isArray(product.images) && product.images.length > 0) return product.images[0]
+  return product.image || ''
+}
 
 export default function StaffRentOrders() {
   const navigate = useNavigate()
@@ -305,7 +321,7 @@ export default function StaffRentOrders() {
     }
   }
 
-  const openReturnModal = (order) => {
+  const openReturnModal = async (order) => {
     setReturnError('')
     setReturnNote('')
     // Dùng ngày local (Vietnam) thay vì UTC để tránh sai ngày khi 0-7 giờ sáng
@@ -320,12 +336,45 @@ export default function StaffRentOrders() {
     const items = (order?.items || []).map((item) => ({
       productInstanceId: item.productInstanceId?._id || item.productInstanceId,
       label: item.productInstanceId?.productId?.name || item.productInstanceId?._id || 'Sản phẩm',
-      damageEntries: [], // [{ key, label, fee }]
+      damageLevelKey: '',
+      policy: null,
+      baseValue: 0,
+      policyLoading: true,
     }))
 
     setReturnItems(items)
     setReturnOrderId(order?._id)
     setShowReturnModal(true)
+
+    // Resolve damage policy + base value cho từng instance (song song)
+    await Promise.all(
+      items.map(async (it, idx) => {
+        try {
+          const res = await resolveDamagePolicyApi({ productInstanceId: it.productInstanceId })
+          setReturnItems((prev) => {
+            const next = [...prev]
+            if (next[idx]) {
+              next[idx] = {
+                ...next[idx],
+                policy: res?.data?.policy || null,
+                baseValue: Number(res?.data?.baseValue || 0),
+                policyLoading: false,
+              }
+            }
+            return next
+          })
+        } catch (err) {
+          console.error('resolve policy failed', err)
+          setReturnItems((prev) => {
+            const next = [...prev]
+            if (next[idx]) {
+              next[idx] = { ...next[idx], policyLoading: false }
+            }
+            return next
+          })
+        }
+      })
+    )
   }
 
   const closeReturnModal = () => {
@@ -338,17 +387,15 @@ export default function StaffRentOrders() {
     if (!returnOrderId) return
 
     const mapped = returnItems.map((item) => {
-      const totalDmgFee = item.damageEntries.reduce(
-        (s, e) => s + (parseInt(String(e.fee || '0').replace(/[^0-9]/g, ''), 10) || 0), 0
-      )
-      const dmgNote = item.damageEntries.length > 0
-        ? `[${item.label}] ${item.damageEntries.map((e) => e.label).join(', ')}`
+      const level = item.damageLevelKey
+        ? (item.policy?.levels || []).find((l) => l.key === item.damageLevelKey)
         : null
+      const dmgNote = level ? `[${item.label}] ${level.label}` : null
       return {
         apiItem: {
           productInstanceId: item.productInstanceId,
-          condition: item.damageEntries.length > 0 ? 'Damaged' : 'Normal',
-          damageFee: totalDmgFee,
+          damageLevelKey: item.damageLevelKey || undefined,
+          condition: level?.condition || 'Normal',
         },
         dmgNote,
       }
@@ -717,6 +764,73 @@ export default function StaffRentOrders() {
                     </div>
                   )
                 })()}
+
+                {/* Sản phẩm trong đơn */}
+                {Array.isArray(selectedOrder.items) && selectedOrder.items.length > 0 && (
+                  <div className="rounded-3xl border border-slate-200 bg-white p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Sản phẩm thuê</p>
+                      <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600">
+                        {selectedOrder.items.length} món
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {selectedOrder.items.map((item, idx) => {
+                        const product = item?.productInstanceId?.productId || {}
+                        const productName = getProductName(product)
+                        const productImage = getProductImage(product)
+                        const productId = product?._id
+                        const instanceCode = item?.productInstanceId?.instanceCode || item?.productInstanceId?.code
+                        return (
+                          <div
+                            key={item._id || idx}
+                            className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3"
+                          >
+                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                              {productImage ? (
+                                <img src={productImage} alt={productName} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-slate-300">
+                                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159M16.5 14.25L18 12.75a2.25 2.25 0 013.182 0L21.75 15M3 19.5h18a.75.75 0 00.75-.75V5.25a.75.75 0 00-.75-.75H3a.75.75 0 00-.75.75v13.5c0 .414.336.75.75.75z" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              {productId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/products/${productId}`)}
+                                  className="line-clamp-2 text-left text-sm font-semibold text-slate-900 hover:text-indigo-600 hover:underline"
+                                  title={productName}
+                                >
+                                  {productName}
+                                </button>
+                              ) : (
+                                <p className="line-clamp-2 text-sm font-semibold text-slate-900">{productName}</p>
+                              )}
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                {item.size && <span>Size: <span className="font-medium text-slate-700">{item.size}</span></span>}
+                                {item.color && <span>Màu: <span className="font-medium text-slate-700">{item.color}</span></span>}
+                                {item.condition && <span>Tình trạng: <span className="font-medium text-slate-700">{item.condition}</span></span>}
+                              </div>
+                              {instanceCode && (
+                                <p className="mt-1 font-mono text-[11px] text-slate-400">Mã hàng: {instanceCode}</p>
+                              )}
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="text-sm font-semibold text-indigo-600">
+                                {formatMoney(item.finalPrice || item.baseRentPrice || 0)}
+                              </p>
+                              <p className="text-[11px] text-slate-400">/ngày</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Thông tin thanh toán */}
                 <div className="rounded-3xl border border-slate-200 bg-white p-5">
@@ -1368,51 +1482,38 @@ export default function StaffRentOrders() {
                 </div>
                 <div className="space-y-4">
                   {returnItems.map((item, index) => {
-                    const DAMAGE_TYPES = [
-                      { key: 'torn',    label: 'Rách / Hỏng vải' },
-                      { key: 'stain',   label: 'Bẩn không giặt được' },
-                      { key: 'faded',   label: 'Phai màu / Ố vàng' },
-                      { key: 'missing', label: 'Mất phụ kiện' },
-                      { key: 'zipper',  label: 'Hỏng khóa / Cúc' },
-                      { key: 'other',   label: 'Hư hỏng khác' },
-                    ]
-                    const selectedKeys = new Set(item.damageEntries.map((e) => e.key))
-                    const totalItemFee = item.damageEntries.reduce(
-                      (s, e) => s + (parseInt(String(e.fee || '0').replace(/[^0-9]/g, ''), 10) || 0), 0
-                    )
+                    const levels = item.policy?.levels || []
+                    const sortedLevels = [...levels].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                    const selectedLevel = item.damageLevelKey
+                      ? levels.find((l) => l.key === item.damageLevelKey)
+                      : null
+                    const itemFee = selectedLevel
+                      ? Math.round(((item.baseValue || 0) * Number(selectedLevel.penaltyPercent || 0)) / 100)
+                      : 0
 
-                    const toggleDamageType = (dt) => {
+                    const selectLevel = (key) => {
                       const next = [...returnItems]
-                      const entries = next[index].damageEntries
-                      const exists = entries.findIndex((e) => e.key === dt.key)
-                      if (exists >= 0) {
-                        next[index].damageEntries = entries.filter((e) => e.key !== dt.key)
-                      } else {
-                        next[index].damageEntries = [...entries, { key: dt.key, label: dt.label, fee: '' }]
-                      }
-                      setReturnItems(next)
-                    }
-
-                    const updateEntryFee = (key, val) => {
-                      const next = [...returnItems]
-                      next[index].damageEntries = next[index].damageEntries.map((e) =>
-                        e.key === key ? { ...e, fee: val } : e
-                      )
+                      next[index] = { ...next[index], damageLevelKey: next[index].damageLevelKey === key ? '' : key }
                       setReturnItems(next)
                     }
 
                     return (
                       <div key={item.productInstanceId} className={`rounded-2xl border p-4 transition-all ${
-                        item.damageEntries.length > 0
+                        selectedLevel
                           ? 'border-red-200 bg-red-50/60'
                           : 'border-slate-200 bg-slate-50'
                       }`}>
                         {/* Product name + status badge */}
                         <div className="flex items-center justify-between gap-2 mb-3">
-                          <p className="text-sm font-semibold text-slate-800 leading-snug truncate">{item.label}</p>
-                          {item.damageEntries.length > 0 ? (
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 leading-snug truncate">{item.label}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Giá trị sản phẩm: <span className="font-semibold text-slate-700">{(item.baseValue || 0).toLocaleString('vi-VN')}đ</span>
+                            </p>
+                          </div>
+                          {selectedLevel ? (
                             <span className="shrink-0 rounded-full border border-red-300 bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
-                              Hư hỏng · {totalItemFee > 0 ? `${totalItemFee.toLocaleString('vi-VN')}đ` : 'Chưa nhập phí'}
+                              {selectedLevel.label} · {itemFee.toLocaleString('vi-VN')}đ
                             </span>
                           ) : (
                             <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
@@ -1421,50 +1522,55 @@ export default function StaffRentOrders() {
                           )}
                         </div>
 
-                        {/* Damage type chips */}
-                        <div className="flex flex-wrap gap-2">
-                          {DAMAGE_TYPES.map((dt) => {
-                            const active = selectedKeys.has(dt.key)
-                            return (
-                              <button
-                                key={dt.key}
-                                type="button"
-                                onClick={() => toggleDamageType(dt)}
-                                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
-                                  active
-                                    ? 'border-red-300 bg-red-100 text-red-700 shadow-sm ring-1 ring-red-200'
-                                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-100'
-                                }`}
-                              >
-                                {active ? '✓ ' : '+ '}{dt.label}
-                              </button>
-                            )
-                          })}
-                        </div>
+                        {/* Policy level chips */}
+                        {item.policyLoading ? (
+                          <p className="text-xs text-slate-400">Đang tải chính sách hư hỏng...</p>
+                        ) : sortedLevels.length === 0 ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            Chưa có chính sách hư hỏng áp dụng cho sản phẩm này. Owner cần tạo trước khi staff áp phí.
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {sortedLevels.map((lvl) => {
+                              const active = item.damageLevelKey === lvl.key
+                              const fee = Math.round(((item.baseValue || 0) * Number(lvl.penaltyPercent || 0)) / 100)
+                              return (
+                                <button
+                                  key={lvl.key}
+                                  type="button"
+                                  onClick={() => selectLevel(lvl.key)}
+                                  title={lvl.description}
+                                  className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
+                                    active
+                                      ? 'border-red-300 bg-red-100 text-red-700 shadow-sm ring-1 ring-red-200'
+                                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {active ? '✓ ' : ''}{lvl.label} · {lvl.penaltyPercent}% ({fee.toLocaleString('vi-VN')}đ)
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
 
-                        {/* Fee inputs for selected damage types */}
-                        {item.damageEntries.length > 0 && (
-                          <div className="mt-3 space-y-2 border-t border-red-200 pt-3">
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Phí bồi thường theo loại hư hỏng (VND)</p>
-                            {item.damageEntries.map((entry) => (
-                              <div key={entry.key} className="flex items-center gap-2">
-                                <span className="w-40 shrink-0 text-xs font-medium text-slate-600 truncate">{entry.label}</span>
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={entry.fee}
-                                  onChange={(e) => updateEntryFee(entry.key, e.target.value)}
-                                  placeholder="VD: 150000"
-                                  className="h-9 flex-1 rounded-xl border border-red-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                                />
-                              </div>
-                            ))}
-                            {item.damageEntries.length > 1 && totalItemFee > 0 && (
-                              <div className="flex justify-between border-t border-red-200 pt-2 text-sm font-semibold text-red-700">
-                                <span>Tổng phí sản phẩm này</span>
-                                <span>{totalItemFee.toLocaleString('vi-VN')}đ</span>
-                              </div>
-                            )}
+                        {/* Details of selected level */}
+                        {selectedLevel && (
+                          <div className="mt-3 rounded-lg border border-red-200 bg-white p-3 text-xs">
+                            <div className="flex justify-between text-slate-600">
+                              <span>% giá trị phạt</span>
+                              <span className="font-semibold text-slate-900">{selectedLevel.penaltyPercent}%</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600 mt-1">
+                              <span>Giá trị sản phẩm</span>
+                              <span className="font-semibold text-slate-900">{(item.baseValue || 0).toLocaleString('vi-VN')}đ</span>
+                            </div>
+                            <div className="mt-2 border-t border-red-100 pt-2 flex justify-between text-sm font-semibold text-red-700">
+                              <span>Phí áp dụng</span>
+                              <span>{itemFee.toLocaleString('vi-VN')}đ</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              Sau khi xác nhận, sản phẩm sẽ chuyển sang trạng thái <span className="font-semibold">{selectedLevel.triggerLifecycle}</span>.
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1473,10 +1579,12 @@ export default function StaffRentOrders() {
                 </div>
 
                 {/* Grand total damage */}
-                {returnItems.some((i) => i.damageEntries.length > 0) && (() => {
-                  const grandDmg = returnItems.reduce((s, i) =>
-                    s + i.damageEntries.reduce((ss, e) => ss + (parseInt(String(e.fee || '0').replace(/[^0-9]/g, ''), 10) || 0), 0)
-                  , 0)
+                {returnItems.some((i) => i.damageLevelKey) && (() => {
+                  const grandDmg = returnItems.reduce((s, i) => {
+                    const lvl = (i.policy?.levels || []).find((l) => l.key === i.damageLevelKey)
+                    if (!lvl) return s
+                    return s + Math.round(((i.baseValue || 0) * Number(lvl.penaltyPercent || 0)) / 100)
+                  }, 0)
                   return grandDmg > 0 ? (
                     <div className="mt-3 flex items-center justify-between rounded-2xl border border-red-300 bg-red-100 px-4 py-3">
                       <span className="text-sm font-semibold text-red-800">Tổng phí hư hỏng</span>

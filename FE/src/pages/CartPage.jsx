@@ -1,13 +1,13 @@
 import { createElement, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Lock, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Trash2, User, CreditCard } from 'lucide-react'
 import Header from '../components/common/Header'
 import GuestVerificationModal from '../components/cart/GuestVerificationModal'
 import { useAuth } from '../hooks/useAuth'
 import { useRentalCart } from '../contexts/RentalCartContext'
 import { useBuyCart } from '../contexts/BuyCartContext'
-import { createRentOrderApi, payDepositApi } from '../services/rent-order.service'
-import { createDepositPaymentLinkApi, createSalePaymentLinkApi } from '../services/payment.service'
+import { createGuestRentOrderApi, createRentOrderApi, payDepositApi } from '../services/rent-order.service'
+import { createDepositPaymentLinkApi, createGuestDepositPaymentLinkApi, createSalePaymentLinkApi } from '../services/payment.service'
 import { checkoutApi, guestCheckoutApi } from '../services/order.service'
 import { getMyVouchersApi, validateVoucherApi } from '../services/voucher.service'
 import { ADDRESS_DATA } from '../constants/addressData'
@@ -231,7 +231,6 @@ function CartItemCard({ item, type, onRemove, onDecrease, onIncrease, subtotal }
 }
 
 export default function CartPage() {
-  const navigate = useNavigate()
   const { isAuthenticated, user } = useAuth()
   const { items: rentalItems, clearCart: clearRentalCart, removeItem: removeRentalItem } = useRentalCart()
   const { items: buyItems, totalAmount: buySubtotal, updateQuantity: updateBuyQuantity, removeItem: removeBuyItem, clearCart: clearBuyCart } = useBuyCart()
@@ -271,6 +270,10 @@ export default function CartPage() {
     paymentMethod: 'COD',
     note: ''
   })
+
+  // Form thông tin khách khi thuê không đăng nhập (rental-only hoặc combined)
+  const [rentGuestForm, setRentGuestForm] = useState({ name: '', phone: '', email: '' })
+  const [rentGuestFieldErrors, setRentGuestFieldErrors] = useState({})
 
   useEffect(() => {
     setBuyForm((prev) => ({
@@ -696,9 +699,34 @@ export default function CartPage() {
     idempotencyKey
   })}
 
+  // Validate form contact khi guest thuê (rental-only). Trả về { errors, sanitized } giống buyForm.
+  const validateRentGuestForm = (form) => {
+    const sanitized = {
+      name: normalizeText(form?.name),
+      phone: normalizePhoneInput(form?.phone),
+      email: normalizeEmail(form?.email),
+    }
+    const errors = {}
+    if (!sanitized.name) errors.name = 'Vui lòng nhập họ tên.'
+    if (!sanitized.phone) errors.phone = 'Vui lòng nhập số điện thoại.'
+    else if (!PHONE_REGEX_VN.test(sanitized.phone)) errors.phone = 'Số điện thoại Việt Nam không hợp lệ.'
+    if (!sanitized.email) errors.email = 'Vui lòng nhập email.'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sanitized.email)) errors.email = 'Email không hợp lệ.'
+    return { errors, sanitized }
+  }
+
   const handleCheckout = async ({ skipGuestVerification = false, session = guestVerificationSession } = {}) => {
-    if (rentalItems.length > 0 && !isAuthenticated) return navigate('/login?redirect=/cart')
-    if (buyItems.length > 0 && !isAuthenticated && !skipGuestVerification && !session?.verificationToken) {
+    // Bước 1 — gate verify guest: nếu chưa đăng nhập & có ít nhất 1 loại đơn → cần verify email
+    if (!isAuthenticated && (buyItems.length > 0 || rentalItems.length > 0) && !skipGuestVerification && !session?.verificationToken) {
+      // Với rental-only: lấy email từ rentGuestForm (sau khi validate cơ bản) làm gợi ý cho modal
+      if (buyItems.length === 0 && rentalItems.length > 0) {
+        const { errors: guestErrors, sanitized: guestSanitized } = validateRentGuestForm(rentGuestForm)
+        if (Object.keys(guestErrors).length > 0) {
+          setRentGuestFieldErrors(guestErrors)
+          return setRentalError('Vui lòng nhập đầy đủ thông tin liên hệ trước khi xác minh email.')
+        }
+        setRentGuestForm(guestSanitized)
+      }
       setPendingGuestCheckout('combined')
       return setGuestVerificationOpen(true)
     }
@@ -758,18 +786,48 @@ export default function CartPage() {
 
     try {
       if (rentalItems.length > 0) {
-        const rentalResponse = await createRentOrderApi(buildRentPayload(createIdempotencyKey('rent-checkout')))
+        let rentalResponse
+        let guestRentEmail = ''
+        if (isAuthenticated) {
+          rentalResponse = await createRentOrderApi(buildRentPayload(createIdempotencyKey('rent-checkout')))
+        } else {
+          // Với guest, ưu tiên contact từ buyForm (nếu cart combined), còn không dùng rentGuestForm
+          const contact = buyItems.length > 0
+            ? { name: sanitizedBuyForm.name, phone: sanitizedBuyForm.phone, email: sanitizedBuyForm.email }
+            : { ...rentGuestForm }
+          const { errors: guestErrors, sanitized: guestSanitized } = validateRentGuestForm(contact)
+          if (Object.keys(guestErrors).length > 0) {
+            setRentGuestFieldErrors(guestErrors)
+            throw new Error('Vui lòng nhập đầy đủ thông tin liên hệ cho đơn thuê guest.')
+          }
+          // Email guest phải trùng email đã verify
+          const verifiedEmail = normalizeEmail(session?.guestVerification?.email || '')
+          if (!verifiedEmail || verifiedEmail !== guestSanitized.email) {
+            throw new Error('Email thuê phải trùng với email đã xác minh.')
+          }
+          guestRentEmail = guestSanitized.email
+          rentalResponse = await createGuestRentOrderApi({
+            ...buildRentPayload(createIdempotencyKey('rent-checkout-guest')),
+            verificationToken: session?.verificationToken,
+            name: guestSanitized.name,
+            phone: guestSanitized.phone,
+            email: guestSanitized.email,
+          })
+        }
         createdRentalOrderId = rentalResponse.data?._id || null
         if (createdRentalOrderId) {
-          if (rentalPaymentMethod === 'PayOS') {
-            // Tạo link PayOS và redirect – không gọi payDepositApi
+          if (isAuthenticated && rentalPaymentMethod !== 'PayOS') {
+            await payDepositApi(createdRentalOrderId, { method: rentalPaymentMethod })
             clearRentalCart()
-            const linkData = await createDepositPaymentLinkApi(createdRentalOrderId)
+          } else {
+            // Guest luôn đi PayOS; member chọn PayOS cũng đi nhánh này
+            clearRentalCart()
+            const linkData = isAuthenticated
+              ? await createDepositPaymentLinkApi(createdRentalOrderId)
+              : await createGuestDepositPaymentLinkApi(createdRentalOrderId, guestRentEmail)
             window.location.href = linkData.data.paymentUrl
-            return // dừng tại đây, trang sẽ redirect
+            return
           }
-          await payDepositApi(createdRentalOrderId, { method: rentalPaymentMethod })
-          clearRentalCart()
         }
       }
 
@@ -996,18 +1054,84 @@ export default function CartPage() {
                     </div>
                   </div>
 
+                  {/* Guest rental: form thông tin liên hệ + trạng thái verify email */}
+                  {!isAuthenticated && buyItems.length === 0 ? (
+                    <div className="mt-5 space-y-3 rounded-2xl border border-sky-200 bg-white px-4 py-4">
+                      <div className="flex items-start gap-2 text-sm">
+                        <ShoppingBag className="mt-0.5 h-4 w-4 text-sky-600" />
+                        <div>
+                          <p className="font-semibold text-slate-800">Thuê với tư cách khách (không cần đăng ký)</p>
+                          <p className="text-xs text-slate-500">Bạn sẽ nhận email xác nhận và có thể tra cứu đơn bằng email + mã đơn.</p>
+                        </div>
+                      </div>
+                      <div className="grid gap-4">
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-slate-700">Họ và tên</label>
+                          <input
+                            type="text"
+                            value={rentGuestForm.name}
+                            onChange={(e) => setRentGuestForm((p) => ({ ...p, name: e.target.value }))}
+                            placeholder="Nguyễn Văn A"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-sky-100 ${rentGuestFieldErrors.name ? 'border-rose-400' : 'border-slate-200 focus:border-sky-400'}`}
+                          />
+                          {rentGuestFieldErrors.name ? <p className="mt-1 text-xs text-rose-500">{rentGuestFieldErrors.name}</p> : null}
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-slate-700">Số điện thoại</label>
+                          <input
+                            type="tel"
+                            value={rentGuestForm.phone}
+                            onChange={(e) => setRentGuestForm((p) => ({ ...p, phone: e.target.value }))}
+                            placeholder="0912 345 678"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-sky-100 ${rentGuestFieldErrors.phone ? 'border-rose-400' : 'border-slate-200 focus:border-sky-400'}`}
+                          />
+                          {rentGuestFieldErrors.phone ? <p className="mt-1 text-xs text-rose-500">{rentGuestFieldErrors.phone}</p> : null}
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
+                          <input
+                            type="email"
+                            value={rentGuestForm.email}
+                            onChange={(e) => {
+                              const nextEmail = e.target.value
+                              setRentGuestForm((p) => ({ ...p, email: nextEmail }))
+                              if (guestVerificationSession?.verificationToken) setGuestVerificationSession(null)
+                            }}
+                            placeholder="your@email.com"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-sky-100 ${rentGuestFieldErrors.email ? 'border-rose-400' : 'border-slate-200 focus:border-sky-400'}`}
+                          />
+                          {rentGuestFieldErrors.email ? <p className="mt-1 text-xs text-rose-500">{rentGuestFieldErrors.email}</p> : null}
+                        </div>
+                      </div>
+                      <div className={`rounded-xl border px-3 py-2 text-xs ${guestVerificationSession?.verificationToken ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                        {guestVerificationSession?.verificationToken
+                          ? `Đã xác minh email ${guestVerificationSession?.guestVerification?.email || ''}.`
+                          : 'Bạn sẽ cần xác minh email bằng mã OTP trước khi tạo đơn.'}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="mt-5 space-y-2">
-                    <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'Cash' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
-                      <input type="radio" name="rentalPaymentMethod" value="Cash" checked={rentalPaymentMethod === 'Cash'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
-                      <span className="text-slate-700">💵 Tiền mặt tại cửa hàng</span>
-                    </label>
+                    {/* Guest thuê bắt buộc dùng PayOS (không có Cash) */}
+                    {isAuthenticated || buyItems.length > 0 ? (
+                      <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'Cash' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
+                        <input type="radio" name="rentalPaymentMethod" value="Cash" checked={rentalPaymentMethod === 'Cash'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
+                        <span className="text-slate-700">💵 Tiền mặt tại cửa hàng</span>
+                      </label>
+                    ) : null}
                     <label className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm cursor-pointer transition ${rentalPaymentMethod === 'PayOS' ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}>
-                      <input type="radio" name="rentalPaymentMethod" value="PayOS" checked={rentalPaymentMethod === 'PayOS'} onChange={(e) => setRentalPaymentMethod(e.target.value)} />
+                      <input
+                        type="radio"
+                        name="rentalPaymentMethod"
+                        value="PayOS"
+                        checked={rentalPaymentMethod === 'PayOS' || (!isAuthenticated && buyItems.length === 0)}
+                        onChange={(e) => setRentalPaymentMethod(e.target.value)}
+                      />
                       <span className="text-slate-700">📱 Thanh toán bằng QR</span>
                       <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-600">Nhanh hơn</span>
                     </label>
                   </div>
-                  {rentalPaymentMethod === 'PayOS' && (
+                  {(rentalPaymentMethod === 'PayOS' || (!isAuthenticated && buyItems.length === 0)) && (
                     <p className="mt-2 text-xs text-indigo-600 bg-indigo-50 rounded-xl px-3 py-2">
                       Bạn sẽ được chuyển đến trang thanh toán QR để quét mã hoặc chuyển khoản. Đơn thuê sẽ được xác nhận ngay sau khi thanh toán.
                     </p>
@@ -1189,7 +1313,12 @@ export default function CartPage() {
 
       <GuestVerificationModal
         open={guestVerificationOpen}
-        initialVerification={guestVerificationSession?.guestVerification || null}
+        initialVerification={
+          guestVerificationSession?.guestVerification
+          || (rentalItems.length > 0 && buyItems.length === 0 && rentGuestForm.email
+            ? { email: rentGuestForm.email, emailVerified: false }
+            : null)
+        }
         onClose={() => {
           setGuestVerificationOpen(false)
           setPendingGuestCheckout(null)

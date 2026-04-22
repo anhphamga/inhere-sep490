@@ -11,6 +11,7 @@ const getRentOrderController = () => require('./rent-order.controller');
 const { frontendUrl, payosWebBaseUrl } = require('../config/app.config');
 const { ORDER_TYPE } = require('../constants/order.constants');
 const { resolveSaleOrderUserStatus } = require('../utils/saleOrderStatus');
+const { signGuestOrderViewToken } = require('../utils/jwt');
 
 const FRONTEND_URL = frontendUrl;
 const PAYOS_WEB_BASE_URL = String(payosWebBaseUrl || '').replace(/\/+$/, '');
@@ -38,70 +39,120 @@ const sanitizeDescription = (text = '') =>
         .trim();
 
 /**
+ * Nội bộ: build/refresh PayOS deposit link cho 1 RentOrder đã được validate quyền.
+ * Tái dùng cho cả flow member (authenticated) lẫn guest (xác thực qua email).
+ */
+const buildDepositPaymentLinkForOrder = async (order) => {
+    const orderId = String(order._id);
+    const isWalkIn = Boolean(order.staffId);
+    const isGuest = !isWalkIn && Boolean(order.guestVerificationId || order.guestContact?.email);
+    // Ưu tiên redirect staff cho walk-in; guest/member cùng trang payment-result
+    const sourceSuffix = isWalkIn ? '&source=staff' : (isGuest ? '&source=guest' : '');
+
+    // Với guest: sinh token magic-link để cancelUrl đưa khách về trang chi tiết
+    // đơn thuê (trạng thái Chờ đặt cọc) với nút "Thanh toán lại" và "Hủy đơn".
+    let guestViewToken = '';
+    if (isGuest) {
+        guestViewToken = signGuestOrderViewToken({
+            orderId,
+            guestVerificationId: order.guestVerificationId ? String(order.guestVerificationId) : '',
+            guestEmail: String(order.guestContact?.email || '').trim().toLowerCase(),
+            orderType: ORDER_TYPE.RENT,
+        });
+    }
+
+    const cancelUrl = isWalkIn
+        ? `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}&source=staff`
+        : (isGuest
+            ? `${FRONTEND_URL}/rental/guest/${orderId}?token=${encodeURIComponent(guestViewToken)}&payment=cancelled`
+            : `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}`);
+
+    // Trả link cũ nếu còn pending để tránh spam PayOS
+    const existing = await PayOSTransaction.findOne({ orderId, purpose: 'Deposit', status: 'PENDING' });
+    if (existing) {
+        try {
+            const info = await payos.paymentRequests.get(existing.payosOrderCode);
+            if (info.status === 'PENDING') {
+                const link = await payos.paymentRequests.create({
+                    orderCode: existing.payosOrderCode,
+                    amount: Math.round(order.depositAmount),
+                    description: sanitizeDescription(`COC ${order.orderCode || orderId}`),
+                    cancelUrl,
+                    returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${existing.payosOrderCode}&purpose=deposit${sourceSuffix}`,
+                });
+                return { paymentUrl: link.checkoutUrl, orderCode: existing.payosOrderCode };
+            }
+        } catch (_) { /* link expired → tạo mới bên dưới */ }
+        await PayOSTransaction.deleteOne({ _id: existing._id });
+    }
+
+    const payosOrderCode = await generateUniquePayosCode();
+    const description = sanitizeDescription(`COC ${order.orderCode || orderId}`);
+    const paymentLink = await payos.paymentRequests.create({
+        orderCode: payosOrderCode,
+        amount: Math.round(order.depositAmount),
+        description,
+        items: [{ name: 'Dat coc thue do', quantity: 1, price: Math.round(order.depositAmount) }],
+        cancelUrl,
+        returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${payosOrderCode}&purpose=deposit${sourceSuffix}`,
+    });
+    await PayOSTransaction.create({
+        orderId,
+        orderType: ORDER_TYPE.RENT,
+        purpose: 'Deposit',
+        payosOrderCode,
+        payosPaymentLinkId: paymentLink.paymentLinkId,
+        amount: order.depositAmount,
+        status: 'PENDING',
+    });
+    return { paymentUrl: paymentLink.checkoutUrl, orderCode: payosOrderCode };
+};
+
+/**
  * POST /api/payments/rent-deposit/:orderId
- * Tạo PayOS payment link cho bước đặt cọc (PendingDeposit → Deposited)
+ * Tạo PayOS payment link cho bước đặt cọc (PendingDeposit → Deposited) - member + staff
  */
 exports.createDepositPaymentLink = async (req, res) => {
     try {
         const { orderId } = req.params;
-
         const order = await RentOrder.findById(orderId);
         if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
         if (order.status !== 'PendingDeposit') {
             return res.status(400).json({ success: false, message: `Đơn đang ở trạng thái "${order.status}", không thể tạo link thanh toán cọc` });
         }
-
-        // Đơn walk-in (có staffId) dùng URL staff sau khi thanh toán/hủy
-        const isWalkIn = Boolean(order.staffId);
-        const sourceSuffix = isWalkIn ? '&source=staff' : '';
-        const cancelUrl = isWalkIn
-            ? `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}&source=staff`
-            : `${FRONTEND_URL}/payment-result?status=cancelled&orderId=${orderId}`;
-
-        // Trả link cũ nếu còn pending
-        const existing = await PayOSTransaction.findOne({ orderId, purpose: 'Deposit', status: 'PENDING' });
-        if (existing) {
-            try {
-                const info = await payos.paymentRequests.get(existing.payosOrderCode);
-                if (info.status === 'PENDING') {
-                    const link = await payos.paymentRequests.create({
-                        orderCode: existing.payosOrderCode,
-                        amount: Math.round(order.depositAmount),
-                        description: sanitizeDescription(`COC ${order.orderCode || orderId}`),
-                        cancelUrl,
-                        returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${existing.payosOrderCode}&purpose=deposit${sourceSuffix}`,
-                    });
-                    return res.json({ success: true, data: { paymentUrl: link.checkoutUrl, orderCode: existing.payosOrderCode } });
-                }
-            } catch (_) { /* link expired, tạo mới */ }
-            await PayOSTransaction.deleteOne({ _id: existing._id });
-        }
-
-        const payosOrderCode = await generateUniquePayosCode();
-        const description = sanitizeDescription(`COC ${order.orderCode || orderId}`);
-
-        const paymentLink = await payos.paymentRequests.create({
-            orderCode: payosOrderCode,
-            amount: Math.round(order.depositAmount),
-            description,
-            items: [{ name: 'Dat coc thue do', quantity: 1, price: Math.round(order.depositAmount) }],
-            cancelUrl,
-            returnUrl: `${FRONTEND_URL}/payment-result?orderId=${orderId}&orderCode=${payosOrderCode}&purpose=deposit${sourceSuffix}`,
-        });
-
-        await PayOSTransaction.create({
-            orderId,
-            orderType: ORDER_TYPE.RENT,
-            purpose: 'Deposit',
-            payosOrderCode,
-            payosPaymentLinkId: paymentLink.paymentLinkId,
-            amount: order.depositAmount,
-            status: 'PENDING',
-        });
-
-        return res.json({ success: true, data: { paymentUrl: paymentLink.checkoutUrl, orderCode: payosOrderCode } });
+        const data = await buildDepositPaymentLinkForOrder(order);
+        return res.json({ success: true, data });
     } catch (err) {
         console.error('createDepositPaymentLink error:', err);
+        return res.status(500).json({ success: false, message: 'Lỗi tạo link thanh toán PayOS', detail: err.message });
+    }
+};
+
+/**
+ * POST /api/payments/rent-deposit/guest/:orderId
+ * Tạo PayOS payment link cho đơn guest. Xác thực bằng email snapshot trên đơn
+ * (body.email hoặc query.email). Chỉ hoạt động với đơn được tạo qua flow guest.
+ */
+exports.createGuestDepositPaymentLink = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const rawEmail = (req.body?.email || req.query?.email || '').toString().trim().toLowerCase();
+        if (!rawEmail) {
+            return res.status(400).json({ success: false, message: 'Thiếu email guest.' });
+        }
+        const order = await RentOrder.findById(orderId);
+        if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn thuê' });
+        const contactEmail = String(order.guestContact?.email || '').trim().toLowerCase();
+        if (!contactEmail || contactEmail !== rawEmail) {
+            return res.status(403).json({ success: false, message: 'Email không khớp với đơn thuê guest.' });
+        }
+        if (order.status !== 'PendingDeposit') {
+            return res.status(400).json({ success: false, message: `Đơn đang ở trạng thái "${order.status}", không thể tạo link thanh toán cọc` });
+        }
+        const data = await buildDepositPaymentLinkForOrder(order);
+        return res.json({ success: true, data });
+    } catch (err) {
+        console.error('createGuestDepositPaymentLink error:', err);
         return res.status(500).json({ success: false, message: 'Lỗi tạo link thanh toán PayOS', detail: err.message });
     }
 };

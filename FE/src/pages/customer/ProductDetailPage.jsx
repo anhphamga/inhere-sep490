@@ -459,10 +459,16 @@ export default function ProductDetailPage() {
     return true;
   }, [product, selectedColor, selectedSize, isFreeSize, sizes, isVariantAvailable, hasSizes]);
 
-  // Check rentable quantity based on ACTUAL available instances
+  // Số lượng có thể thuê — tất cả instance còn trong vòng đời cho thuê
   const rentableQuantity = useMemo(() => {
     if (!Array.isArray(availableInstances) || availableInstances.length === 0) return 0;
     return availableInstances.length;
+  }, [availableInstances]);
+
+  // Số lượng có thể mua — chỉ đếm instance Available (BE đã đánh dấu isPurchasable)
+  const purchasableQuantity = useMemo(() => {
+    if (!Array.isArray(availableInstances) || availableInstances.length === 0) return 0;
+    return availableInstances.filter((inst) => inst?.isPurchasable).length;
   }, [availableInstances]);
 
   const canSubmitRent = useMemo(() => {
@@ -471,14 +477,14 @@ export default function ProductDetailPage() {
     return true;
   }, [variantReady, rentableQuantity]);
 
-  // Check if product is available for purchase based on ACTUAL instances
+  // Chỉ cho Mua khi thực sự có instance Available (đồ đang thuê/reserved không bán được)
   const canBuy = useMemo(() => {
     if (!variantReady) return false;
     if (Number(currentSalePrice || 0) <= 0) return false;
-    if (!Array.isArray(availableInstances) || availableInstances.length === 0) return false;
+    if (purchasableQuantity <= 0) return false;
     if (conditionOptions.length > 0 && !selectedConditionOption) return false;
     return true;
-  }, [variantReady, currentSalePrice, availableInstances, conditionOptions.length, selectedConditionOption]);
+  }, [variantReady, currentSalePrice, purchasableQuantity, conditionOptions.length, selectedConditionOption]);
 
   useEffect(() => {
     if (!product?._id) return;

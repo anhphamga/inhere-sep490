@@ -128,6 +128,23 @@ const rentOrderSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  // Thông tin cho đơn thuê guest (không đăng nhập) — customerId vẫn required vì BE
+  // tự tạo/tái sử dụng User dạng walk_in gắn với email đã verify.
+  guestVerificationMethod: {
+    type: String,
+    enum: ['email', 'phone', null],
+    default: null
+  },
+  guestVerificationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'GuestVerification',
+    default: null
+  },
+  guestContact: {
+    name: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    email: { type: String, default: '' }
+  },
   createdAt: {
     type: Date,
     default: Date.now
