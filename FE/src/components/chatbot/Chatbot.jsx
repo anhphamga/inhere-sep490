@@ -276,7 +276,6 @@ function Chatbot() {
           </span>
           <span className='flex flex-col leading-tight'>
             <span className='text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-700'>INHERE</span>
-            <span className='text-[13px] font-bold text-slate-800'>Tư vấn nhanh</span>
           </span>
         </button>
       </div>

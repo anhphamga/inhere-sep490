@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import Header from "../../components/common/Header";
 import { getPublishedBlogsApi } from "../../services/blog.service";
+import { API_BASE_URL } from "../../config/env";
 import "../../style/pages/HomePage.css";
 import logo from "../../assets/logo/logo.png";
 import banner1 from "../../assets/banner/banner 1.png";
@@ -183,6 +184,17 @@ const CONTACT_INFO = {
   mapHref: CONTACT_LINKS.mapHref,
   instagramLabel: "@inhere_trangphuchoian",
   instagramHref: CONTACT_LINKS.instagramHref,
+};
+
+const toApiUrl = (path) => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+const parseJsonSafe = async (response) => {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    const bodyText = await response.text();
+    throw new Error(`Expected JSON but received ${contentType || "unknown"}: ${bodyText.slice(0, 80)}`);
+  }
+  return response.json();
 };
 
 const Homepage = ({ initialSection = "" }) => {
@@ -386,12 +398,12 @@ const Homepage = ({ initialSection = "" }) => {
         setCategoriesLoading(true);
         setCategoriesError("");
 
-        const response = await fetch("/api/categories");
+        const response = await fetch(toApiUrl("/categories"));
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
 
-        const payload = await response.json();
+        const payload = await parseJsonSafe(response);
         const apiCategories = Array.isArray(payload?.categories)
           ? payload.categories
           : [];
@@ -464,12 +476,12 @@ const Homepage = ({ initialSection = "" }) => {
         setFittingLoading(true);
 
         const [buyRes, fittingRes] = await Promise.all([
-          fetch("/api/products?purpose=all&limit=200"),
-          fetch("/api/products?purpose=all&limit=200"),
+          fetch(toApiUrl("/products?purpose=all&limit=200")),
+          fetch(toApiUrl("/products?purpose=all&limit=200")),
         ]);
 
         if (buyRes.ok) {
-          const buyPayload = await buyRes.json();
+          const buyPayload = await parseJsonSafe(buyRes);
           const buyData = Array.isArray(buyPayload?.data) ? buyPayload.data : [];
           if (isMounted) {
             setBuyProducts(buyData);
@@ -477,7 +489,7 @@ const Homepage = ({ initialSection = "" }) => {
         }
 
         if (fittingRes.ok) {
-          const fittingPayload = await fittingRes.json();
+          const fittingPayload = await parseJsonSafe(fittingRes);
           const fittingData = Array.isArray(fittingPayload?.data) ? fittingPayload.data : [];
           if (isMounted) {
             setFittingProducts(fittingData);
@@ -510,12 +522,12 @@ const Homepage = ({ initialSection = "" }) => {
       try {
         setTopRentLoading(true);
 
-        const response = await fetch("/api/products/top-liked?limit=24");
+        const response = await fetch(toApiUrl("/products/top-liked?limit=24"));
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
 
-        const payload = await response.json();
+        const payload = await parseJsonSafe(response);
         const apiData = Array.isArray(payload?.data) ? payload.data : [];
         if (isMounted) {
           setTopRentProducts(apiData);

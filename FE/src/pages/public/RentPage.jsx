@@ -20,6 +20,7 @@ import {
   resolveCategoryValueFromKeyword,
 } from './catalogHelpers';
 import { useFavorites } from '../../contexts/FavoritesContext';
+import { API_BASE_URL } from '../../config/env';
 
 const DEFAULT_FILTERS = { occasion: '', category: '', color: '', size: '', price: '' };
 const RENT_PAGE_SIZE = 12;
@@ -52,6 +53,8 @@ const getLikeCount = (product = {}) => {
   if (Array.isArray(product?.favorites)) return product.favorites.length;
   return 0;
 };
+
+const toApiUrl = (path) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
 const buildOccasionText = (product = {}) => {
   const tags = Array.isArray(product?.tags) ? product.tags.join(' ') : '';
@@ -118,7 +121,7 @@ export default function RentPage() {
     let mounted = true;
     const run = async () => {
       try {
-        const response = await fetch('/api/categories?lang=vi&purpose=rent');
+        const response = await fetch(toApiUrl('/categories?lang=vi&purpose=rent'));
         const payload = response.ok ? await response.json() : { categories: [] };
         if (!mounted) return;
         setCategories(Array.isArray(payload?.categories) ? payload.categories : []);
@@ -168,7 +171,7 @@ export default function RentPage() {
         if (filters.category) params.set('category', filters.category);
         if (startDate) params.set('startDate', startDate);
         if (endDate) params.set('endDate', endDate);
-        const response = await fetch(`/api/products?${params.toString()}`);
+        const response = await fetch(toApiUrl(`/products?${params.toString()}`));
         const payload = response.ok ? await response.json() : { data: [] };
         if (!mounted) return;
         const rawProducts = Array.isArray(payload?.data) ? payload.data : [];

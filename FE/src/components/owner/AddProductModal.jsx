@@ -1,5 +1,9 @@
 import { useState } from 'react'
-import { createOwnerProductApi } from '../../services/owner.service'
+import {
+    createOwnerProductApi,
+    deleteOwnerProductSizeGuideApi,
+    upsertOwnerProductSizeGuideApi,
+} from '../../services/owner.service'
 import ProductForm from './product-form/ProductForm'
 
 export default function AddProductModal({ categoryTree = [], onClose, onCreated }) {
@@ -11,7 +15,26 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
             setSaving(true)
             setError('')
             const response = await createOwnerProductApi(payload)
-            await onCreated?.(response?.data?._id || response?.data?.id)
+            const createdProductId = response?.data?._id || response?.data?.id
+
+            if (createdProductId) {
+                const sizeGuideMode = String(payload?.sizeGuideMode || '').trim().toLowerCase()
+                try {
+                    if (sizeGuideMode === 'product') {
+                        await upsertOwnerProductSizeGuideApi(createdProductId, {
+                            mode: 'product',
+                            rows: Array.isArray(payload?.sizeGuideRows) ? payload.sizeGuideRows : [],
+                        })
+                    } else {
+                        await deleteOwnerProductSizeGuideApi(createdProductId)
+                    }
+                } catch (sizeGuideError) {
+                    console.warn('Không đồng bộ được bảng size cho sản phẩm mới:', sizeGuideError)
+                    window.alert('Sản phẩm đã được tạo, nhưng lưu bảng size thất bại. Vui lòng mở sản phẩm và lưu lại phần bảng size.')
+                }
+            }
+
+            await onCreated?.(createdProductId)
             onClose?.()
         } catch (apiError) {
             setError(apiError?.response?.data?.message || apiError?.message || 'Không thể lưu sản phẩm.')
@@ -44,6 +67,8 @@ export default function AddProductModal({ categoryTree = [], onClose, onCreated 
                             hasSizes: false,
                             quantity: '1',
                             sizes: [{ size: 'M', quantity: 1 }],
+                            sizeGuideMode: 'global',
+                            sizeGuideRows: [],
                             images: [],
                             rentedCount: 0,
                         }}

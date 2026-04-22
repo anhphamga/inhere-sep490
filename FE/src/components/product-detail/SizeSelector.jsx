@@ -12,7 +12,6 @@ export default function SizeSelector({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Kích thước</p>
-          <button type="button" className="text-xs font-medium text-slate-500 underline hover:text-slate-700">Hướng dẫn chọn size</button>
         </div>
         <span className="inline-flex h-10 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700">
           Free Size
@@ -25,7 +24,6 @@ export default function SizeSelector({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Kích thước</p>
-        <button type="button" className="text-xs font-medium text-slate-500 underline hover:text-slate-700">Hướng dẫn chọn size</button>
       </div>
       <div className="flex flex-wrap gap-2">
         {sizes.map((size) => {

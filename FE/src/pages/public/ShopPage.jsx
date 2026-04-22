@@ -17,8 +17,21 @@ import {
 } from "./catalogHelpers";
 import { useBuyCart } from "../../contexts/BuyCartContext";
 import { useFavorites } from "../../contexts/FavoritesContext";
+import { API_BASE_URL } from "../../config/env";
 
 const DEFAULT_FILTERS = { category: "", color: "", size: "", price: "" };
+const DEFAULT_PAGINATION = { page: 1, totalPages: 1, totalItems: 0, limit: 24 };
+
+const extractProductList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
+  if (Array.isArray(payload?.products)) return payload.products;
+  if (Array.isArray(payload?.products?.items)) return payload.products.items;
+  return [];
+};
+
+const toApiUrl = (path) => `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
 const priceInRange = (price, range) => {
   if (!range) return true;
@@ -39,7 +52,7 @@ export default function ShopPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, totalItems: 0, limit: 24 });
+  const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
   const [loading, setLoading] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [quickViewProduct, setQuickViewProduct] = useState(null);
@@ -62,7 +75,7 @@ export default function ShopPage() {
     let mounted = true;
     const run = async () => {
       try {
-        const response = await fetch("/api/categories?lang=vi&purpose=buy");
+        const response = await fetch(toApiUrl("/categories?lang=vi&purpose=buy"));
         const payload = response.ok ? await response.json() : { categories: [] };
         if (!mounted) return;
         setCategories(Array.isArray(payload?.categories) ? payload.categories : []);
@@ -94,18 +107,23 @@ export default function ShopPage() {
       try {
         setLoading(true);
         const params = new URLSearchParams({
-          purpose: "buy",
           lang: "vi",
           limit: "24",
           page: String(page),
         });
         if (searchKeyword) params.set("search", searchKeyword);
         if (filters.category) params.set("category", filters.category);
-        const response = await fetch(`/api/products?${params.toString()}`);
-        const payload = response.ok ? await response.json() : { data: [] };
+        const response = await fetch(toApiUrl(`/products?${params.toString()}`));
+        const payload = response.ok ? await response.json() : null;
         if (!mounted) return;
-        setProducts(Array.isArray(payload?.data) ? payload.data : []);
-        setPagination(payload?.pagination || { page: 1, totalPages: 1, totalItems: 0, limit: 24 });
+        const apiResponseData = extractProductList(payload);
+        console.log("Products:", apiResponseData);
+        const normalizedProducts = (Array.isArray(apiResponseData) ? apiResponseData : []).filter((product) => {
+          const pricingMode = String(product?.pricingMode || "").trim().toLowerCase();
+          return !pricingMode || pricingMode === "sale" || pricingMode === "buy";
+        });
+        setProducts(Array.isArray(normalizedProducts) ? normalizedProducts : []);
+        setPagination(payload?.pagination || DEFAULT_PAGINATION);
       } finally {
         if (mounted) setLoading(false);
       }

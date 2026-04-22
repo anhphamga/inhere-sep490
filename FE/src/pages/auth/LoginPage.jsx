@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { getRouteByRole, isDashboardRole } from '../../utils/auth'
-import { loadGoogleIdentityScript } from '../../utils/googleIdentity'
+import axiosClient from '../../config/axios'
 import { loginSchema } from '../../validations/login.schema'
 import { mapZodErrors, toTrimmedText } from '../../utils/validation/validation.rules'
 import Header from '../../components/common/Header'
@@ -17,10 +17,7 @@ const normalizeIdentifierForPhone = (value = '') => normalizeIdentifierInput(val
 const LoginPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, loginWithGoogle } = useAuth()
-  const googleButtonRef = useRef(null)
-  const googleInitializedRef = useRef(false)
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const { login } = useAuth()
   const redirectPath = location.state?.from?.pathname
 
   const [form, setForm] = useState({
@@ -93,59 +90,32 @@ const LoginPage = () => {
     })
   }
 
+  const handleCredentialResponse = async (response) => {
+    try {
+      const res = await axiosClient.post('/auth/google-login', {
+        credential: response.credential,
+        portal: 'customer'
+      })
+      console.log('Google login success', res.data)
+    } catch (err) {
+      console.error('Google login failed', err)
+    }
+  }
   useEffect(() => {
-    if (!googleClientId || !googleButtonRef.current || googleInitializedRef.current) {
-      return
-    }
-
-    let cancelled = false
-
-    loadGoogleIdentityScript()
-      .then(() => {
-        if (cancelled || !window.google?.accounts?.id || !googleButtonRef.current || googleInitializedRef.current) {
-          return
-        }
-
-        window.google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: async (response) => {
-            if (!response?.credential) {
-              setError('Không lấy được thông tin đăng nhập Google')
-              return
-            }
-
-            try {
-              setError('')
-              const data = await loginWithGoogle({ idToken: response.credential, portal: 'customer' })
-              const fallbackPath = getRouteByRole(data.user.role)
-              const enforceRoleDashboard = isDashboardRole(data.user.role)
-              const targetPath = enforceRoleDashboard ? fallbackPath : (redirectPath || fallbackPath)
-              navigate(targetPath, { replace: true })
-            } catch (apiError) {
-              setError(apiError?.response?.data?.message || 'Đăng nhập Google thất bại')
-            }
-          }
-        })
-
-        googleButtonRef.current.innerHTML = ''
-        window.google.accounts.id.renderButton(googleButtonRef.current, {
-          theme: 'outline',
-          size: 'large',
-          shape: 'pill',
-          text: 'signin_with',
-          locale: 'vi',
-          width: 360
-        })
-        googleInitializedRef.current = true
-      })
-      .catch(() => {
-        setError('Không thể tải nút đăng nhập Google')
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [googleClientId, loginWithGoogle, navigate, redirectPath])
+    if (!window.google) return
+    window.google.accounts.id.initialize({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+    })
+    window.google.accounts.id.renderButton(
+      document.getElementById('googleBtn'),
+      {
+        theme: 'outline',
+        size: 'large',
+        width: '100%'
+      }
+    )
+  }, [])
 
   const normalizeLoginError = (apiError) => {
     const message = apiError?.response?.data?.message || ''
@@ -310,15 +280,11 @@ const LoginPage = () => {
               {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </button>
 
+            <div className="auth-divider">
+              <span>Hoặc</span>
+            </div>
 
-
-            {googleClientId ? (
-              <>
-                <div className="google-login-wrap" ref={googleButtonRef} />
-              </>
-            ) : (
-              <p className="google-login-disabled">Thiếu cấu hình Google Client ID</p>
-            )}
+            <div id="googleBtn"></div>
           </form>
 
           <div className="auth-links auth-links-center">
@@ -335,3 +301,4 @@ const LoginPage = () => {
 }
 
 export default LoginPage
+

@@ -102,6 +102,9 @@ export default function ProductDetailPage() {
   const [reviewPagination, setReviewPagination] = useState({ page: 1, pages: 1, total: 0, limit: 5 });
   const [availableInstances, setAvailableInstances] = useState([]);
   const [selectedConditionKey, setSelectedConditionKey] = useState("");
+  const [sizeGuideGender, setSizeGuideGender] = useState('female');
+  const [sizeGuideRows, setSizeGuideRows] = useState([]);
+  const [sizeGuideSource, setSizeGuideSource] = useState('global');
 
   // Date selection modal state
   const [showDateModal, setShowDateModal] = useState(false);
@@ -138,6 +141,32 @@ export default function ProductDetailPage() {
       mounted = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (sizeGuideGender) params.set('gender', sizeGuideGender);
+        const response = await fetch(`/api/products/${id}/size-guide?${params.toString()}`);
+        const payload = response.ok ? await response.json() : { data: { rows: [], source: 'global' } };
+
+        if (!mounted) return;
+        const rows = Array.isArray(payload?.data?.rows) ? payload.data.rows : [];
+        setSizeGuideRows(rows);
+        setSizeGuideSource(payload?.data?.source === 'product' ? 'product' : 'global');
+      } catch {
+        if (!mounted) return;
+        setSizeGuideRows([]);
+        setSizeGuideSource('global');
+      }
+    };
+
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, [id, sizeGuideGender]);
 
   useEffect(() => {
     let mounted = true;
@@ -760,7 +789,13 @@ export default function ProductDetailPage() {
 
               {/* Description Section */}
               <section className="border-t border-slate-200 pt-4">
-                <ProductDescription description={product.description} />
+                <ProductDescription
+                  description={product.description}
+                  sizeGuideRows={sizeGuideRows}
+                  sizeGuideSource={sizeGuideSource}
+                  selectedGender={sizeGuideGender}
+                  onGenderChange={setSizeGuideGender}
+                />
               </section>
 
               <section className="border-t border-slate-200 pt-4">

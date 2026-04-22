@@ -1,21 +1,62 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const TABS = [
   { key: "description", label: "Mô tả" },
   { key: "policy", label: "Chính sách thuê" },
-  { key: "size", label: "Kích thước & Fit" },
+  { key: "size", label: "Bảng size" },
 ];
 
-export default function ProductDescription({ description = "" }) {
+const SIZE_ORDER = ['S', 'M', 'L', 'XL']
+
+const formatRange = (minValue, maxValue) => {
+  const minNum = Number(minValue)
+  const maxNum = Number(maxValue)
+  if (!Number.isFinite(minNum) || !Number.isFinite(maxNum)) return '--'
+  return `${minNum}-${maxNum}`
+}
+
+const formatOptional = (value) => {
+  if (value === null || value === undefined || value === '') return '--'
+  const num = Number(value)
+  return Number.isFinite(num) ? String(num) : '--'
+}
+
+export default function ProductDescription({
+  description = "",
+  sizeGuideRows = [],
+  sizeGuideSource = 'global',
+  selectedGender = 'female',
+  onGenderChange,
+}) {
   const [tab, setTab] = useState("description");
   const [expanded, setExpanded] = useState(false);
+  const sizeSectionRef = useRef(null);
   const safeText = String(description || "").trim();
   const shouldCollapse = safeText.length > 280;
+  const sortedSizeRows = useMemo(() => (
+    (Array.isArray(sizeGuideRows) ? sizeGuideRows : []).slice().sort((a, b) => {
+      return SIZE_ORDER.indexOf(String(a?.sizeLabel || '').toUpperCase()) - SIZE_ORDER.indexOf(String(b?.sizeLabel || '').toUpperCase())
+    })
+  ), [sizeGuideRows])
 
   const displayText = useMemo(() => {
     if (!shouldCollapse || expanded) return safeText || "Chưa có mô tả.";
     return `${safeText.slice(0, 280)}...`;
   }, [expanded, safeText, shouldCollapse]);
+
+  useEffect(() => {
+    const handleOpenSizeGuide = () => {
+      setTab('size');
+      requestAnimationFrame(() => {
+        sizeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    };
+
+    window.addEventListener('open-size-guide', handleOpenSizeGuide);
+    return () => {
+      window.removeEventListener('open-size-guide', handleOpenSizeGuide);
+    };
+  }, []);
 
   return (
     <section>
@@ -91,8 +132,54 @@ export default function ProductDescription({ description = "" }) {
       )}
 
       {tab === "size" && (
-        <div className="mt-6 max-w-2xl space-y-3 text-[15px] leading-7 text-slate-600">
-          <p>Vui lòng tham khảo bảng kích thước để chọn size phù hợp. Nếu bạn không chắc chắn, hãy đặt lịch thử đồ tại cửa hàng.</p>
+        <div ref={sizeSectionRef} id="size-guide" className="mt-6 space-y-5 text-base leading-8 text-slate-600">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex rounded-xl border border-slate-200 p-1 bg-white">
+              <button
+                type="button"
+                className={`h-10 px-4 rounded-lg text-base font-semibold ${selectedGender === 'female' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                onClick={() => onGenderChange?.('female')}
+              >
+                Nữ
+              </button>
+              <button
+                type="button"
+                className={`h-10 px-4 rounded-lg text-base font-semibold ${selectedGender === 'male' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                onClick={() => onGenderChange?.('male')}
+              >
+                Nam
+              </button>
+            </div>
+          </div>
+
+          {sortedSizeRows.length > 0 ? (
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <table className="w-full min-w-[920px] border-collapse">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide text-slate-600">Size</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide text-slate-600">Chiều cao (cm)</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide text-slate-600">Cân nặng (kg)</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide text-slate-600">Dài áo (cm)</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold uppercase tracking-wide text-slate-600">Rộng (cm)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedSizeRows.map((row) => (
+                    <tr key={`${row.gender}-${row.sizeLabel}`} className="border-t border-slate-100">
+                      <td className="px-4 py-3 text-base font-semibold text-slate-800">{row.sizeLabel}</td>
+                      <td className="px-4 py-3 text-base text-slate-700">{formatRange(row.heightMin, row.heightMax)}</td>
+                      <td className="px-4 py-3 text-base text-slate-700">{formatRange(row.weightMin, row.weightMax)}</td>
+                      <td className="px-4 py-3 text-base text-slate-700">{formatOptional(row.itemLength)}</td>
+                      <td className="px-4 py-3 text-base text-slate-700">{formatOptional(row.itemWidth)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-base">Chưa có dữ liệu bảng size cho giới tính đã chọn.</p>
+          )}
         </div>
       )}
     </section>
