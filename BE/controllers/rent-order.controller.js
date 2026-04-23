@@ -11,6 +11,7 @@ const Deposit = require('../model/Deposit.model');
 const Payment = require('../model/Payment.model');
 const Collateral = require('../model/Collateral.model');
 const ReturnRecord = require('../model/ReturnRecord.model');
+const Invoice = require('../model/Invoice.model');
 const Alert = require('../model/Alert.model');
 const InventoryHistory = require('../model/InventoryHistory.model');
 const Voucher = require('../model/Voucher.model');
@@ -391,6 +392,77 @@ const fetchOrderItems = async (orderId) => {
         .lean();
 };
 
+const mapLegacyInvoicePayload = (snapshot = {}, invoiceDoc = null) => {
+    const doc = invoiceDoc || {};
+    const issuedAt = doc.issuedAt || snapshot.issuedAt || null;
+    return {
+        invoiceRecordId: snapshot.invoiceRecordId || (doc._id ? String(doc._id) : ''),
+        invoiceId: doc.invoiceId || snapshot.invoiceId || '',
+        invoiceNo: doc.invoiceNo || snapshot.invoiceNo || '',
+        invoiceDate: issuedAt,
+        pdfUrl: doc.pdfUrl || '',
+        xmlUrl: doc.xmlUrl || '',
+        provider: doc.provider || '',
+        documentTitle: doc.documentTitle || '',
+        documentTypeLabel: doc.documentTypeLabel || '',
+        purpose: doc.purpose || 'General',
+        status: doc.status || snapshot.status || 'pending',
+        issuedAt,
+        cancelledAt: doc.cancelledAt || snapshot.cancelledAt || null,
+        errorMessage: doc.errorMessage || snapshot.errorMessage || '',
+        emailTo: doc.emailTo || '',
+        emailStatus: doc.emailStatus || snapshot.emailStatus || 'pending',
+        emailSentAt: doc.emailSentAt || null,
+        emailError: doc.emailError || '',
+        updatedAt: snapshot.updatedAt || doc.updatedAt || null,
+    };
+};
+
+const attachRentInvoiceCompat = async (orders = []) => {
+    if (!Array.isArray(orders) || orders.length === 0) return orders;
+
+    const orderIds = orders.map((order) => order?._id).filter(Boolean);
+    const invoiceRecordIds = orders
+        .map((order) => order?.invoice?.invoiceRecordId)
+        .filter(Boolean);
+
+    if (orderIds.length === 0) return orders;
+
+    const invoices = await Invoice.find({
+        orderRefModel: 'RentOrder',
+        orderRefId: { $in: orderIds },
+        status: { $in: ['issued', 'pending', 'failed'] },
+    })
+        .sort({ issuedAt: -1, createdAt: -1 })
+        .lean();
+
+    const invoiceByOrderId = new Map();
+    for (const invoice of invoices) {
+        const key = String(invoice.orderRefId || '');
+        if (!invoiceByOrderId.has(key)) {
+            invoiceByOrderId.set(key, invoice);
+        }
+    }
+
+    const invoiceByRecordId = new Map(
+        invoices
+            .filter((invoice) => invoiceRecordIds.includes(String(invoice._id)))
+            .map((invoice) => [String(invoice._id), invoice])
+    );
+
+    return orders.map((order) => {
+        const snapshot = order?.invoice || {};
+        const invoiceDoc = invoiceByRecordId.get(String(snapshot.invoiceRecordId || ''))
+            || invoiceByOrderId.get(String(order?._id || ''))
+            || null;
+
+        return {
+            ...order,
+            invoice: mapLegacyInvoicePayload(snapshot, invoiceDoc),
+        };
+    });
+};
+
 const attachItems = async (orders = []) => {
     const orderIds = orders.map((order) => order._id);
     if (orderIds.length === 0) return orders;
@@ -409,10 +481,12 @@ const attachItems = async (orders = []) => {
         return acc;
     }, {});
 
-    return orders.map((order) => ({
+    const mappedOrders = orders.map((order) => ({
         ...order.toObject(),
         items: byOrder[safeObjectId(order._id)] || []
     }));
+
+    return attachRentInvoiceCompat(mappedOrders);
 };
 
 const fetchOrderDetail = async (orderId) => {
@@ -430,8 +504,11 @@ const fetchOrderDetail = async (orderId) => {
         ReturnRecord.findOne({ orderId }).lean()
     ]);
 
+    const orderObject = order.toObject();
+    const [orderWithInvoice] = await attachRentInvoiceCompat([orderObject]);
+
     return {
-        ...order.toObject(),
+        ...orderWithInvoice,
         items,
         deposits,
         payments,
@@ -553,10 +630,10 @@ const settleDepositAndCollateral = async (orderId, order, method = 'Cash') => {
     const paidRemainingTotal = paidRemainingPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
     const outstandingRemaining = Math.max(0, Number(order.remainingAmount || 0) - paidRemainingTotal);
 
-    const lateFee       = Number(order.lateFee       || 0);
-    const damageFee     = Number(order.damageFee     || 0);
+    const lateFee = Number(order.lateFee || 0);
+    const damageFee = Number(order.damageFee || 0);
     const compensationFee = Number(order.compensationFee || 0);
-    const totalFees     = lateFee + damageFee + compensationFee;
+    const totalFees = lateFee + damageFee + compensationFee;
 
     // Khi khách thanh toán QR ExtraDue, toàn bộ khoản (remaining + fees) được ghi là purpose='Remaining'.
     // Phần dư vượt quá remainingAmount đã thực sự phủ phí → tránh thu/tạo bản ghi trùng.
@@ -868,7 +945,7 @@ exports.createRentOrder = async (req, res) => {
                 size: item.source.size,
                 color: item.source.color,
                 note: item.source.note || ''
-            })), 
+            })),
             useTransaction ? { session } : {}
         );
 
@@ -933,7 +1010,7 @@ exports.createRentOrder = async (req, res) => {
             }
             await session.endSession();
         }
-        
+
         // Trả mã 400 nếu là lỗi logic (khách hàng), 500 nếu lỗi DB
         const CLIENT_ERROR_KEYWORDS = ['khả dụng', 'hết hàng', 'Ngày thuê', 'quá khứ', 'không hợp lệ'];
         const isClientError = error.isClientError === true
@@ -2042,9 +2119,9 @@ exports.completeRentOrder = async (req, res) => {
         }
 
         if (order.status !== 'Returned') {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Khong the hoan tat don o trang thai "${order.status}"` 
+            return res.status(400).json({
+                success: false,
+                message: `Khong the hoan tat don o trang thai "${order.status}"`
             });
         }
 

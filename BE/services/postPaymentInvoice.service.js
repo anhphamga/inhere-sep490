@@ -13,8 +13,8 @@
 
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
-const { issueInvoice } = require('./einvoice.service');
-const { sendInvoiceEmail } = require('../utils/mailer');
+const { ORDER_TYPE } = require('../constants/order.constants');
+const { issueAndPersistInvoice } = require('./invoiceIssuance.service');
 
 // In-memory lock để tránh race condition gửi invoice 2 lần cùng 1 orderId
 const _invoiceInProgress = new Set();
@@ -51,69 +51,70 @@ const runPostPaymentInvoiceFlow = async (orderId) => {
         const items = await SaleOrderItem.find({ orderId })
             .populate('productId', 'name images');
 
-        // 3. Tạo Invoice (PDF)
+        const recipientEmail = String(order.guestEmail || order.customerId?.email || '').trim();
+        const normalizedItems = items.map((item) => ({
+            name: item.productId?.name || item.name || 'Sản phẩm',
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice || 0),
+        }));
+
+        // 3. Tạo Invoice + lưu vào collection Invoice + snapshot vào order
+        const orderCode = `#${String(order._id).slice(-8).toUpperCase()}`;
         let invoiceResult;
         try {
-            invoiceResult = await issueInvoice(order, items);
+            const issued = await issueAndPersistInvoice({
+                orderModel: SaleOrder,
+                orderId: order._id,
+                orderCode,
+                orderType: ORDER_TYPE.BUY,
+                purpose: 'SalePayment',
+                paymentMethod: order.paymentMethod || 'Online',
+                buyer: {
+                    name: String(order.guestName || order.customerId?.name || 'Khách hàng').trim(),
+                    email: recipientEmail,
+                    phone: String(order.shippingPhone || order.customerId?.phone || '').trim(),
+                    address: String(order.shippingAddress || '').trim(),
+                },
+                amounts: {
+                    totalAmount: Number(order.totalAmount || 0),
+                    discountAmount: Number(order.discountAmount || 0),
+                    shippingFee: Number(order.shippingFee || 0),
+                },
+                items: normalizedItems,
+                presentation: {
+                    documentTitle: 'PHIẾU XÁC NHẬN ĐƠN MUA',
+                    documentTypeLabel: 'Đơn mua',
+                    purposeLabel: 'Thanh toán đơn hàng',
+                },
+                metadata: {
+                    orderCode,
+                    source: 'postPaymentInvoice.service',
+                },
+            });
+            invoiceResult = issued.invoiceResult;
         } catch (invoiceErr) {
-            console.error(`[PostPaymentInvoice] issueInvoice failed for order ${orderId}:`, invoiceErr.message);
-            // Ghi trạng thái lỗi vào order để owner biết
-            order.invoice = {
-                ...((order.invoice?.toObject?.() || order.invoice) || {}),
-                status: 'pending',
-                errorMessage: invoiceErr.message,
-            };
-            await order.save().catch(() => {});
+            console.error(`[PostPaymentInvoice] issueAndPersistInvoice failed for order ${orderId}:`, invoiceErr.message);
             return;
         }
 
-        // 4. Lưu invoice vào order
-        const orderCode = `#${String(order._id).slice(-8).toUpperCase()}`;
-        order.invoice = {
-            invoiceId:    invoiceResult.invoiceId,
-            invoiceNo:    invoiceResult.invoiceNo,
-            invoiceDate:  invoiceResult.invoiceDate,
-            pdfUrl:       invoiceResult.pdfUrl,
-            xmlUrl:       invoiceResult.xmlUrl || '',
-            provider:     invoiceResult.provider,
-            status:       'issued',
-            issuedAt:     new Date(),
-            cancelledAt:  null,
-            errorMessage: '',
-        };
+        // 4. Ghi history
+        await SaleOrder.updateOne(
+            { _id: orderId },
+            {
+                $push: {
+                    history: {
+                        status: order.status,
+                        statusLabel: 'Hóa đơn đã phát hành',
+                        action: 'invoice_auto_issued',
+                        description: `Hóa đơn ${invoiceResult.invoiceNo} được tạo tự động sau thanh toán thành công.`,
+                        updatedBy: null,
+                        updatedAt: new Date(),
+                    },
+                },
+            }
+        );
 
-        // 5. Ghi history
-        order.history = Array.isArray(order.history) ? order.history : [];
-        order.history.push({
-            status:      order.status,
-            statusLabel: 'Hóa đơn đã phát hành',
-            action:      'invoice_auto_issued',
-            description: `Hóa đơn ${invoiceResult.invoiceNo} được tạo tự động sau thanh toán thành công.`,
-            updatedBy:   null,
-            updatedAt:   new Date(),
-        });
-
-        await order.save();
         console.info(`[PostPaymentInvoice] Invoice ${invoiceResult.invoiceNo} saved for order ${orderId}`);
-
-        // 6. Gửi email (non-blocking — không throw nếu lỗi gửi mail)
-        const recipientEmail = order.guestEmail || order.customerId?.email || '';
-        if (recipientEmail) {
-            sendInvoiceEmail({
-                to:          recipientEmail,
-                buyerName:   invoiceResult.buyerName,
-                orderCode,
-                totalAmount: order.totalAmount,
-                invoiceNo:   invoiceResult.invoiceNo,
-                invoiceDate: invoiceResult.invoiceDate,
-                pdfBuffer:   invoiceResult.pdfBuffer,
-                pdfFilename: invoiceResult.pdfFilename,
-            }).catch((mailErr) => {
-                console.error(`[PostPaymentInvoice] Email send failed for order ${orderId}:`, mailErr.message);
-            });
-        } else {
-            console.warn(`[PostPaymentInvoice] No email address for order ${orderId}, skipping email.`);
-        }
     } catch (err) {
         // Toàn bộ flow lỗi → chỉ log, không ảnh hưởng flow thanh toán
         console.error(`[PostPaymentInvoice] Unexpected error for order ${orderId}:`, err.message);

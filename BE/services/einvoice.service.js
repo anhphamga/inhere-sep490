@@ -11,8 +11,6 @@
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
-const { hasSmtpConfig } = require('../utils/mailer');
-const { sendInvoiceEmail } = require('../utils/mailer');
 
 // Font TTF hỗ trợ tiếng Việt (bundle cùng project)
 const FONTS_DIR = path.join(__dirname, '../fonts');
@@ -29,15 +27,6 @@ const SELLER_TAX_CODE = process.env.EINVOICE_SELLER_TAX_CODE || '0000000000';
 const SELLER_ADDRESS = process.env.EINVOICE_SELLER_ADDRESS || 'Hội An, Quảng Nam, Việt Nam';
 const SELLER_PHONE = process.env.EINVOICE_SELLER_PHONE || '';
 const SELLER_EMAIL = process.env.EINVOICE_SELLER_EMAIL || process.env.SMTP_USER || '';
-
-// Thư mục lưu file PDF tạm
-const INVOICE_DIR = path.join(__dirname, '../uploads/invoices');
-
-const ensureInvoiceDir = () => {
-    if (!fs.existsSync(INVOICE_DIR)) {
-        fs.mkdirSync(INVOICE_DIR, { recursive: true });
-    }
-};
 
 const currencyVnd = (amount) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(amount || 0));
@@ -96,8 +85,9 @@ const generateInvoicePdf = (invoiceData) => {
                 doc.text(contactLine, 50, 74, { width: W });
             }
 
+            const documentTitle = String(invoiceData.documentTitle || 'HÓA ĐƠN BÁN HÀNG');
             doc.fill('#ffffff').fontSize(14).font('Bold')
-                .text('HÓA ĐƠN BÁN HÀNG', { align: 'right' });
+                .text(documentTitle, { align: 'right' });
 
             // ───── INVOICE META ─────
             doc.fill('#111827').moveDown(2);
@@ -110,7 +100,10 @@ const generateInvoicePdf = (invoiceData) => {
             const meta = [
                 ['Số hóa đơn:', invoiceData.invoiceNo],
                 ['Ngày phát hành:', new Date(invoiceData.invoiceDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })],
-                ['Mã đơn hàng:', `#${String(invoiceData.orderId || '').slice(-8).toUpperCase()}`],
+                ['Mã đơn hàng:', invoiceData.orderDisplayCode || `#${String(invoiceData.orderId || '').slice(-8).toUpperCase()}`],
+                ['Loại giao dịch:', invoiceData.documentTypeLabel || 'Đơn mua'],
+                ['Mục đích:', invoiceData.purposeLabel || 'Thanh toán'],
+                ...(invoiceData.rentalPeriodLabel ? [['Kỳ thuê:', invoiceData.rentalPeriodLabel]] : []),
                 ['Phương thức TT:', invoiceData.paymentMethod === 'Online' ? 'Thanh toán online' : invoiceData.paymentMethod === 'COD' ? 'Tiền mặt khi nhận hàng' : invoiceData.paymentMethod || 'N/A'],
             ];
 
@@ -175,11 +168,17 @@ const generateInvoicePdf = (invoiceData) => {
             y += 14;
 
             // ───── TOTALS ─────
-            const totals = [
-                ['Tạm tính:', currencyVnd(invoiceData.subtotal)],
-                ...(invoiceData.discountAmount > 0 ? [['Giảm giá:', `- ${currencyVnd(invoiceData.discountAmount)}`]] : []),
-                ...(invoiceData.shippingFee > 0 ? [['Phí vận chuyển:', currencyVnd(invoiceData.shippingFee)]] : []),
-            ];
+            const customSummaryRows = Array.isArray(invoiceData.customSummaryRows) ? invoiceData.customSummaryRows : [];
+            const totals = customSummaryRows.length > 0
+                ? customSummaryRows.map((row) => [
+                    String(row?.label || ''),
+                    currencyVnd(Number(row?.value || 0)),
+                ])
+                : [
+                    ['Tạm tính:', currencyVnd(invoiceData.subtotal)],
+                    ...(invoiceData.discountAmount > 0 ? [['Giảm giá:', `- ${currencyVnd(invoiceData.discountAmount)}`]] : []),
+                    ...(invoiceData.shippingFee > 0 ? [['Phí vận chuyển:', currencyVnd(invoiceData.shippingFee)]] : []),
+                ];
 
             totals.forEach(([label, value]) => {
                 doc.fill(grayColor).font('Regular').fontSize(9).text(label, 350, y, { width: 100 });
@@ -190,8 +189,9 @@ const generateInvoicePdf = (invoiceData) => {
             // Grand total
             y += 4;
             doc.rect(340, y - 4, W - 290, 26).fill(primaryColor);
+            const grandTotalLabel = String(invoiceData.grandTotalLabel || 'TỔNG TIỀN:');
             doc.fill('#ffffff').font('Bold').fontSize(11)
-                .text('TỔNG TIỀN:', 350, y + 2, { width: 100 })
+                .text(grandTotalLabel, 350, y + 2, { width: 100 })
                 .text(currencyVnd(invoiceData.totalAmount), 420, y + 2, { width: 125, align: 'right' });
 
             y += 40;
@@ -209,11 +209,9 @@ const generateInvoicePdf = (invoiceData) => {
 };
 
 /**
- * Phát hành hóa đơn mock: generate PDF, lưu disk, trả về thông tin
+ * Phát hành hóa đơn mock: generate PDF buffer, không lưu file local
  */
 const issueInvoiceStub = async (order, items = []) => {
-    ensureInvoiceDir();
-
     const now = new Date();
     const invoiceNo = generateInvoiceNo();
     const invoiceId = `MOCK-${String(order._id).slice(-8).toUpperCase()}-${Date.now()}`;
@@ -230,6 +228,13 @@ const issueInvoiceStub = async (order, items = []) => {
         invoiceId,
         invoiceDate: now,
         orderId: String(order._id),
+        orderDisplayCode: order.orderDisplayCode || '',
+        documentTitle: order.documentTitle || 'HÓA ĐƠN BÁN HÀNG',
+        documentTypeLabel: order.documentTypeLabel || 'Đơn mua',
+        purposeLabel: order.purposeLabel || 'Thanh toán',
+        rentalPeriodLabel: order.rentalPeriodLabel || '',
+        customSummaryRows: Array.isArray(order.customSummaryRows) ? order.customSummaryRows : [],
+        grandTotalLabel: order.grandTotalLabel || 'TỔNG TIỀN:',
         paymentMethod: order.paymentMethod || 'N/A',
         buyerName,
         buyerEmail,
@@ -249,13 +254,8 @@ const issueInvoiceStub = async (order, items = []) => {
     // Generate PDF buffer
     const pdfBuffer = await generateInvoicePdf(invoiceData);
 
-    // Lưu PDF vào disk
     const filename = `invoice-${invoiceId}.pdf`;
-    const filePath = path.join(INVOICE_DIR, filename);
-    fs.writeFileSync(filePath, pdfBuffer);
-
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 9000}`;
-    const pdfUrl = `${baseUrl}/uploads/invoices/${filename}`;
+    const pdfUrl = '';
 
     return {
         invoiceId,
