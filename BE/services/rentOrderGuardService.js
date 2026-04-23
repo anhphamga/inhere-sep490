@@ -86,13 +86,28 @@ const validatePickup = async (order, options = {}) => {
     throw error;
   }
 
-  validateDeposit(order, heldDeposit.amount);
+  // Pickup should not fail when order total changes after swap/upgrade.
+  // Strict 50% check is enforced at deposit payment time (PendingDeposit flow),
+  // while pickup only requires that a held deposit exists and is positive.
+  const heldDepositAmount = roundCurrency(Number(heldDeposit.amount || 0));
+  if (heldDepositAmount <= 0) {
+    const error = new Error('Pickup requires a valid held deposit amount.');
+    error.statusCode = 400;
+    error.code = 'INVALID_HELD_DEPOSIT';
+    error.details = {
+      heldDepositAmount,
+      expectedAmount: computeExpectedDeposit(order),
+    };
+    throw error;
+  }
 
   const paidRemaining = await sumPayments(order._id, 'Remaining');
   const remainingAmount = Number(order.remainingAmount || 0);
-  const willCollectRemaining = Boolean(options.collectRemaining);
+  const enforceFullPayment = Boolean(options.enforceFullPaymentAtPickup);
 
-  if (remainingAmount > 0 && !willCollectRemaining && paidRemaining < remainingAmount) {
+  // Default pickup flow allows collateral without forcing immediate full remaining payment.
+  // Only enforce this when explicitly requested by caller.
+  if (enforceFullPayment && remainingAmount > 0 && paidRemaining < remainingAmount) {
     const error = new Error('Pickup requires full payment of the remaining balance.');
     error.statusCode = 400;
     error.code = 'FULL_PAYMENT_REQUIRED';

@@ -1474,7 +1474,7 @@ exports.confirmPickup = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { collateral, collectRemaining = true } = req.body;
+        const { collateral, collectRemaining = false } = req.body;
 
         const order = req.order || await RentOrder.findById(id);
         if (!order) {

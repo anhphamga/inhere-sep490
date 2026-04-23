@@ -126,6 +126,8 @@ export default function StaffRentOrders() {
   const [swapSelected, setSwapSelected] = useState(null)
   const [swapReason, setSwapReason] = useState('')
   const [swapError, setSwapError] = useState('')
+  const [swapSearch, setSwapSearch] = useState('')
+  const [swapSizeFilter, setSwapSizeFilter] = useState('')
 
   // Fetch full order detail (có collaterals, deposits, payments) khi click vào đơn
   const selectOrder = useCallback(async (order) => {
@@ -431,6 +433,8 @@ export default function StaffRentOrders() {
     setSwapItem(null)
     setSwapSelected(null)
     setSwapError('')
+    setSwapSearch('')
+    setSwapSizeFilter('')
   }
 
   const handleSwapConfirm = async () => {
@@ -457,6 +461,39 @@ export default function StaffRentOrders() {
       setSwapLoading(false)
     }
   }
+
+  const swapCurrentCandidates = useMemo(() => {
+    return Array.isArray(swapCandidates?.[swapTab]) ? swapCandidates[swapTab] : []
+  }, [swapCandidates, swapTab])
+
+  const swapSizeOptions = useMemo(() => {
+    const set = new Set()
+    swapCurrentCandidates.forEach((cand) => {
+      const size = String(cand?.size || '').trim()
+      if (size) set.add(size)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [swapCurrentCandidates])
+
+  const filteredSwapCandidates = useMemo(() => {
+    const keyword = swapSearch.trim().toLowerCase()
+    return swapCurrentCandidates.filter((cand) => {
+      const product = cand?.productId || {}
+      const name = getProductName(product).toLowerCase()
+      const code = String(cand?.instanceCode || cand?.code || '').toLowerCase()
+      const size = String(cand?.size || '').trim()
+      const color = String(cand?.color || '').toLowerCase()
+
+      const matchSearch = !keyword
+        || name.includes(keyword)
+        || code.includes(keyword)
+        || color.includes(keyword)
+        || size.toLowerCase().includes(keyword)
+
+      const matchSize = !swapSizeFilter || size === swapSizeFilter
+      return matchSearch && matchSize
+    })
+  }, [swapCurrentCandidates, swapSearch, swapSizeFilter])
 
   const handleReturnConfirm = async () => {
     if (!returnOrderId) return
@@ -1787,6 +1824,29 @@ export default function StaffRentOrders() {
               {swapTab === 'upgrade' && <p className="text-xs text-slate-500">Cùng mẫu tình trạng tốt hơn (ưu tiên) hoặc mẫu khác cùng loại cao cấp hơn — khi khách yêu cầu nâng cấp. Giá có thể thay đổi.</p>}
             </div>
 
+            {/* Search + filters */}
+            <div className="px-4 pb-2 shrink-0">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <input
+                  type="text"
+                  value={swapSearch}
+                  onChange={(e) => setSwapSearch(e.target.value)}
+                  placeholder="Tìm theo tên, mã, size..."
+                  className="sm:col-span-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+                <select
+                  value={swapSizeFilter}
+                  onChange={(e) => setSwapSizeFilter(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">Tất cả size</option>
+                  {swapSizeOptions.map((sizeOpt) => (
+                    <option key={sizeOpt} value={sizeOpt}>{sizeOpt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Candidate list */}
             <div className="flex-1 overflow-y-auto px-4 pb-2">
               {swapLoading ? (
@@ -1794,13 +1854,13 @@ export default function StaffRentOrders() {
                   <svg className="h-6 w-6 animate-spin mr-2" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                   Đang tải...
                 </div>
-              ) : swapCandidates[swapTab]?.length === 0 ? (
+              ) : filteredSwapCandidates.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">
-                  Không có sản phẩm phù hợp
+                  Không có sản phẩm phù hợp với bộ lọc hiện tại
                 </div>
               ) : (
                 <div className="space-y-2 py-1">
-                  {swapCandidates[swapTab].map((cand) => {
+                  {filteredSwapCandidates.map((cand) => {
                     const candProduct = cand.productId || {}
                     const candName = getProductName(candProduct)
                     const candImage = getProductImage(candProduct)
