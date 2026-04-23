@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axiosClient from '../../config/axios'
 import { searchCustomersApi, createWalkInOrderApi, createGuestCustomerApi } from '../../services/rent-order.service'
@@ -41,6 +41,13 @@ export default function StaffWalkInPage() {
   const [productResults, setProductResults] = useState([])
   const [productSearching, setProductSearching] = useState(false)
   const [items, setItems] = useState([]) // { productId, name, image, rentPrice }
+  const [advisorProductId, setAdvisorProductId] = useState('')
+  const [advisorGender, setAdvisorGender] = useState('female')
+  const [advisorHeightCm, setAdvisorHeightCm] = useState('')
+  const [advisorWeightKg, setAdvisorWeightKg] = useState('')
+  const [advisorResult, setAdvisorResult] = useState(null)
+  const [advisorError, setAdvisorError] = useState('')
+  const [advisorLoading, setAdvisorLoading] = useState(false)
 
   // Submission
   const [loading, setLoading] = useState(false)
@@ -150,6 +157,62 @@ export default function StaffWalkInPage() {
   }
 
   const removeProduct = (productId) => setItems((prev) => prev.filter((i) => i.productId !== productId))
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setAdvisorProductId('')
+      setAdvisorResult(null)
+      setAdvisorError('')
+      return
+    }
+
+    const hasSelected = items.some((item) => item.productId === advisorProductId)
+    if (!hasSelected) {
+      setAdvisorProductId(items[0].productId)
+      setAdvisorResult(null)
+      setAdvisorError('')
+    }
+  }, [items, advisorProductId])
+
+  const handleRecommendSizeForStaff = useCallback(async () => {
+    if (!advisorProductId) {
+      setAdvisorError('Vui lòng chọn sản phẩm để tư vấn size.')
+      setAdvisorResult(null)
+      return
+    }
+
+    const heightCm = Number(advisorHeightCm)
+    const weightKg = Number(advisorWeightKg)
+
+    if (!Number.isFinite(heightCm) || heightCm <= 0 || !Number.isFinite(weightKg) || weightKg <= 0) {
+      setAdvisorError('Vui lòng nhập chiều cao và cân nặng hợp lệ (> 0).')
+      setAdvisorResult(null)
+      return
+    }
+
+    try {
+      setAdvisorLoading(true)
+      setAdvisorError('')
+
+      const response = await axiosClient.get(`/products/${advisorProductId}/size-guide/recommendation`, {
+        params: {
+          gender: advisorGender,
+          heightCm,
+          weightKg,
+        },
+      })
+
+      const data = response?.data?.data || null
+      setAdvisorResult({
+        recommendedSize: data?.recommendedSize || null,
+      })
+    } catch (apiError) {
+      setAdvisorResult(null)
+      setAdvisorError(apiError?.response?.data?.message || 'Không thể tư vấn size lúc này.')
+    } finally {
+      setAdvisorLoading(false)
+    }
+  }, [advisorGender, advisorHeightCm, advisorProductId, advisorWeightKg])
 
   // ---- Validate step 2 → go to step 3 ----
   const goToPayment = () => {
@@ -576,6 +639,103 @@ export default function StaffWalkInPage() {
                 </div>
               </div>
             )}
+
+            {/* Staff size advisor */}
+            <div className="max-w-xl rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Tư vấn size nhanh tại quầy</p>
+                <p className="mt-0.5 text-xs text-slate-500">Chọn sản phẩm, nhập chiều cao và cân nặng để gợi ý size ngay cho khách mua offline.</p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">Sản phẩm tư vấn</span>
+                  <select
+                    value={advisorProductId}
+                    onChange={(event) => {
+                      setAdvisorProductId(event.target.value)
+                      setAdvisorResult(null)
+                      setAdvisorError('')
+                    }}
+                    disabled={items.length === 0}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100"
+                  >
+                    {items.length === 0 ? (
+                      <option value="">Chưa có sản phẩm trong đơn</option>
+                    ) : null}
+                    {items.map((item) => (
+                      <option key={item.productId} value={item.productId}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">Giới tính</span>
+                  <select
+                    value={advisorGender}
+                    onChange={(event) => {
+                      setAdvisorGender(event.target.value)
+                      setAdvisorResult(null)
+                      setAdvisorError('')
+                    }}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                  >
+                    <option value="female">Nữ</option>
+                    <option value="male">Nam</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">Chiều cao (cm)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={advisorHeightCm}
+                    onChange={(event) => {
+                      setAdvisorHeightCm(event.target.value)
+                      setAdvisorResult(null)
+                      setAdvisorError('')
+                    }}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                    placeholder="Ví dụ: 165"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-slate-600">Cân nặng (kg)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={advisorWeightKg}
+                    onChange={(event) => {
+                      setAdvisorWeightKg(event.target.value)
+                      setAdvisorResult(null)
+                      setAdvisorError('')
+                    }}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                    placeholder="Ví dụ: 52"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleRecommendSizeForStaff}
+                  disabled={advisorLoading || items.length === 0}
+                  className="h-10 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {advisorLoading ? 'Đang tính...' : 'Tính size'}
+                </button>
+              </div>
+
+              {advisorError ? <p className="text-sm text-rose-600">{advisorError}</p> : null}
+              {advisorResult?.recommendedSize ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900">
+                  Gợi ý size: {advisorResult.recommendedSize}
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
 

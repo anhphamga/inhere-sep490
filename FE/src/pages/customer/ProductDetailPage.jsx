@@ -105,6 +105,13 @@ export default function ProductDetailPage() {
   const [sizeGuideGender, setSizeGuideGender] = useState('female');
   const [sizeGuideRows, setSizeGuideRows] = useState([]);
   const [sizeGuideSource, setSizeGuideSource] = useState('global');
+  const [sizeRecommendationInput, setSizeRecommendationInput] = useState({
+    heightCm: '',
+    weightKg: '',
+  });
+  const [sizeRecommendationResult, setSizeRecommendationResult] = useState(null);
+  const [sizeRecommendationError, setSizeRecommendationError] = useState('');
+  const [sizeRecommendationLoading, setSizeRecommendationLoading] = useState(false);
 
   // Date selection modal state
   const [showDateModal, setShowDateModal] = useState(false);
@@ -167,6 +174,16 @@ export default function ProductDetailPage() {
       mounted = false;
     };
   }, [id, sizeGuideGender]);
+
+  useEffect(() => {
+    setSizeRecommendationInput({
+      heightCm: '',
+      weightKg: '',
+    });
+    setSizeRecommendationResult(null);
+    setSizeRecommendationError('');
+    setSizeRecommendationLoading(false);
+  }, [id]);
 
   useEffect(() => {
     let mounted = true;
@@ -574,6 +591,67 @@ export default function ProductDetailPage() {
     setTimeout(() => setToast(""), 2000);
   };
 
+  const handleSizeRecommendationInputChange = useCallback((field, value) => {
+    setSizeRecommendationInput((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    setSizeRecommendationError('');
+  }, []);
+
+  const handleRecommendSize = useCallback(async () => {
+    const heightCm = Number(sizeRecommendationInput.heightCm);
+    const weightKg = Number(sizeRecommendationInput.weightKg);
+
+    if (!Number.isFinite(heightCm) || heightCm <= 0 || !Number.isFinite(weightKg) || weightKg <= 0) {
+      setSizeRecommendationResult(null);
+      setSizeRecommendationError('Vui lòng nhập chiều cao và cân nặng hợp lệ (> 0).');
+      return;
+    }
+
+    try {
+      setSizeRecommendationLoading(true);
+      setSizeRecommendationError('');
+
+      const params = new URLSearchParams({
+        heightCm: String(heightCm),
+        weightKg: String(weightKg),
+      });
+      if (sizeGuideGender) {
+        params.set('gender', sizeGuideGender);
+      }
+
+      const response = await fetch(`/api/products/${id}/size-guide/recommendation?${params.toString()}`);
+      const payload = response.ok
+        ? await response.json()
+        : await response.json().catch(() => ({ message: 'Không thể tính size lúc này.' }));
+
+      if (!response.ok) {
+        setSizeRecommendationResult(null);
+        setSizeRecommendationError(payload?.message || 'Không thể tính size lúc này.');
+        return;
+      }
+
+      const data = payload?.data || null;
+      setSizeRecommendationResult(data);
+
+      const recommendedGender = String(data?.gender || '').trim().toLowerCase();
+      if (recommendedGender === 'male' || recommendedGender === 'female') {
+        setSizeGuideGender(recommendedGender);
+      }
+    } catch {
+      setSizeRecommendationResult(null);
+      setSizeRecommendationError('Không thể tính size lúc này. Vui lòng thử lại.');
+    } finally {
+      setSizeRecommendationLoading(false);
+    }
+  }, [
+    id,
+    sizeGuideGender,
+    sizeRecommendationInput.heightCm,
+    sizeRecommendationInput.weightKg,
+  ]);
+
   const handleLoadMoreReviews = () => {
     const nextPage = Number(reviewPagination?.page || 1) + 1;
     if (nextPage > Number(reviewPagination?.pages || 1)) return;
@@ -821,6 +899,12 @@ export default function ProductDetailPage() {
                   sizeGuideSource={sizeGuideSource}
                   selectedGender={sizeGuideGender}
                   onGenderChange={setSizeGuideGender}
+                  sizeRecommendationInput={sizeRecommendationInput}
+                  onSizeRecommendationInputChange={handleSizeRecommendationInputChange}
+                  onRecommendSize={handleRecommendSize}
+                  sizeRecommendationResult={sizeRecommendationResult}
+                  sizeRecommendationError={sizeRecommendationError}
+                  sizeRecommendationLoading={sizeRecommendationLoading}
                 />
               </section>
 
