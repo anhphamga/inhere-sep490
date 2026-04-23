@@ -51,6 +51,7 @@ router.delete(
 router.get('/:productId/available-instances', productController.getAvailableInstances);
 router.get('/:id/similar', productController.getSimilarProducts);
 router.get('/:id/size-guide', sizeGuideController.getProductSizeGuide);
+router.get('/:id/size-guide/recommendation', sizeGuideController.getProductSizeRecommendation);
 router.get('/', productController.getProducts);
 router.get('/top-rented', productController.getTopRentedProducts);
 router.get('/top-liked', productController.getTopLikedProducts);

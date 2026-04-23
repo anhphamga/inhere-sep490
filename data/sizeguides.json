@@ -1,0 +1,176 @@
+[{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe25"
+  },
+  "sizeLabel": "S",
+  "gender": "male",
+  "type": "global",
+  "productId": null,
+  "heightMin": 155,
+  "heightMax": 165,
+  "weightMin": 50,
+  "weightMax": 58,
+  "itemLength": 95,
+  "itemWidth": 48,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe26"
+  },
+  "sizeLabel": "M",
+  "gender": "male",
+  "type": "global",
+  "productId": null,
+  "heightMin": 165,
+  "heightMax": 172,
+  "weightMin": 58,
+  "weightMax": 65,
+  "itemLength": 100,
+  "itemWidth": 50,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe27"
+  },
+  "sizeLabel": "L",
+  "gender": "male",
+  "type": "global",
+  "productId": null,
+  "heightMin": 170,
+  "heightMax": 178,
+  "weightMin": 65,
+  "weightMax": 75,
+  "itemLength": 105,
+  "itemWidth": 52,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe28"
+  },
+  "sizeLabel": "XL",
+  "gender": "male",
+  "type": "global",
+  "productId": null,
+  "heightMin": 175,
+  "heightMax": 185,
+  "weightMin": 75,
+  "weightMax": 85,
+  "itemLength": 110,
+  "itemWidth": 54,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.465Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe29"
+  },
+  "sizeLabel": "S",
+  "gender": "female",
+  "type": "global",
+  "productId": null,
+  "heightMin": 150,
+  "heightMax": 158,
+  "weightMin": 40,
+  "weightMax": 48,
+  "itemLength": 120,
+  "itemWidth": 40,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe2a"
+  },
+  "sizeLabel": "M",
+  "gender": "female",
+  "type": "global",
+  "productId": null,
+  "heightMin": 155,
+  "heightMax": 165,
+  "weightMin": 48,
+  "weightMax": 55,
+  "itemLength": 125,
+  "itemWidth": 42,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe2b"
+  },
+  "sizeLabel": "L",
+  "gender": "female",
+  "type": "global",
+  "productId": null,
+  "heightMin": 160,
+  "heightMax": 170,
+  "weightMin": 55,
+  "weightMax": 62,
+  "itemLength": 130,
+  "itemWidth": 44,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  }
+},
+{
+  "_id": {
+    "$oid": "69e84621d72ed6808b3afe2c"
+  },
+  "sizeLabel": "XL",
+  "gender": "female",
+  "type": "global",
+  "productId": null,
+  "heightMin": 165,
+  "heightMax": 175,
+  "weightMin": 62,
+  "weightMax": 70,
+  "itemLength": 135,
+  "itemWidth": 46,
+  "__v": 0,
+  "createdAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  },
+  "updatedAt": {
+    "$date": "2026-04-22T03:53:05.466Z"
+  }
+}]

@@ -5,6 +5,7 @@ const {
   normalizeGender,
   replaceGlobalRows,
   replaceProductRows,
+  recommendSizeForProduct,
   resolveSizeGuideForProduct,
   validateAndNormalizeRows,
 } = require('../services/sizeGuide.service');
@@ -37,6 +38,89 @@ const getProductSizeGuide = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error getting size guide',
+      error: error.message,
+    });
+  }
+};
+
+const getProductSizeRecommendation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rawGender = String(req.query.gender || '').trim();
+    const gender = normalizeGender(rawGender);
+    const heightCm = Number(req.query.heightCm ?? req.query.height);
+    const weightKg = Number(req.query.weightKg ?? req.query.weight ?? req.query.kg);
+
+    const exists = await ensureProductExists(id);
+    if (!exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    if (rawGender && !gender) {
+      return res.status(400).json({
+        success: false,
+        message: 'gender must be male or female when provided',
+      });
+    }
+
+    if (!Number.isFinite(heightCm) || heightCm <= 0 || !Number.isFinite(weightKg) || weightKg <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'heightCm and weightKg must be numbers > 0',
+      });
+    }
+
+    const recommendation = await recommendSizeForProduct({
+      productId: id,
+      gender,
+      heightCm,
+      weightKg,
+    });
+
+    if (recommendation.error) {
+      const status = recommendation.errorCode === 'OUT_OF_SUPPORTED_RANGE' ? 422 : 400;
+      return res.status(status).json({
+        success: false,
+        message: recommendation.error,
+        data: {
+          bounds: recommendation.bounds || null,
+          code: recommendation.errorCode || 'INVALID_REQUEST',
+        },
+      });
+    }
+
+    if (!recommendation.result || !recommendation.result.recommendedRow) {
+      return res.status(404).json({
+        success: false,
+        message: 'No size guide data available for recommendation',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        productId: id,
+        source: recommendation.source,
+        gender: recommendation.result.recommendedRow.gender || null,
+        input: {
+          heightCm,
+          weightKg,
+        },
+        recommendedSize: recommendation.result.recommendedSize,
+        matchType: recommendation.result.matchType,
+        confidence: recommendation.result.confidence,
+        score: recommendation.result.score,
+        row: recommendation.result.recommendedRow,
+        bounds: recommendation.bounds || null,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting size recommendation',
       error: error.message,
     });
   }
@@ -251,6 +335,7 @@ module.exports = {
   deleteOwnerProductSizeGuide,
   getOwnerGlobalSizeGuide,
   getOwnerProductSizeGuide,
+  getProductSizeRecommendation,
   getProductSizeGuide,
   upsertOwnerGlobalSizeGuide,
   upsertOwnerProductSizeGuide,

@@ -5,6 +5,7 @@ const RentOrder = require('../model/RentOrder.model');
 const RentOrderItem = require('../model/RentOrderItem.model');
 const SaleOrder = require('../model/SaleOrder.model');
 const SaleOrderItem = require('../model/SaleOrderItem.model');
+const Invoice = require('../model/Invoice.model');
 const User = require('../model/User.model');
 const GuestVerification = require('../model/GuestVerification.model');
 const Voucher = require('../model/Voucher.model');
@@ -669,6 +670,77 @@ const attachSaleOrderItems = async (orders = []) => {
   }));
 };
 
+const mapLegacyInvoicePayload = (snapshot = {}, invoiceDoc = null) => {
+  const doc = invoiceDoc || {};
+  const issuedAt = doc.issuedAt || snapshot.issuedAt || null;
+  return {
+    invoiceRecordId: snapshot.invoiceRecordId || (doc._id ? String(doc._id) : ''),
+    invoiceId: doc.invoiceId || snapshot.invoiceId || '',
+    invoiceNo: doc.invoiceNo || snapshot.invoiceNo || '',
+    invoiceDate: issuedAt,
+    pdfUrl: doc.pdfUrl || '',
+    xmlUrl: doc.xmlUrl || '',
+    provider: doc.provider || '',
+    documentTitle: doc.documentTitle || '',
+    documentTypeLabel: doc.documentTypeLabel || '',
+    purpose: doc.purpose || 'General',
+    status: doc.status || snapshot.status || 'pending',
+    issuedAt,
+    cancelledAt: doc.cancelledAt || snapshot.cancelledAt || null,
+    errorMessage: doc.errorMessage || snapshot.errorMessage || '',
+    emailTo: doc.emailTo || '',
+    emailStatus: doc.emailStatus || snapshot.emailStatus || 'pending',
+    emailSentAt: doc.emailSentAt || null,
+    emailError: doc.emailError || '',
+    updatedAt: snapshot.updatedAt || doc.updatedAt || null,
+  };
+};
+
+const attachSaleInvoiceCompat = async (orders = []) => {
+  if (!Array.isArray(orders) || orders.length === 0) return orders;
+
+  const orderIds = orders.map((order) => order?._id).filter(Boolean);
+  const invoiceRecordIds = orders
+    .map((order) => order?.invoice?.invoiceRecordId)
+    .filter(Boolean);
+
+  if (orderIds.length === 0) return orders;
+
+  const invoices = await Invoice.find({
+    orderRefModel: 'SaleOrder',
+    orderRefId: { $in: orderIds },
+    status: { $in: ['issued', 'pending', 'failed'] },
+  })
+    .sort({ issuedAt: -1, createdAt: -1 })
+    .lean();
+
+  const invoiceByOrderId = new Map();
+  for (const invoice of invoices) {
+    const key = String(invoice.orderRefId || '');
+    if (!invoiceByOrderId.has(key)) {
+      invoiceByOrderId.set(key, invoice);
+    }
+  }
+
+  const invoiceByRecordId = new Map(
+    invoices
+      .filter((invoice) => invoiceRecordIds.includes(String(invoice._id)))
+      .map((invoice) => [String(invoice._id), invoice])
+  );
+
+  return orders.map((order) => {
+    const snapshot = order?.invoice || {};
+    const invoiceDoc = invoiceByRecordId.get(String(snapshot.invoiceRecordId || ''))
+      || invoiceByOrderId.get(String(order?._id || ''))
+      || null;
+
+    return {
+      ...order,
+      invoice: mapLegacyInvoicePayload(snapshot, invoiceDoc),
+    };
+  });
+};
+
 const attachReviewStatesForCustomer = async (orders = [], customerId = '') => {
   if (!Array.isArray(orders) || orders.length === 0 || !customerId) return orders;
 
@@ -981,7 +1053,7 @@ exports.guestCheckout = async (req, res) => {
     // Chỉ trigger ngay cho COD; Online sẽ được trigger từ confirmSalePayment sau khi capture
     const guestPaymentMethod = normalizePaymentMethod(paymentMethod);
     if (guestPaymentMethod !== 'Online') {
-      setImmediate(() => runPostPaymentInvoiceFlow(String(saleOrder._id)).catch(() => {}));
+      setImmediate(() => runPostPaymentInvoiceFlow(String(saleOrder._id)).catch(() => { }));
     }
 
     return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
@@ -1136,7 +1208,7 @@ exports.checkout = async (req, res) => {
     // tránh gửi email 2 lần cho cùng một đơn.
     const checkoutPaymentMethod = normalizePaymentMethod(paymentMethod);
     if (checkoutPaymentMethod !== 'Online') {
-      setImmediate(() => runPostPaymentInvoiceFlow(String(saleOrder._id)).catch(() => {}));
+      setImmediate(() => runPostPaymentInvoiceFlow(String(saleOrder._id)).catch(() => { }));
     }
 
     return res.status(201).json(buildCheckoutSuccessResponse(saleOrder));
@@ -1202,6 +1274,7 @@ exports.getOwnerSaleOrders = async (req, res) => {
     ]);
 
     let data = await attachSaleOrderItems(orders);
+    data = await attachSaleInvoiceCompat(data);
 
     if (normalizedKeyword) {
       const loweredKeyword = normalizedKeyword.toLowerCase();
@@ -1287,7 +1360,8 @@ exports.getMySaleOrders = async (req, res) => {
       .sort({ createdAt: -1 });
 
     const attachedOrders = await attachSaleOrderItems(orders);
-    const ordersWithReviewState = await attachReviewStatesForCustomer(attachedOrders, customerId);
+    const ordersWithInvoice = await attachSaleInvoiceCompat(attachedOrders);
+    const ordersWithReviewState = await attachReviewStatesForCustomer(ordersWithInvoice, customerId);
     // #region agent log
     fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H3', location: 'BE/controllers/order.controller.js:getMySaleOrders', message: 'Customer orders payload snapshot', data: { customerId: String(customerId || ''), count: ordersWithReviewState.length, statuses: ordersWithReviewState.map((o) => ({ id: String(o?._id || ''), status: String(o?.status || ''), userStatus: String(o?.userStatus || '') })) }, timestamp: Date.now() }) }).catch(() => { });
     // #endregion
@@ -1334,7 +1408,8 @@ exports.getMySaleOrderById = async (req, res) => {
     }
 
     const [attachedOrder] = await attachSaleOrderItems([order]);
-    const [orderWithReviewState] = await attachReviewStatesForCustomer([attachedOrder], customerId);
+    const [attachedOrderWithInvoice] = await attachSaleInvoiceCompat([attachedOrder]);
+    const [orderWithReviewState] = await attachReviewStatesForCustomer([attachedOrderWithInvoice], customerId);
 
     return res.json({
       success: true,
@@ -1410,10 +1485,11 @@ exports.getGuestSaleOrderById = async (req, res) => {
     }
 
     const [attachedOrder] = await attachSaleOrderItems([order]);
+    const [attachedOrderWithInvoice] = await attachSaleInvoiceCompat([attachedOrder]);
 
     return res.json({
       success: true,
-      data: mapSaleOrderForOwner(attachedOrder, { customerFacing: true }),
+      data: mapSaleOrderForOwner(attachedOrderWithInvoice, { customerFacing: true }),
     });
   } catch (error) {
     console.error('Get guest sale order detail error:', error);
@@ -1483,11 +1559,12 @@ exports.cancelMySaleOrder = async (req, res) => {
         .populate('staffId', 'name phone email')
         .populate('history.updatedBy', 'name email'),
     ]);
+    const [populatedWithInvoice] = await attachSaleInvoiceCompat([populated]);
 
     return res.json({
       success: true,
       message: 'Hủy đơn thành công.',
-      data: mapSaleOrderForOwner(populated, { customerFacing: true }),
+      data: mapSaleOrderForOwner(populatedWithInvoice, { customerFacing: true }),
     });
   } catch (error) {
     console.error('Cancel my sale order error:', error);
@@ -1586,11 +1663,12 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
         .populate('staffId', 'name phone email')
         .populate('history.updatedBy', 'name email'),
     ]);
+    const [populatedWithInvoice] = await attachSaleInvoiceCompat([populated]);
 
     return res.json({
       success: true,
       message: 'Cập nhật trạng thái đơn mua thành công.',
-      data: mapSaleOrderForOwner(populated),
+      data: mapSaleOrderForOwner(populatedWithInvoice),
     });
   } catch (error) {
     console.error('Update sale order status error:', error);

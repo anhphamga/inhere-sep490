@@ -16,6 +16,7 @@ const { ORDER_TYPE } = require('../constants/order.constants');
 const { resolveSaleOrderUserStatus } = require('../utils/saleOrderStatus');
 const { signGuestOrderViewToken } = require('../utils/jwt');
 const { runPostPaymentInvoiceFlow } = require('../services/postPaymentInvoice.service');
+const { runPostPaymentRentInvoiceFlow } = require('../services/postPaymentRentInvoice.service');
 
 const FRONTEND_URL = frontendUrl;
 const PAYOS_WEB_BASE_URL = String(payosWebBaseUrl || '').replace(/\/+$/, '');
@@ -578,6 +579,9 @@ const processConfirmedPayment = async (txn, options = {}) => {
             }
 
             console.log(`[PayOS] Deposit confirmed for order ${order.orderCode || txn.orderId}`);
+
+            // Trigger tao chung tu dat coc + gui email (non-blocking)
+            setImmediate(() => runPostPaymentRentInvoiceFlow(String(txn.orderId)).catch(() => { }));
         }
     }
 
@@ -617,7 +621,7 @@ const processConfirmedPayment = async (txn, options = {}) => {
 
             // Trigger tạo hóa đơn + gửi email tự động (non-blocking)
             // Dùng cho cả PayOS và PayPal thông qua hàm chung này
-            setImmediate(() => runPostPaymentInvoiceFlow(String(txn.orderId)).catch(() => {}));
+            setImmediate(() => runPostPaymentInvoiceFlow(String(txn.orderId)).catch(() => { }));
 
             console.log(`[Payment] Sale payment confirmed for order ${txn.orderId} via ${txn.provider || 'unknown'}`);
         }
@@ -823,6 +827,9 @@ const confirmRentDepositPayment = async ({ orderId, amount, transactionCode }) =
         console.error(`[PayPal] Reserve instances failed for order ${orderId}:`, reserveErr.message);
     }
 
+    // Trigger tao chung tu dat coc + gui email (non-blocking)
+    setImmediate(() => runPostPaymentRentInvoiceFlow(String(orderId)).catch(() => { }));
+
     return { order };
 };
 
@@ -861,7 +868,7 @@ const confirmSalePayment = async ({ orderId, amount, transactionCode }) => {
     await saleOrder.save();
 
     // Trigger tạo hóa đơn + gửi email tự động (non-blocking)
-    setImmediate(() => runPostPaymentInvoiceFlow(String(orderId)).catch(() => {}));
+    setImmediate(() => runPostPaymentInvoiceFlow(String(orderId)).catch(() => { }));
 
     return { order: saleOrder };
 };

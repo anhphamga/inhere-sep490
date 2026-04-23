@@ -21,12 +21,22 @@ const formatOptional = (value) => {
   return Number.isFinite(num) ? String(num) : '--'
 }
 
+const formatRecommendationSource = (source) => {
+  return String(source || '').toLowerCase() === 'product' ? 'size riêng sản phẩm' : 'size global'
+}
+
 export default function ProductDescription({
   description = "",
   sizeGuideRows = [],
   sizeGuideSource = 'global',
   selectedGender = 'female',
   onGenderChange,
+  sizeRecommendationInput = { heightCm: '', weightKg: '' },
+  onSizeRecommendationInputChange,
+  onRecommendSize,
+  sizeRecommendationResult = null,
+  sizeRecommendationError = '',
+  sizeRecommendationLoading = false,
 }) {
   const [tab, setTab] = useState("description");
   const [expanded, setExpanded] = useState(false);
@@ -150,6 +160,63 @@ export default function ProductDescription({
                 Nam
               </button>
             </div>
+            <p className="text-sm text-slate-500">
+              Bảng đang dùng: <span className="font-semibold text-slate-700">{formatRecommendationSource(sizeGuideSource)}</span>
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 md:p-5 space-y-3">
+            <div>
+              <h4 className="text-base font-semibold text-slate-900">Gợi ý size theo chiều cao và cân nặng</h4>
+              <p className="text-sm text-slate-500">Nhập chiều cao và cân nặng, hệ thống tự chấm điểm theo bảng size để đề xuất size chuẩn nhất.</p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              <label className="space-y-1">
+                <span className="block text-sm font-medium text-slate-700">Chiều cao (cm)</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={String(sizeRecommendationInput?.heightCm ?? '')}
+                  onChange={(event) => onSizeRecommendationInputChange?.('heightCm', event.target.value)}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                  placeholder="Ví dụ: 165"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="block text-sm font-medium text-slate-700">Cân nặng (kg)</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={String(sizeRecommendationInput?.weightKg ?? '')}
+                  onChange={(event) => onSizeRecommendationInputChange?.('weightKg', event.target.value)}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                  placeholder="Ví dụ: 52"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => onRecommendSize?.()}
+                disabled={sizeRecommendationLoading}
+                className="h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {sizeRecommendationLoading ? 'Đang tính...' : 'Tính size'}
+              </button>
+            </div>
+
+            {sizeRecommendationError ? (
+              <p className="text-sm text-rose-600">{sizeRecommendationError}</p>
+            ) : null}
+
+            {sizeRecommendationResult ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                <p className="font-semibold">
+                  Gợi ý size: {sizeRecommendationResult?.recommendedSize || '--'}
+                </p>
+              </div>
+            ) : null}
           </div>
 
           {sortedSizeRows.length > 0 ? (

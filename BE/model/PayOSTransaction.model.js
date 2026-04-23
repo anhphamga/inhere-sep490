@@ -36,7 +36,7 @@ const payOSTransactionSchema = new mongoose.Schema({
     },
     paypalOrderId: {
         type: String,
-        default: '',
+        default: undefined,
         unique: true,
         sparse: true,
     },
@@ -58,5 +58,28 @@ const payOSTransactionSchema = new mongoose.Schema({
         default: null,
     },
 }, { timestamps: true });
+
+payOSTransactionSchema.pre('validate', function normalizeProviderFields() {
+    const provider = String(this.provider || 'PAYOS').toUpperCase();
+
+    // Never keep empty string in unique paypalOrderId column
+    if (typeof this.paypalOrderId === 'string' && !this.paypalOrderId.trim()) {
+        this.paypalOrderId = undefined;
+    }
+
+    // For non-PayPal transactions, unset PayPal-specific unique key fields
+    if (provider !== 'PAYPAL') {
+        this.paypalOrderId = undefined;
+        if (typeof this.paypalCheckoutUrl !== 'string') {
+            this.paypalCheckoutUrl = '';
+        }
+    }
+
+    // Normalize for PayPal transactions
+    if (provider === 'PAYPAL' && typeof this.paypalOrderId === 'string') {
+        this.paypalOrderId = this.paypalOrderId.trim();
+    }
+
+});
 
 module.exports = mongoose.model('PayOSTransaction', payOSTransactionSchema);

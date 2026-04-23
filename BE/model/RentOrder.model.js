@@ -145,6 +145,50 @@ const rentOrderSchema = new mongoose.Schema({
     phone: { type: String, default: '' },
     email: { type: String, default: '' }
   },
+  invoice: {
+    invoiceRecordId: {
+      type: String,
+      default: ''
+    },
+    invoiceId: {
+      type: String,
+      default: ''
+    },
+    invoiceNo: {
+      type: String,
+      default: ''
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'issued', 'cancelled', 'failed'],
+      default: 'pending'
+    },
+    issuedAt: {
+      type: Date,
+      default: null
+    },
+    cancelledAt: {
+      type: Date,
+      default: null
+    },
+    errorMessage: {
+      type: String,
+      default: ''
+    },
+    emailTo: {
+      type: String,
+      default: ''
+    },
+    emailStatus: {
+      type: String,
+      enum: ['pending', 'sent', 'failed', 'skipped'],
+      default: 'pending'
+    },
+    updatedAt: {
+      type: Date,
+      default: null
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now
