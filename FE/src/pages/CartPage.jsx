@@ -35,6 +35,7 @@ const normalizePhoneInput = (value = '') => normalizePhone(value)
 const normalizeVoucherCode = (value = '') => String(value || '').trim().toUpperCase()
 const normalizeText = (value = '') => String(value ?? '').trim()
 const normalizeEmail = (value = '') => normalizeText(value).toLowerCase()
+const normalizeDisplayText = (value = '') => String(value ?? '').normalize('NFC').trim()
 const PHONE_REGEX_VN = /^(?:0|\+84)\d{9,10}$/
 const sanitizeCheckoutForm = (nextForm = {}) => ({
   ...nextForm,
@@ -639,7 +640,7 @@ export default function CartPage() {
       setOrderVoucherMessage(`Đã áp voucher cho ${selected.label}.`)
     } catch (error) {
       if (voucherApplyRequestRef.current !== requestId) return
-      setOrderVoucherError(error.response?.data?.message || requestErrorMessage)
+      setOrderVoucherError(normalizeDisplayText(error.response?.data?.message || requestErrorMessage))
     } finally {
       if (voucherApplyRequestRef.current === requestId) setOrderVoucherLoading(false)
     }
@@ -902,8 +903,8 @@ export default function CartPage() {
       setBuySuccess(successMessage)
       setCheckoutResult({ message: successMessage, rentalOrderId: createdRentalOrderId })
     } catch (err) {
-      const detail = err.response?.data?.detail ? ` (${err.response.data.detail})` : ''
-      const msg = (err.response?.data?.message || 'Không thể xử lý checkout. Vui lòng thử lại.') + detail
+      const detail = err.response?.data?.detail ? ` (${normalizeDisplayText(err.response.data.detail)})` : ''
+      const msg = normalizeDisplayText(err.response?.data?.message || 'Không thể xử lý checkout. Vui lòng thử lại.') + detail
       if (createdRentalOrderId) {
         clearRentalCart()
         setRentalError('')

@@ -25,21 +25,6 @@ export default function ImageSection({
                             }}
                         />
                     </label>
-                    <label className="inline-flex h-10 items-center px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer hover:bg-slate-50">
-                        Chọn thư mục ảnh
-                        <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            webkitdirectory=""
-                            directory=""
-                            className="hidden"
-                            onChange={(event) => {
-                                onUploadFiles(event.target.files)
-                                event.target.value = ''
-                            }}
-                        />
-                    </label>
                 </div>
             </div>
 

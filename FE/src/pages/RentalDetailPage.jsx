@@ -421,9 +421,11 @@ export default function RentalDetailPage() {
                         <p className="text-sm text-gray-500">
                           Size: {item.size} | Màu: {item.color}
                         </p>
-                        <p className="text-sm">
-                          Tình trạng: <span className="text-gray-600">{item.condition || 'Tốt'}</span>
-                        </p>
+                        {isStaffOrOwner ? (
+                          <p className="text-sm">
+                            Tình trạng: <span className="text-gray-600">{item.condition || 'Tốt'}</span>
+                          </p>
+                        ) : null}
                         <p className="mt-2 text-xs font-medium text-pink-600">Bấm để xem sản phẩm và thuê lại</p>
                       </div>
                       <div className="text-right">

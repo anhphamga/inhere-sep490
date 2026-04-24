@@ -199,7 +199,7 @@ const getMyBlogs = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Không thể tải danh sách bài viết của bạn',
+      message: 'Kh�ng th� t�i danh s�ch b�i vi�t c�a b�n',
       error: error.message,
     });
   }
@@ -257,7 +257,7 @@ const getPendingBlogs = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Không thể tải danh sách bài viết chờ duyệt',
+      message: 'Kh�ng th� t�i danh s�ch b�i vi�t ch� duy�t',
       error: error.message,
     });
   }
@@ -281,7 +281,7 @@ const getApprovedBlogs = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'KhÃ´ng thá»ƒ táº£i danh sÃ¡ch bÃ i viáº¿t Ä‘Ã£ duyá»‡t',
+      message: 'Kh�ng th� t�i danh s�ch b�i vi�t �� duy�!t',
       error: error.message,
     });
   }
@@ -297,7 +297,7 @@ const approveBlog = async (req, res) => {
     if (blog.status !== 'pending') {
       return res.status(400).json({
         success: false,
-        message: 'Chỉ có thể duyệt bài viết đang ở trạng thái chờ duyệt',
+        message: 'Ch� c� th� duy�t b�i vi�t ang � tr�ng th�i ch� duy�t',
       });
     }
 
@@ -371,7 +371,7 @@ const publishBlog = async (req, res) => {
     if (blog.status !== 'pending') {
       return res.status(400).json({
         success: false,
-        message: 'Chỉ có thể xuất bản bài viết đang ở trạng thái chờ duyệt',
+        message: 'Ch� c� th� xu�t b�n b�i vi�t ang � tr�ng th�i ch� duy�t',
       });
     }
 
@@ -420,7 +420,7 @@ const deleteBlog = async (req, res) => {
     if (blog.status !== 'draft') {
       return res.status(400).json({
         success: false,
-        message: 'Nhân viên chỉ được xóa bài viết ở trạng thái nháp',
+        message: 'Nh�n vi�n ch� ��c x�a b�i vi�t � tr�ng th�i nh�p',
       });
     }
 
@@ -479,7 +479,7 @@ const getPublishedBlogs = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Không thể tải danh sách bài viết',
+      message: 'Kh�ng th� t�i danh s�ch b�i vi�t',
       error: error.message,
     });
   }

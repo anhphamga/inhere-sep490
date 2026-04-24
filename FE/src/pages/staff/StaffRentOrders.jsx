@@ -73,6 +73,21 @@ const getProductImage = (product) => {
   return product.image || ''
 }
 
+const formatConditionByScore = (score, fallbackLevel = '') => {
+  const normalizedScore = Number(score)
+  if (Number.isFinite(normalizedScore)) {
+    if (normalizedScore >= 100) return 'Mới (100%)'
+    if (normalizedScore >= 75) return `Tốt (${normalizedScore}%)`
+    if (normalizedScore >= 50) return `Đã qua sử dụng (${normalizedScore}%)`
+    return `Cần lưu ý (${normalizedScore}%)`
+  }
+
+  const normalizedLevel = String(fallbackLevel || '').trim()
+  if (normalizedLevel === 'New') return 'Mới (100%)'
+  if (normalizedLevel === 'Used') return 'Đã qua sử dụng'
+  return normalizedLevel || ''
+}
+
 export default function StaffRentOrders() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
@@ -156,7 +171,7 @@ export default function StaffRentOrders() {
       setPagination(response.pagination || { page, limit, total: (response.data || []).length, pages: 1 })
     } catch (err) {
       console.error('Error fetching orders:', err)
-      setError('Không thể tải danh sách đơn thuê')
+      setError(err?.response?.data?.message || 'Không thể tải danh sách đơn thuê')
     } finally {
       setLoading(false)
     }
@@ -925,7 +940,15 @@ export default function StaffRentOrders() {
                               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                                 {item.size && <span>Size: <span className="font-medium text-slate-700">{item.size}</span></span>}
                                 {item.color && <span>Màu: <span className="font-medium text-slate-700">{item.color}</span></span>}
-                                {item.condition && <span>Tình trạng: <span className="font-medium text-slate-700">{item.condition}</span></span>}
+                                {(() => {
+                                  const instanceCondition = formatConditionByScore(
+                                    item?.productInstanceId?.conditionScore,
+                                    item?.productInstanceId?.conditionLevel || item?.condition
+                                  )
+                                  return instanceCondition ? (
+                                    <span>Tình trạng: <span className="font-medium text-slate-700">{instanceCondition}</span></span>
+                                  ) : null
+                                })()}
                               </div>
                               {instanceCode && (
                                 <p className="mt-1 font-mono text-[11px] text-slate-400">Mã hàng: {instanceCode}</p>

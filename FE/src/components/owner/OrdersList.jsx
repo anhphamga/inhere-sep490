@@ -21,7 +21,6 @@ import {
 import { getOwnerOrdersApi, updateOwnerOrderStatusApi } from '../../services/owner.service'
 import { getAllRentOrdersApi } from '../../services/rent-order.service'
 import { currencyFormatter, toArray } from '../../utils/owner.utils'
-import { useAuth } from '../../contexts/AuthContext'
 
 const ORDER_TYPES = {
     sale: 'sale',
@@ -55,6 +54,27 @@ const SALE_STATUS_LABELS = {
     Returned: 'Đã trả hàng'
 }
 const DEFAULT_STATUS_BADGE = 'bg-slate-100 text-slate-700'
+const RENT_STATUS_BADGES = {
+    Draft: 'bg-slate-100 text-slate-700',
+    PendingDeposit: 'bg-amber-100 text-amber-800',
+    Deposited: 'bg-sky-100 text-sky-800',
+    Confirmed: 'bg-indigo-100 text-indigo-800',
+    WaitingPickup: 'bg-violet-100 text-violet-800',
+    Renting: 'bg-blue-100 text-blue-800',
+    WaitingReturn: 'bg-orange-100 text-orange-800',
+    Late: 'bg-red-100 text-red-800',
+    Returned: 'bg-emerald-100 text-emerald-800',
+    Cancelled: 'bg-slate-200 text-slate-700',
+    NoShow: 'bg-rose-100 text-rose-800',
+    Compensation: 'bg-fuchsia-100 text-fuchsia-800',
+    Completed: 'bg-green-200 text-green-800'
+}
+
+const normalizeDisplayText = (value, fallback = 'N/A') => {
+    const raw = value == null ? '' : String(value)
+    const normalized = raw.normalize('NFC').trim()
+    return normalized || fallback
+}
 
 const formatDateTime = (value) => {
     if (!value) return 'N/A'
@@ -82,19 +102,19 @@ const getStatusOptions = (orderType, saleMeta, rentMeta, orders) => (
     orderType === ORDER_TYPES.sale ? getSaleStatusOptions(saleMeta) : getRentStatusOptions(rentMeta, orders)
 )
 
-const getRentStatusLabel = (status) => RENT_STATUS_LABELS[status] || status || 'N/A'
-const getSaleStatusLabel = (status) => SALE_STATUS_LABELS[status] || status || 'N/A'
+const getRentStatusLabel = (status) => normalizeDisplayText(RENT_STATUS_LABELS[status] || status)
+const getSaleStatusLabel = (status) => normalizeDisplayText(SALE_STATUS_LABELS[status] || status)
 
 const getCustomerName = (order, orderType) => (
-    orderType === ORDER_TYPES.sale
+    normalizeDisplayText(orderType === ORDER_TYPES.sale
         ? (order?.customerId?.name || order?.guestName || 'Khách vãng lai')
-        : (order?.customerId?.name || 'Khách thuê')
+        : (order?.customerId?.name || 'Khách thuê'))
 )
 
 const getCustomerPhone = (order, orderType) => (
-    orderType === ORDER_TYPES.sale
+    normalizeDisplayText(orderType === ORDER_TYPES.sale
         ? (order?.shippingPhone || order?.customerId?.phone || 'N/A')
-        : (order?.customerId?.phone || 'N/A')
+        : (order?.customerId?.phone || 'N/A'))
 )
 
 const getPrimaryItemName = (order, orderType) => {
@@ -105,7 +125,7 @@ const getPrimaryItemName = (order, orderType) => {
         ? (items[0]?.productId?.name || 'Sản phẩm')
         : (items[0]?.productInstanceId?.productId?.name || 'Sản phẩm thuê')
 
-    return items.length > 1 ? `${firstName} +${items.length - 1}` : firstName
+    return normalizeDisplayText(items.length > 1 ? `${firstName} +${items.length - 1}` : firstName)
 }
 
 const getOrderAmount = (order) => Number(order?.totalAmount || 0)
@@ -120,23 +140,23 @@ const getRentStatusOption = (rentMeta, status) => (
 const getStatusOptionLabel = (orderType, saleMeta, rentMeta, status) => {
     if (status === 'All') return 'Tất cả trạng thái'
     if (orderType === ORDER_TYPES.sale) {
-        return getSaleStatusOption(saleMeta, status)?.label || getSaleStatusLabel(status)
+        return normalizeDisplayText(getSaleStatusOption(saleMeta, status)?.label || getSaleStatusLabel(status))
     }
-    return getRentStatusOption(rentMeta, status)?.label || getRentStatusLabel(status)
+    return normalizeDisplayText(getRentStatusOption(rentMeta, status)?.label || getRentStatusLabel(status))
 }
 
 const getStatusLabel = (order, orderType, saleMeta, rentMeta) => {
     if (orderType === ORDER_TYPES.sale) {
-        return order?.statusLabel || getSaleStatusOption(saleMeta, order?.status)?.label || getSaleStatusLabel(order?.status)
+        return normalizeDisplayText(order?.statusLabel || getSaleStatusOption(saleMeta, order?.status)?.label || getSaleStatusLabel(order?.status))
     }
-    return order?.statusLabel || getRentStatusOption(rentMeta, order?.status)?.label || getRentStatusLabel(order?.status)
+    return normalizeDisplayText(order?.statusLabel || getRentStatusOption(rentMeta, order?.status)?.label || getRentStatusLabel(order?.status))
 }
 
 const getStatusClassName = (order, orderType, saleMeta) => {
     if (orderType === ORDER_TYPES.sale) {
         return order?.statusBadgeClass || getSaleStatusOption(saleMeta, order?.status)?.badgeClass || DEFAULT_STATUS_BADGE
     }
-    return DEFAULT_STATUS_BADGE
+    return RENT_STATUS_BADGES[String(order?.status || '').trim()] || DEFAULT_STATUS_BADGE
 }
 
 const getProductImage = (item, orderType) => {
@@ -160,7 +180,6 @@ const getTimelineItems = (order, orderType) => {
         }))
     }
 
-    const staffName = order?.staffId?.name || ''
     const items = []
     items.push({
         label: 'Tạo đơn',
@@ -169,20 +188,36 @@ const getTimelineItems = (order, orderType) => {
         actor: '',
         active: true
     })
-    if (order?.confirmedAt) {
+    const rawAuditTrail = toArray(order?.auditTrail)
+        .filter((entry) => String(entry?.action || '').trim() !== 'orders_rent.washing.complete')
+
+    // Một số action vận hành có thể bị ghi nhiều lần trong luồng chuyển trạng thái.
+    // Giữ bản ghi mới nhất để timeline gọn và tránh lặp mốc.
+    const dedupeActions = new Set(['orders_rent.order.confirm', 'orders_rent.return.process'])
+    const dedupedByAction = new Map()
+    const normalizedAuditTrail = rawAuditTrail.filter((entry) => {
+        const action = String(entry?.action || '').trim()
+        if (!dedupeActions.has(action)) return true
+        dedupedByAction.set(action, entry)
+        return false
+    })
+    dedupedByAction.forEach((entry) => normalizedAuditTrail.push(entry))
+    normalizedAuditTrail.sort((a, b) => new Date(a?.timestamp || 0) - new Date(b?.timestamp || 0))
+
+    normalizedAuditTrail.forEach((entry) => {
         items.push({
-            label: 'Đã xác nhận',
-            description: 'Đơn thuê đã được xác nhận.',
-            value: order.confirmedAt,
-            actor: staffName,
+            label: entry?.label || 'Cập nhật đơn thuê',
+            description: entry?.description || 'Nhân sự đã cập nhật trạng thái đơn thuê.',
+            value: entry?.timestamp,
+            actor: entry?.actor || '',
             active: true
         })
-    }
+    })
     items.push({
         label: getRentStatusLabel(order?.status) || 'Đơn thuê',
-        description: 'Theo dõi trạng thái hiện tại của đơn thuê.',
+        description: 'Trạng thái hiện tại của đơn thuê.',
         value: order?.updatedAt || order?.createdAt,
-        actor: staffName,
+        actor: '',
         active: true
     })
     return items
@@ -238,9 +273,6 @@ function TypeTab({ active, icon, label, description, onClick }) {
 
 export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdate = true, fixedOrderType = '' }) {
     const location = useLocation()
-    const { user } = useAuth()
-    const role = String(user?.role || '').trim().toLowerCase()
-    const isStaffView = role === 'staff' && String(location.pathname || '').startsWith('/staff')
     const normalizedFixedOrderType = fixedOrderType === ORDER_TYPES.rent || fixedOrderType === ORDER_TYPES.sale
         ? fixedOrderType
         : ''
@@ -795,11 +827,6 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                                                     tone="text-slate-100"
                                                 />
                                             )}
-                                            <SummaryTile
-                                                label="Người xử lý"
-                                                value={selectedOrder.staffId?.name || 'Chưa gán'}
-                                                tone="text-slate-100"
-                                            />
                                         </div>
                                     </section>
 

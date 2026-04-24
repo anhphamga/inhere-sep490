@@ -40,6 +40,11 @@ const normalizeConditionScore = (value) => {
   return Number.isFinite(score) ? score : Number.NaN;
 };
 
+const inferConditionLevelFromScore = (score) => {
+  if (!Number.isFinite(score)) return '';
+  return score >= 100 ? 'New' : 'Used';
+};
+
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -50,7 +55,7 @@ const toIntegerOrNaN = (value) => {
   return Number.isInteger(n) ? n : Number.NaN;
 };
 
-/** Instance cÃƒÂ²n trong kho thuÃƒÂª (backend cÃƒÂ³ thÃ¡Â»Æ’ gÃƒÂ¡n theo ngÃƒÂ y), khÃƒÂ´ng tÃƒÂ­nh mÃ¡ÂºÂ¥t/Ã„â€˜ÃƒÂ£ bÃƒÂ¡n. */
+/** Instance còn trong kho thuê (backend có thể gán theo ngày), không tính mất/đã bán. */
 const INSTANCE_STATUS_RENT_EXCLUDED = new Set(['Lost', 'Sold']);
 const countRentableInstances = (instances = []) =>
   instances.filter((item) => !INSTANCE_STATUS_RENT_EXCLUDED.has(item.lifecycleStatus)).length;
@@ -67,13 +72,13 @@ const normalizeText = (value) => String(value || '').trim();
 const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const VIETNAMESE_CHAR_GROUPS = {
-  a: 'aÃƒÂ ÃƒÂ¡Ã¡ÂºÂ¡Ã¡ÂºÂ£ÃƒÂ£ÃƒÂ¢Ã¡ÂºÂ§Ã¡ÂºÂ¥Ã¡ÂºÂ­Ã¡ÂºÂ©Ã¡ÂºÂ«Ã„Æ’Ã¡ÂºÂ±Ã¡ÂºÂ¯Ã¡ÂºÂ·Ã¡ÂºÂ³Ã¡ÂºÂµ',
-  e: 'eÃƒÂ¨ÃƒÂ©Ã¡ÂºÂ¹Ã¡ÂºÂ»Ã¡ÂºÂ½ÃƒÂªÃ¡Â»ÂÃ¡ÂºÂ¿Ã¡Â»â€¡Ã¡Â»Æ’Ã¡Â»â€¦',
-  i: 'iÃƒÂ¬ÃƒÂ­Ã¡Â»â€¹Ã¡Â»â€°Ã„Â©',
-  o: 'oÃƒÂ²ÃƒÂ³Ã¡Â»ÂÃ¡Â»ÂÃƒÂµÃƒÂ´Ã¡Â»â€œÃ¡Â»â€˜Ã¡Â»â„¢Ã¡Â»â€¢Ã¡Â»â€”Ã†Â¡Ã¡Â»ÂÃ¡Â»â€ºÃ¡Â»Â£Ã¡Â»Å¸Ã¡Â»Â¡',
-  u: 'uÃƒÂ¹ÃƒÂºÃ¡Â»Â¥Ã¡Â»Â§Ã…Â©Ã†Â°Ã¡Â»Â«Ã¡Â»Â©Ã¡Â»Â±Ã¡Â»Â­Ã¡Â»Â¯',
-  y: 'yÃ¡Â»Â³ÃƒÂ½Ã¡Â»ÂµÃ¡Â»Â·Ã¡Â»Â¹',
-  d: 'dÃ„â€˜',
+  a: 'aáàảãạăắằẳẵặâấầẩẫậAÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬ',
+  e: 'eéèẻẽẹêếềểễệEÉÈẺẼẸÊẾỀỂỄỆ',
+  i: 'iíìỉĩịIÍÌỈĨỊ',
+  o: 'oóòỏõọôốồổỗộơớờởỡợOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢ',
+  u: 'uúùủũụưứừửữựUÚÙỦŨỤƯỨỪỬỮỰ',
+  y: 'yýỳỷỹỵYÝỲỶỸỴ',
+  d: 'dđDĐ',
 };
 
 const VIETNAMESE_CHAR_TO_GROUP = Object.entries(VIETNAMESE_CHAR_GROUPS).reduce((acc, [, chars]) => {
@@ -694,7 +699,7 @@ const getQuantityMap = async (productIds = [], options = {}) => {
   );
 };
 
-/** TÃ¡Â»â€œn kho thÃ¡Â»Â±c tÃ¡ÂºÂ¿ theo size (ProductInstance, khÃƒÂ´ng tÃƒÂ­nh Sold) Ã¢â‚¬â€ dÃƒÂ¹ng mÃƒÂ n owner */
+/** Tồn kho thực tế theo size (ProductInstance, không tính Sold) - dùng màn owner */
 const getOwnerSizeStockMap = async (productIds = []) => {
   if (!Array.isArray(productIds) || productIds.length === 0) return new Map();
 
@@ -1594,10 +1599,10 @@ const exportOwnerProducts = async (req, res) => {
 };
 
 // ============================================
-// PRODUCT INSTANCE APIs (QuÃ¡ÂºÂ£n lÃƒÂ½ tÃ¡Â»â€œn kho)
+// PRODUCT INSTANCE APIs (Quản lý tồn kho)
 // ============================================
 
-// LÃ¡ÂºÂ¥y danh sÃƒÂ¡ch ProductInstance vÃ¡Â»â€ºi filter
+// Lấy danh sách ProductInstance với filter
 const getProductInstances = async (req, res) => {
   try {
     // productId can come from route params (/:productId/instances) or query string
@@ -1676,7 +1681,7 @@ const getProductInstances = async (req, res) => {
   }
 };
 
-// LÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t mÃ¡Â»â„¢t ProductInstance
+// Lấy chi tiết một ProductInstance
 const getProductInstanceById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1687,7 +1692,7 @@ const getProductInstanceById = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
+        message: 'Không tìm thấy sản phẩm'
       });
     }
 
@@ -1699,13 +1704,13 @@ const getProductInstanceById = async (req, res) => {
     console.error('Get product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'LÃ¡Â»â€”i khi lÃ¡ÂºÂ¥y chi tiÃ¡ÂºÂ¿t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
+      message: 'Lỗi khi lấy chi tiết sản phẩm',
       error: error.message
     });
   }
 };
 
-// CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t ProductInstance (giÃƒÂ¡, trÃ¡ÂºÂ¡ng thÃƒÂ¡i, tÃƒÂ¬nh trÃ¡ÂºÂ¡ng)
+// Cập nhật ProductInstance (giá, trạng thái, tình trạng)
 const updateProductInstance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1724,11 +1729,11 @@ const updateProductInstance = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
+        message: 'Không tìm thấy sản phẩm'
       });
     }
 
-    // CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t cÃƒÂ¡c trÃ†Â°Ã¡Â»Âng Ã„â€˜Ã†Â°Ã¡Â»Â£c gÃ¡Â»Â­i lÃƒÂªn
+    // Cập nhật các trường được gửi lên
     const before = instance.toObject();
 
     if ((conditionLevel !== undefined || conditionScore !== undefined) && !canUpdateCondition) {
@@ -1743,7 +1748,7 @@ const updateProductInstance = async (req, res) => {
       if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
         return res.status(400).json({
           success: false,
-          message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
+          message: 'Tình trạng chỉ chấp nhận New hoặc Used'
         });
       }
       instance.conditionLevel = normalizedLevel;
@@ -1753,10 +1758,14 @@ const updateProductInstance = async (req, res) => {
       if (!ALLOWED_CONDITION_SCORES.has(normalizedScore)) {
         return res.status(400).json({
           success: false,
-          message: 'Ã„ÂiÃ¡Â»Æ’m tÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n 0, 25, 50, 75 hoÃ¡ÂºÂ·c 100'
+          message: 'Điểm tình trạng chỉ chấp nhận 0, 25, 50, 75 hoặc 100'
         });
       }
       instance.conditionScore = normalizedScore;
+      // Keep level in sync with score so UIs don't show "New" for 75%.
+      if (conditionLevel === undefined) {
+        instance.conditionLevel = inferConditionLevelFromScore(normalizedScore);
+      }
     }
     if (lifecycleStatus) instance.lifecycleStatus = lifecycleStatus;
     if (currentRentPrice !== undefined) instance.currentRentPrice = currentRentPrice;
@@ -1765,7 +1774,7 @@ const updateProductInstance = async (req, res) => {
 
     await instance.save();
 
-    // Populate Ã„â€˜Ã¡Â»Æ’ trÃ¡ÂºÂ£ vÃ¡Â»Â
+    // Populate để trả về
     const updatedInstance = await ProductInstance.findById(id)
       .populate('productId', 'name images category');
 
@@ -1795,20 +1804,20 @@ const updateProductInstance = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng',
+      message: 'Cập nhật sản phẩm thành công',
       data: updatedInstance
     });
   } catch (error) {
     console.error('Update product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'LÃ¡Â»â€”i khi cÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
+      message: 'Lỗi khi cập nhật sản phẩm',
       error: error.message
     });
   }
 };
 
-// TÃ¡ÂºÂ¡o mÃ¡Â»â€ºi ProductInstance
+// Tạo mới ProductInstance
 const createProductInstance = async (req, res) => {
   try {
     const {
@@ -1822,7 +1831,7 @@ const createProductInstance = async (req, res) => {
     if (!productId || !currentRentPrice || !currentSalePrice) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lÃƒÂ²ng cung cÃ¡ÂºÂ¥p Ã„â€˜Ã¡ÂºÂ§y Ã„â€˜Ã¡Â»Â§ thÃƒÂ´ng tin'
+        message: 'Vui lòng cung cấp đầy đủ thông tin'
       });
     }
 
@@ -1830,7 +1839,7 @@ const createProductInstance = async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m cha'
+        message: 'Không tìm thấy sản phẩm cha'
       });
     }
 
@@ -1838,14 +1847,14 @@ const createProductInstance = async (req, res) => {
     if (!ALLOWED_CONDITION_LEVELS.has(normalizedLevel)) {
       return res.status(400).json({
         success: false,
-        message: 'TÃƒÂ¬nh trÃ¡ÂºÂ¡ng chÃ¡Â»â€° chÃ¡ÂºÂ¥p nhÃ¡ÂºÂ­n New hoÃ¡ÂºÂ·c Used'
+        message: 'Tình trạng chỉ chấp nhận New hoặc Used'
       });
     }
 
     const instance = new ProductInstance({
       productId,
       conditionLevel: normalizedLevel,
-      conditionScore: 100,
+      conditionScore: normalizedLevel === 'New' ? 100 : 75,
       lifecycleStatus: 'Available',
       currentRentPrice,
       currentSalePrice,
@@ -1859,20 +1868,20 @@ const createProductInstance = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'TÃ¡ÂºÂ¡o sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng',
+      message: 'Tạo sản phẩm thành công',
       data: populatedInstance
     });
   } catch (error) {
     console.error('Create product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'LÃ¡Â»â€”i khi tÃ¡ÂºÂ¡o sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
+      message: 'Lỗi khi tạo sản phẩm',
       error: error.message
     });
   }
 };
 
-// XÃƒÂ³a ProductInstance
+// Xóa ProductInstance
 const deleteProductInstance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1882,15 +1891,15 @@ const deleteProductInstance = async (req, res) => {
     if (!instance) {
       return res.status(404).json({
         success: false,
-        message: 'KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m'
+        message: 'Không tìm thấy sản phẩm'
       });
     }
 
-    // ChÃ¡Â»â€° cho phÃƒÂ©p xÃƒÂ³a nÃ¡ÂºÂ¿u sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m Ã„â€˜ang Ã¡Â»Å¸ trÃ¡ÂºÂ¡ng thÃƒÂ¡i Available
+    // Chỉ cho phép xóa nếu sản phẩm đang ở trạng thái Available
     if (instance.lifecycleStatus !== 'Available') {
       return res.status(400).json({
         success: false,
-        message: 'KhÃƒÂ´ng thÃ¡Â»Æ’ xÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m Ã„â€˜ang Ã„â€˜Ã†Â°Ã¡Â»Â£c thuÃƒÂª hoÃ¡ÂºÂ·c Ã„â€˜ang xÃ¡Â»Â­ lÃƒÂ½'
+        message: 'Không thể xóa sản phẩm đang được thuê hoặc đang xử lý'
       });
     }
 
@@ -1898,13 +1907,13 @@ const deleteProductInstance = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'XÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m thÃƒÂ nh cÃƒÂ´ng'
+      message: 'Xóa sản phẩm thành công'
     });
   } catch (error) {
     console.error('Delete product instance error:', error);
     res.status(500).json({
       success: false,
-      message: 'LÃ¡Â»â€”i khi xÃƒÂ³a sÃ¡ÂºÂ£n phÃ¡ÂºÂ©m',
+      message: 'Lỗi khi xóa sản phẩm',
       error: error.message
     });
   }
@@ -1913,8 +1922,8 @@ const deleteProductInstance = async (req, res) => {
 // Lấy danh sách instance có thể thuê/mua (dùng cho trang chi tiết khách hàng).
 // - Size/Color/Condition phải lấy từ ProductInstance (không từ Product.sizes).
 // - Rentable: chỉ loại các lifecycle kết thúc (Lost/Sold). Một instance đang Reserved/Rented
-//   vẫn có thể thuê cho khoảng ngày khác không overlap, nên phải hiện ra ở chỗ thuê.
-// - Purchasable: chỉ Available (đồ đang thuê không bán được).
+//   vẫn có thể thuê cho khoảng ngày khác không overlap, nên phải hiện ra ở chế độ thuê.
+// - Purchasable: chỉ Available (đã/đang thuê thì không bán được).
 const RENT_BLOCKING_LIFECYCLE = ['Lost', 'Sold'];
 
 const getAvailableInstances = async (req, res) => {
