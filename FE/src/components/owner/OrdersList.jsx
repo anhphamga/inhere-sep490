@@ -21,6 +21,7 @@ import {
 import { getOwnerOrdersApi, updateOwnerOrderStatusApi } from '../../services/owner.service'
 import { getAllRentOrdersApi } from '../../services/rent-order.service'
 import { currencyFormatter, toArray } from '../../utils/owner.utils'
+import { useAuth } from '../../contexts/AuthContext'
 
 const ORDER_TYPES = {
     sale: 'sale',
@@ -108,7 +109,6 @@ const getPrimaryItemName = (order, orderType) => {
 }
 
 const getOrderAmount = (order) => Number(order?.totalAmount || 0)
-
 const getSaleStatusOption = (saleMeta, status) => (
     toArray(saleMeta?.statusOptions).find((item) => item?.value === status) || null
 )
@@ -155,18 +155,37 @@ const getTimelineItems = (order, orderType) => {
             label: item?.statusLabel || item?.status || 'Cập nhật',
             description: item?.description || item?.action || 'Cập nhật đơn hàng',
             value: item?.updatedAt,
-            actor: item?.updatedBy?.name || '',
+            actor: item?.updatedBy?.name || order?.staffId?.name || '',
             active: true
         }))
     }
 
-    return [{
-        label: getRentStatusLabel(order?.status) || 'Đơn thuê',
-        description: 'Dữ liệu tiến trình hiện được lấy từ API đơn thuê.',
-        value: order?.updatedAt || order?.createdAt,
-        actor: order?.staffId?.name || '',
+    const staffName = order?.staffId?.name || ''
+    const items = []
+    items.push({
+        label: 'Tạo đơn',
+        description: 'Đơn thuê được tạo.',
+        value: order?.createdAt,
+        actor: '',
         active: true
-    }]
+    })
+    if (order?.confirmedAt) {
+        items.push({
+            label: 'Đã xác nhận',
+            description: 'Đơn thuê đã được xác nhận.',
+            value: order.confirmedAt,
+            actor: staffName,
+            active: true
+        })
+    }
+    items.push({
+        label: getRentStatusLabel(order?.status) || 'Đơn thuê',
+        description: 'Theo dõi trạng thái hiện tại của đơn thuê.',
+        value: order?.updatedAt || order?.createdAt,
+        actor: staffName,
+        active: true
+    })
+    return items
 }
 
 function DetailInfoRow({ icon, label, value, fullWidth = false }) {
@@ -219,6 +238,9 @@ function TypeTab({ active, icon, label, description, onClick }) {
 
 export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdate = true, fixedOrderType = '' }) {
     const location = useLocation()
+    const { user } = useAuth()
+    const role = String(user?.role || '').trim().toLowerCase()
+    const isStaffView = role === 'staff' && String(location.pathname || '').startsWith('/staff')
     const normalizedFixedOrderType = fixedOrderType === ORDER_TYPES.rent || fixedOrderType === ORDER_TYPES.sale
         ? fixedOrderType
         : ''
@@ -448,7 +470,9 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                     <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                        {orderType === ORDER_TYPES.sale ? 'Doanh thu hiển thị' : 'Giá trị đơn thuê'}
+                        {orderType === ORDER_TYPES.sale
+                            ? 'Doanh thu hiển thị'
+                            : 'Giá trị đơn thuê'}
                     </p>
                     <p className="mt-2 text-2xl font-bold text-slate-900">{currencyFormatter.format(stats.amount)}</p>
                 </div>
@@ -807,20 +831,25 @@ export default function OrdersList({ showRentOrders = true, allowSaleStatusUpdat
 
                                                         <div className="flex-1 rounded-2xl bg-slate-50 px-4 py-3">
                                                             <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className={`font-semibold ${item.active ? 'text-slate-900' : 'text-slate-500'}`}>{item.label}</p>
-                                                                    <p className="mt-1 text-sm text-slate-500">{item.description}</p>
-                                                                    <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                                                                        {item.value ? formatDateTime(item.value) : 'Chưa tới bước này'}
-                                                                    </p>
-                                                                </div>
-                                                                {item.active ? (
-                                                                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                                                        Hiện tại
-                                                                    </span>
-                                                                ) : null}
-                                                            </div>
-                                                        </div>
+                                                             <div>
+                                                                 <p className={`font-semibold ${item.active ? 'text-slate-900' : 'text-slate-500'}`}>{item.label}</p>
+                                                                 <p className="mt-1 text-sm text-slate-500">{item.description}</p>
+                                                                 {item.actor ? (
+                                                                     <p className="mt-1 text-sm text-slate-600">
+                                                                         <span className="font-medium text-slate-700">Người thực hiện:</span> {item.actor}
+                                                                     </p>
+                                                                 ) : null}
+                                                                 <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                                                                     {item.value ? formatDateTime(item.value) : 'Chưa tới bước này'}
+                                                                 </p>
+                                                             </div>
+                                                             {index === timelineItems.length - 1 ? (
+                                                                 <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                                                     Hiện tại
+                                                                 </span>
+                                                             ) : null}
+                                                         </div>
+                                                     </div>
                                                     </div>
                                                 )
                                             })}

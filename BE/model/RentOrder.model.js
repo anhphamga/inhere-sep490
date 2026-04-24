@@ -15,6 +15,11 @@ const rentOrderSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  shiftId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Shift',
+    default: null
+  },
   status: {
     type: String,
     enum: [

@@ -24,17 +24,19 @@ import OwnerOrdersScreen from '../pages/owner/OwnerOrdersScreen'
 import OwnerRentOrdersScreen from '../pages/owner/OwnerRentOrdersScreen'
 import OwnerProductDetailScreen from '../pages/owner/OwnerProductDetailScreen'
 import OwnerProductsScreen from '../pages/owner/OwnerProductsScreen'
-import OwnerCategoriesScreen from '../pages/owner/OwnerCategoriesScreen'
-import OwnerPromotionsScreen from '../pages/owner/OwnerPromotionsScreen'
-import OwnerDamagePoliciesScreen from '../pages/owner/OwnerDamagePoliciesScreen'
-import OwnerReportsScreen from '../pages/owner/OwnerReportsScreen'
-import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen'
-import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen'
-import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen'
+import OwnerCategoriesScreen from '../pages/owner/OwnerCategoriesScreen';
+import OwnerPromotionsScreen from '../pages/owner/OwnerPromotionsScreen';
+import OwnerDamagePoliciesScreen from '../pages/owner/OwnerDamagePoliciesScreen';
+import OwnerStaffPerformancePage from '../pages/owner/OwnerStaffPerformancePage';
+import OwnerStaffScreen from '../pages/owner/OwnerStaffScreen';
+import OwnerUserDetailScreen from '../pages/owner/OwnerUserDetailScreen';
+import OwnerUsersScreen from '../pages/owner/OwnerUsersScreen';
 import InventoryDashboardPage from '../pages/owner/InventoryDashboardPage'
 import InventoryProductDetailPage from '../pages/owner/InventoryProductDetailPage'
 import OwnerReviewsScreen from '../pages/owner/OwnerReviewsScreen'
 import OwnerBlogsScreen from '../pages/owner/OwnerBlogsScreen'
+import OwnerShiftSchedulesPage from '../pages/owner/OwnerShiftSchedulesPage'
+import OwnerShiftAnalyticsPage from '../pages/owner/OwnerShiftAnalyticsPage'
 // Rental pages
 import RentalCheckoutPage from '../pages/RentalCheckoutPage'
 import RentalDetailPage from '../pages/RentalDetailPage'
@@ -103,7 +105,10 @@ const AppRoutes = () => {
                     <Route path="promotions" element={<OwnerPromotionsScreen />} />
                     <Route path="damage-policies" element={<OwnerDamagePoliciesScreen />} />
                     <Route path="alerts" element={<OwnerAlertsScreen />} />
-                    <Route path="reports" element={<OwnerReportsScreen />} />
+                    <Route path="staff-performance" element={<OwnerStaffPerformancePage />} />
+                    <Route path="reports" element={<Navigate to="/owner/staff-performance" replace />} />
+                    <Route path="shift-schedules" element={<OwnerShiftSchedulesPage />} />
+                    <Route path="shift-analytics" element={<OwnerShiftAnalyticsPage />} />
                 </Route>
             </Route>
             <Route element={<PrivateRoute roles={['staff']} />}>

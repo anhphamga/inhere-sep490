@@ -9,6 +9,7 @@ const Invoice = require('../model/Invoice.model');
 const User = require('../model/User.model');
 const GuestVerification = require('../model/GuestVerification.model');
 const Voucher = require('../model/Voucher.model');
+const { getActiveShiftForStaff } = require('../services/shift.service');
 const bcrypt = require('bcryptjs');
 const { isValidEmail, isValidPhone, normalizeEmail, normalizePhone } = require('../utils/guestVerification');
 const { normalizeIdempotencyKey, isDuplicateIdempotencyError } = require('../utils/idempotency');
@@ -401,6 +402,8 @@ const releaseSaleOrderInstances = async (orderId, session = null) => {
 
 const createSaleOrderWithItems = async ({
   customerId = null,
+  staffId = null,
+  shiftId = null,
   paymentMethod = 'COD',
   totalAmount = 0,
   shippingFee = 0,
@@ -425,7 +428,8 @@ const createSaleOrderWithItems = async ({
 
   const [saleOrder] = await SaleOrder.create([{
     customerId,
-    staffId: null,
+    staffId: staffId || null,
+    shiftId: shiftId || null,
     status: initialStatus,
     userStatus: resolveSaleOrderUserStatus(initialStatus),
     paymentMethod: normalizedMethod,
@@ -880,6 +884,7 @@ exports.guestCheckout = async (req, res) => {
       voucherCode = '',
     } = req.body || {};
     idempotencyKey = normalizeIdempotencyKey(req);
+    const role = '';
 
     if (!verificationToken) {
       return res.status(400).json({ success: false, message: 'Thiếu token xác minh guest.' });
@@ -941,6 +946,17 @@ exports.guestCheckout = async (req, res) => {
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'Giỏ hàng mua đang trống.' });
+    }
+
+    let activeShift = null;
+    if (role === 'staff') {
+      activeShift = await getActiveShiftForStaff(customerId);
+      if (!activeShift?.shift) {
+        return res.status(403).json({
+          success: false,
+          message: 'Bạn phải đang trong ca làm (đã check-in và chưa check-out) để tạo đơn.',
+        });
+      }
     }
 
     const normalizedName = String(name || '').trim();
@@ -1092,6 +1108,8 @@ exports.checkout = async (req, res) => {
 
   try {
     const customerId = req.user?.id;
+    const role = String(req.user?.role || '').trim().toLowerCase();
+    let activeShift = null;
     const {
       name = '',
       phone = '',
@@ -1166,9 +1184,21 @@ exports.checkout = async (req, res) => {
     const normalizedShippingFee = 0;
     const totalAmount = voucherApplication.finalSubtotal;
 
+    if (role === 'staff') {
+      activeShift = await getActiveShiftForStaff(customerId);
+      if (!activeShift?.shift) {
+        return res.status(403).json({
+          success: false,
+          message: 'Bạn phải đang trong ca làm (đã check-in và chưa check-out) để tạo đơn.',
+        });
+      }
+    }
+
     const saleOrder = await runSaleCheckoutTransaction({
       createOrderPayload: {
         customerId,
+        staffId: role === 'staff' ? customerId : null,
+        shiftId: role === 'staff' ? activeShift.shift._id : null,
         paymentMethod,
         totalAmount,
         shippingFee: normalizedShippingFee,
@@ -1362,9 +1392,6 @@ exports.getMySaleOrders = async (req, res) => {
     const attachedOrders = await attachSaleOrderItems(orders);
     const ordersWithInvoice = await attachSaleInvoiceCompat(attachedOrders);
     const ordersWithReviewState = await attachReviewStatesForCustomer(ordersWithInvoice, customerId);
-    // #region agent log
-    fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H3', location: 'BE/controllers/order.controller.js:getMySaleOrders', message: 'Customer orders payload snapshot', data: { customerId: String(customerId || ''), count: ordersWithReviewState.length, statuses: ordersWithReviewState.map((o) => ({ id: String(o?._id || ''), status: String(o?.status || ''), userStatus: String(o?.userStatus || '') })) }, timestamp: Date.now() }) }).catch(() => { });
-    // #endregion
 
     return res.json({
       success: true,
@@ -1589,9 +1616,6 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
     }
 
     const order = await SaleOrder.findById(id);
-    // #region agent log
-    fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H1', location: 'BE/controllers/order.controller.js:updateOwnerSaleOrderStatus:before', message: 'Staff update status request', data: { orderId: String(id || ''), requestedStatus: String(status || ''), normalizedStatus: String(normalizedStatus || ''), currentStatus: String(order?.status || ''), currentUserStatus: String(order?.userStatus || ''), actorRole: String(req?.user?.role || '') }, timestamp: Date.now() }) }).catch(() => { });
-    // #endregion
     if (!order || order.orderType !== ORDER_TYPE.BUY) {
       return res.status(404).json({
         success: false,
@@ -1626,11 +1650,14 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
       order.status = normalizedStatus;
       order.userStatus = resolveSaleOrderUserStatus(normalizedStatus, order.userStatus);
     }
-    if (!order.staffId) {
-      order.staffId = req.user?.id || null;
-    }
     order.history = Array.isArray(order.history) ? order.history : [];
     const actorRole = String(req.user?.role || '').trim().toLowerCase();
+    if (actorRole === 'staff') {
+      order.staffId = req.user?.id || null;
+    }
+    if (!order.shiftId && actorRole === 'staff' && req.activeShift?.shift?._id) {
+      order.shiftId = req.activeShift.shift._id;
+    }
     if (isRefundedSaleStatus(normalizedStatus)) {
       const refundedLabel = getSaleStatusMeta('Refunded').label;
       order.history.push({
@@ -1651,9 +1678,6 @@ exports.updateOwnerSaleOrderStatus = async (req, res) => {
       });
     }
     await order.save();
-    // #region agent log
-    fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H1', location: 'BE/controllers/order.controller.js:updateOwnerSaleOrderStatus:afterSave', message: 'Staff update status persisted', data: { orderId: String(order?._id || ''), savedStatus: String(order?.status || ''), savedUserStatus: String(order?.userStatus || ''), historyCount: Array.isArray(order?.history) ? order.history.length : 0, lastHistoryStatus: String(order?.history?.[order.history.length - 1]?.status || ''), lastHistoryAction: String(order?.history?.[order.history.length - 1]?.action || '') }, timestamp: Date.now() }) }).catch(() => { });
-    // #endregion
     if (normalizedStatus === 'Cancelled') {
       await notifySaleOrderCancelled(order, 'owner_or_staff_cancel');
     }

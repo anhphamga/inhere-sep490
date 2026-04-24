@@ -8,6 +8,7 @@ import {
   SHIFT_KPI_STATUS_VALUES,
   STAFF_SHIFT_ROUTES,
 } from '../../constants/shiftManagement'
+import { getCurrentShift } from '../../api/shiftScheduleApi'
 import { getAllRentOrdersApi } from '../../services/rent-order.service'
 import { getOwnerOrdersApi } from '../../services/owner.service'
 import { getAdminReviewStatsSummaryApi } from '../../services/review.service'
@@ -43,7 +44,6 @@ const quickCardTone = {
 const SUCCESS_ORDER_STATUSES = SHIFT_KPI_STATUS_GROUPS.successOrder
 const FINISHED_ORDER_STATUSES = SHIFT_KPI_STATUS_GROUPS.finishedOrder
 const RENTING_FLOW_STATUSES = SHIFT_KPI_STATUS_GROUPS.rentingFlow
-const SALE_PAID_STATUSES = new Set(SHIFT_KPI_STATUS_GROUPS.salePaid)
 
 const toArray = (value) => (Array.isArray(value) ? value : [])
 const toNumber = (value, fallback = 0) => {
@@ -114,38 +114,6 @@ const getOrderCustomer = (order) =>
   || order?.guestName
   || order?.customerName
   || 'Khách hàng'
-
-const getPaidToday = (order, rangeStart, rangeEnd) => {
-  const payments = toArray(order?.payments).filter(
-    (item) => String(item?.status || '').toLowerCase() === 'paid' && isWithinRange(item?.paidAt || item?.createdAt || item?.updatedAt, rangeStart, rangeEnd)
-  )
-  const deposits = toArray(order?.deposits).filter(
-    (item) => String(item?.status || '').toLowerCase() === 'paid' && isWithinRange(item?.paidAt || item?.createdAt || item?.updatedAt, rangeStart, rangeEnd)
-  )
-  const paymentAmount = payments.reduce((sum, item) => sum + toNumber(item?.amount), 0)
-  const depositAmount = deposits.reduce((sum, item) => sum + toNumber(item?.amount), 0)
-  return paymentAmount + depositAmount
-}
-
-const getSalePaidToday = (order, rangeStart, rangeEnd) => {
-  const totalAmount = toNumber(order?.totalAmount)
-  if (totalAmount <= 0) return 0
-
-  const historyPaidToday = toArray(order?.history).some((entry) => {
-    const action = String(entry?.action || '').toLowerCase()
-    const status = String(entry?.status || '').trim()
-    const touchedPayment = action.includes('payment') || SALE_PAID_STATUSES.has(status)
-    return touchedPayment && isWithinRange(entry?.updatedAt, rangeStart, rangeEnd)
-  })
-  if (historyPaidToday) return totalAmount
-
-  const status = String(order?.status || '').trim()
-  if (!SALE_PAID_STATUSES.has(status)) return 0
-
-  return isWithinRange(order?.paidAt || order?.updatedAt || order?.createdAt, rangeStart, rangeEnd)
-    ? totalAmount
-    : 0
-}
 
 const toHourMinute = (value) => {
   const d = new Date(value)
@@ -480,18 +448,29 @@ export default function StaffDashboard() {
     setErrorMessage('')
 
     try {
-      const [{ start, end, now }, allRentOrders, allSaleOrders, allBookings, reviewStatsResult] = await Promise.all([
+      const [
+        { start, end, now },
+        allRentOrders,
+        allSaleOrders,
+        allBookings,
+        reviewStatsResult,
+        currentShiftResult,
+      ] = await Promise.all([
         Promise.resolve(getTimeFilterRange(timeFilter)),
         fetchAllRentOrders(),
         fetchAllSaleOrders(),
         fetchAllStaffBookings(),
         getAdminReviewStatsSummaryApi(),
+        getCurrentShift().catch(() => ({ data: { data: null } })),
       ])
 
       const orders = toArray(allRentOrders)
       const saleOrders = toArray(allSaleOrders)
       const bookings = toArray(allBookings)
       const reviewStats = reviewStatsResult?.data || {}
+
+      const currentShiftData = currentShiftResult?.data?.data ?? null
+      const activeShift = currentShiftData?.shift || null
 
       const ordersInRange = orders.filter((order) => isWithinRange(order?.createdAt || order?.updatedAt, start, end))
       const bookingsInRange = bookings.filter((booking) => isWithinRange(booking?.date || booking?.createdAt, start, end))
@@ -500,9 +479,6 @@ export default function StaffDashboard() {
       const todayEnd = endOfDay(now)
       const ordersToday = orders.filter((order) => isWithinRange(order?.createdAt || order?.updatedAt, todayStart, todayEnd))
       const saleOrdersToday = saleOrders.filter((order) => isWithinRange(order?.createdAt || order?.updatedAt, todayStart, todayEnd))
-      const paidTodayFromRent = orders.reduce((sum, order) => sum + getPaidToday(order, todayStart, todayEnd), 0)
-      const paidTodayFromSale = saleOrders.reduce((sum, order) => sum + getSalePaidToday(order, todayStart, todayEnd), 0)
-      const paidToday = paidTodayFromRent + paidTodayFromSale
 
       const quickStats = [
         { key: 'orders', label: 'Đơn hôm nay', value: ordersToday.length + saleOrdersToday.length, route: STAFF_SHIFT_ROUTES.saleOrders, tone: 'primary', note: 'Tổng đơn thuê + đơn bán trong ngày' },
@@ -510,7 +486,6 @@ export default function StaffDashboard() {
         { key: 'renting', label: 'Đang thuê', value: orders.filter((order) => String(order?.status || '') === SHIFT_KPI_STATUS_VALUES.renting).length, route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'success', note: 'Đang trong thời hạn thuê' },
         { key: 'return', label: 'Chờ trả', value: orders.filter((order) => String(order?.status || '') === SHIFT_KPI_STATUS_VALUES.waitingReturn).length, route: STAFF_SHIFT_ROUTES.returnOrders, tone: 'warning', note: 'Cần kiểm đồ khi nhận' },
         { key: 'late', label: 'Trễ hạn', value: orders.filter((order) => String(order?.status || '') === SHIFT_KPI_STATUS_VALUES.late).length, route: STAFF_SHIFT_ROUTES.rentOrders, tone: 'danger', note: 'Cần liên hệ khách ngay' },
-        { key: 'money', label: 'Tiền thu hôm nay', value: paidToday, route: STAFF_SHIFT_ROUTES.saleOrders, tone: 'primary', note: 'Tổng thu đã thanh toán trong ngày' },
       ]
 
       const urgent = {

@@ -326,6 +326,11 @@ export const createValidationErrors = (form) => {
         errors.name = 'Tên sản phẩm là bắt buộc.'
     }
 
+    const categoryPath = Array.isArray(form.categoryPath) ? form.categoryPath.filter(Boolean) : []
+    if (categoryPath.length === 0) {
+        errors.category = 'Danh mục sản phẩm là bắt buộc.'
+    }
+
     if (toPositiveNumber(form.baseSalePrice, 0) <= 0) {
         errors.baseSalePrice = 'Giá bán phải lớn hơn 0.'
     }
@@ -374,6 +379,12 @@ export const createValidationErrors = (form) => {
         }
     }
 
+    const hasRemoteImages = Array.isArray(form.images) && form.images.filter(Boolean).length > 0
+    const hasLocalImages = Array.isArray(form.imageFiles) && form.imageFiles.some((item) => Boolean(item?.file))
+    if (!hasRemoteImages && !hasLocalImages) {
+        errors.images = 'Vui lòng tải lên ít nhất một hình ảnh sản phẩm.'
+    }
+
     return errors
 }
 
@@ -390,6 +401,9 @@ export const createOwnerProductPayload = (form) => {
     const images = ensureUniqueStringList(form.images)
     const sizeGuideMode = toText(form.sizeGuideMode).toLowerCase() === 'product' ? 'product' : 'global'
     const sizeGuideRows = normalizeSizeGuideRows(form.sizeGuideRows)
+    const imageFiles = Array.isArray(form.imageFiles)
+        ? form.imageFiles.map((item) => item?.file).filter(Boolean)
+        : []
 
     const payload = {
         name: normalizedName,
@@ -408,7 +422,7 @@ export const createOwnerProductPayload = (form) => {
         baseRentPrice: rentPrice,
         commonRentPrice: rentPrice,
         images,
-        imageFiles: Array.isArray(form.imageFiles) ? form.imageFiles : [],
+        imageFiles,
         size: normalizedSizes[0]?.size || 'FREE SIZE',
         colorVariants: [{ name: normalizedColor, images }],
         variantMatrix: [],

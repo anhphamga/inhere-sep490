@@ -11,19 +11,36 @@ export default function ImageSection({
         <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <h4 className="text-sm font-bold text-slate-900">Hình ảnh</h4>
             <div className="space-y-2">
-                <label className="inline-flex h-10 items-center px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer hover:bg-slate-50">
-                    Tải lên hình ảnh
-                    <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(event) => {
-                            onUploadFiles(event.target.files)
-                            event.target.value = ''
-                        }}
-                    />
-                </label>
+                <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex h-10 items-center px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer hover:bg-slate-50">
+                        Tải lên hình ảnh
+                        <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(event) => {
+                                onUploadFiles(event.target.files)
+                                event.target.value = ''
+                            }}
+                        />
+                    </label>
+                    <label className="inline-flex h-10 items-center px-3 rounded-lg border border-slate-200 text-sm font-medium cursor-pointer hover:bg-slate-50">
+                        Chọn thư mục ảnh
+                        <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            webkitdirectory=""
+                            directory=""
+                            className="hidden"
+                            onChange={(event) => {
+                                onUploadFiles(event.target.files)
+                                event.target.value = ''
+                            }}
+                        />
+                    </label>
+                </div>
             </div>
 
             <div className="space-y-2">

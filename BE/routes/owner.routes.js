@@ -8,6 +8,7 @@ const analyticsController = require('../controllers/analytics.controller');
 const orderController = require('../controllers/order.controller');
 const sizeGuideController = require('../controllers/sizeGuide.controller');
 const { requireAuth, requireOwner, authorize } = require('../middleware/auth.middleware');
+const { requireActiveShiftForStaff } = require('../middleware/activeShift.middleware');
 const { uploadExcel, uploadProductImages } = require('../middleware/upload.middleware');
 
 const router = express.Router();
@@ -57,8 +58,8 @@ router.patch('/staff/:id/role', requireAuth, requireOwner, staffController.updat
 router.get('/staff/:id/permissions', requireAuth, requireOwner, staffController.getStaffPermissions);
 router.patch('/staff/:id/permissions', requireAuth, requireOwner, staffController.updateStaffPermissions);
 
-router.get('/orders', requireAuth, authorize('owner', 'staff'), orderController.getOwnerSaleOrders);
-router.patch('/orders/:id/status', requireAuth, authorize('staff'), orderController.updateOwnerSaleOrderStatus);
+router.get('/orders', requireAuth, requireActiveShiftForStaff, authorize('owner', 'staff'), orderController.getOwnerSaleOrders);
+router.patch('/orders/:id/status', requireAuth, requireActiveShiftForStaff, authorize('staff'), orderController.updateOwnerSaleOrderStatus);
 
 router.get('/analytics/revenue', requireAuth, requireOwner, analyticsController.getRevenueAnalytics);
 router.get('/analytics/rentals', requireAuth, requireOwner, analyticsController.getRentalStats);

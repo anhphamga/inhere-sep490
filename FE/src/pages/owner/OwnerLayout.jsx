@@ -18,6 +18,7 @@ import {
   Users,
   Package,
   Folder,
+  CalendarClock,
 } from 'lucide-react'
 import { cn } from '../../utils/ui.utils'
 import { useAuth } from '../../contexts/AuthContext'
@@ -32,12 +33,14 @@ const navItems = [
   { to: '/owner/inventory', labelKey: 'sidebar.inventory', icon: Package },
   { to: '/owner/staff', labelKey: 'sidebar.staff', icon: BadgeCheck },
   { to: '/owner/orders', labelKey: 'sidebar.orders', icon: ReceiptText },
+  { to: '/owner/shift-analytics', label: 'Báo cáo ca', icon: BarChart3 },
+  { to: '/owner/shift-schedules', label: 'Lịch làm', icon: CalendarClock },
   { to: '/owner/rent-orders', label: 'Quản lý đơn thuê', icon: Package },
   { to: '/owner/blogs', label: 'Quản lý blog', icon: MessageSquareText },
   { to: '/owner/reviews', label: 'Quản lý đánh giá', icon: MessageSquareText },
   { to: '/owner/promotions', labelKey: 'sidebar.vouchers', icon: Megaphone },
   { to: '/owner/damage-policies', label: 'Chính sách hư hỏng', icon: Settings },
-  { to: '/owner/reports', labelKey: 'sidebar.analytics', icon: BarChart3 },
+  { to: '/owner/staff-performance', label: 'Hiệu suất nhân viên', icon: BarChart3 },
 ]
 
 const pageTitleMap = {
@@ -48,9 +51,12 @@ const pageTitleMap = {
   inventory: 'pageTitles.inventory',
   staff: 'pageTitles.staffManagement',
   'staff-analytics': 'pageTitles.staffAnalytics',
+  'staff-performance': 'Hiệu suất nhân viên',
   orders: 'pageTitles.rentOrders',
-  'rent-orders': 'Quan ly don thue',
-  blogs: 'Quan ly blog',
+  'shift-analytics': 'Báo cáo ca',
+  'shift-schedules': 'Lịch làm',
+  'rent-orders': 'Quản lý đơn thuê',
+  blogs: 'Quản lý blog',
   promotions: 'pageTitles.vouchers',
   reviews: 'pageTitles.reviews',
   alerts: 'pageTitles.alerts',

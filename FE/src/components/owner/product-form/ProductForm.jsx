@@ -110,6 +110,7 @@ export default function ProductForm({
             if (value) nextPath.push(value)
             return { ...prev, categoryPath: nextPath.slice(0, 3) }
         })
+        setErrors((prev) => ({ ...prev, category: '' }))
     }
 
     const toggleHasSizes = (checked) => {
@@ -244,7 +245,8 @@ export default function ProductForm({
             const existingKeys = new Set(prev.imageFiles.map((item) => item.key))
             const additions = []
             selected.forEach((file) => {
-                const key = `${file.name}__${file.size}__${file.lastModified}`
+                const rel = String(file.webkitRelativePath || '').trim()
+                const key = `${rel || file.name}__${file.size}__${file.lastModified}`
                 if (existingKeys.has(key)) return
                 existingKeys.add(key)
                 additions.push({
@@ -256,6 +258,7 @@ export default function ProductForm({
             })
             return { ...prev, imageFiles: [...prev.imageFiles, ...additions] }
         })
+        setErrors((prev) => ({ ...prev, images: '' }))
     }
 
     const addImageUrl = (url = '') => {
@@ -267,12 +270,14 @@ export default function ProductForm({
             if (exists) return prev
             return { ...prev, images: [...prev.images, imageUrl] }
         })
+        setErrors((prev) => ({ ...prev, images: '' }))
         setImageUrlDraft('')
     }
 
     const deleteImage = (item) => {
         if (item.kind === 'remote') {
             setForm((prev) => ({ ...prev, images: prev.images.filter((url) => url !== item.url) }))
+            setErrors((prev) => ({ ...prev, images: '' }))
             return
         }
 
@@ -284,6 +289,7 @@ export default function ProductForm({
                 imageFiles: prev.imageFiles.filter((current) => current.id !== item.id),
             }
         })
+        setErrors((prev) => ({ ...prev, images: '' }))
     }
 
     const setPrimaryImage = (item) => {
@@ -306,19 +312,14 @@ export default function ProductForm({
     }
 
     const submit = async (isDraft) => {
-        console.log('[ProductForm] Submit clicked, isDraft:', isDraft)
         const validationErrors = createValidationErrors(form)
         if (!isDraft && Object.keys(validationErrors).length > 0) {
-            console.warn('[ProductForm] Validation errors:', validationErrors)
             setErrors(validationErrors)
             return
         }
 
         const payload = createOwnerProductPayload(form)
-        console.log('[ProductForm] Submitting payload:', payload)
-        console.log('[ProductForm] onSubmit callback exists?', !!onSubmit)
         await onSubmit?.({ payload: { ...payload, isDraft }, isDraft })
-        console.log('[ProductForm] onSubmit completed')
     }
 
     return (
@@ -375,6 +376,7 @@ export default function ProductForm({
                 onImageUrlChange={setImageUrlDraft}
                 onAddImageUrl={addImageUrl}
             />
+            {errors.images ? <div className="owner-alert">{errors.images}</div> : null}
 
             {errorMessage ? <div className="owner-alert">{errorMessage}</div> : null}
 

@@ -71,6 +71,7 @@ export default function BasicInfoSection({
                     disabled={!values.categoryPath[1]}
                 />
             </div>
+            {errors.category ? <p className="text-xs text-rose-600">{errors.category}</p> : null}
 
             <div className="space-y-1.5">
                 <label className="text-sm font-medium text-slate-700">Mô tả</label>

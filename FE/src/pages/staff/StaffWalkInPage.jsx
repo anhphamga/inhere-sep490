@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import axiosClient from '../../config/axios'
 import { searchCustomersApi, createWalkInOrderApi, createGuestCustomerApi } from '../../services/rent-order.service'
 import { createDepositPaymentLinkApi } from '../../services/payment.service'
+import { getStoredActiveShiftId } from '../../utils/shift.utils'
+import { getCurrentShift } from '../../api/shiftScheduleApi'
 
 // Trả về "YYYY-MM-DDThh:mm" theo giờ địa phương để dùng với datetime-local
 const nowLocalIso = () => {
@@ -21,6 +23,10 @@ export default function StaffWalkInPage() {
   const [step, setStep] = useState(1)
   const [depositMethod, setDepositMethod] = useState('Cash') // 'Cash' | 'PayOS'
   const [createdOrder, setCreatedOrder] = useState(null) // sau khi API thành công
+
+  const [currentShift, setCurrentShift] = useState(null)
+  const [currentShiftLoading, setCurrentShiftLoading] = useState(false)
+  const hasActiveShift = Boolean(currentShift?.shift?._id)
 
   // Customer
   const [customerMode, setCustomerMode] = useState('search') // 'search' | 'new'
@@ -55,6 +61,30 @@ export default function StaffWalkInPage() {
   const [success, setSuccess] = useState('')
 
   const searchTimer = useRef(null)
+
+  useEffect(() => {
+    let mounted = true
+    setCurrentShiftLoading(true)
+    getCurrentShift()
+      .then((res) => {
+        const payload = res?.data
+        const data = payload?.data ?? null
+        if (!mounted) return
+        setCurrentShift(data)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setCurrentShift(null)
+      })
+      .finally(() => {
+        if (!mounted) return
+        setCurrentShiftLoading(false)
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // ---- Computed ----
   const rentalDays = useMemo(() => {
@@ -219,15 +249,20 @@ export default function StaffWalkInPage() {
     if (items.length === 0) { setError('Chưa chọn sản phẩm nào'); return }
     if (!startDate || !endDate) { setError('Chưa chọn ngày và giờ thuê'); return }
     if (new Date(endDate) <= new Date(startDate)) { setError('Giờ kết thúc phải sau giờ bắt đầu'); return }
+    if (!hasActiveShift) { setError('Bạn cần đang trong ca làm (đã check-in và chưa check-out) để tạo đơn.'); return }
     setError('')
     setStep(3)
   }
 
   // ---- Submit (called from step 3) ----
   const handleSubmit = async () => {
+    if (!hasActiveShift) { setError('Bạn cần đang trong ca làm (đã check-in và chưa check-out) để tạo đơn.'); return }
     setError('')
     setLoading(true)
     try {
+      // Phase 2 prep: attach active shift context if staff has checked-in.
+      // Backend may ignore unknown fields safely; keep this optional to avoid breaking current flow.
+      const activeShiftId = getStoredActiveShiftId()
       const orderItems = items.map((item) => ({
         productId: item.productId,
         finalPrice: item.rentPrice * rentalDays,
@@ -243,6 +278,7 @@ export default function StaffWalkInPage() {
         rentEndDate: new Date(endDate).toISOString(),
         items: orderItems,
         depositMethod: depositMethod === 'PayOS' ? 'Online' : 'Cash',
+        ...(activeShiftId ? { shiftId: activeShiftId } : {}),
       })
 
       const orderId = res.data?._id || res.data?.order?._id || res.order?._id
@@ -315,6 +351,20 @@ export default function StaffWalkInPage() {
           ))}
         </div>
       </div>
+
+      {currentShiftLoading ? (
+        <div className="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+          Đang kiểm tra ca hiện tại...
+        </div>
+      ) : hasActiveShift ? (
+        <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          🟢 Bạn đang trong ca: {currentShift.shift.startTime} - {currentShift.shift.endTime}
+        </div>
+      ) : (
+        <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+          🔴 Bạn cần đang trong ca làm (đã check-in và chưa check-out) để tạo đơn.
+        </div>
+      )}
 
       {/* Alerts */}
       {success && (
@@ -905,7 +955,8 @@ export default function StaffWalkInPage() {
                 setError('')
                 setStep(2)
               }}
-              className="flex-1 h-11 rounded-2xl bg-emerald-600 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+              disabled={loading || !hasActiveShift}
+              className="flex-1 h-11 rounded-2xl bg-emerald-600 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
             >
               Tiếp theo →
             </button>
@@ -915,7 +966,7 @@ export default function StaffWalkInPage() {
             <button
               type="button"
               onClick={goToPayment}
-              disabled={items.length === 0}
+              disabled={loading || !hasActiveShift || items.length === 0}
               className="flex-1 h-11 rounded-2xl bg-emerald-600 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
             >
               Xem lại & Thu cọc →
@@ -926,7 +977,7 @@ export default function StaffWalkInPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || !hasActiveShift}
               className="flex-1 h-11 rounded-2xl bg-emerald-600 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
             >
               {loading ? (

@@ -9,6 +9,7 @@ const {
 } = require('../middleware/auth.middleware');
 const { createFieldAccessMiddleware } = require('../middleware/fieldAccess.middleware');
 const { loadRentOrderAccessContext } = require('../middleware/rentOrderAccess.middleware');
+const { requireActiveShiftForStaff } = require('../middleware/activeShift.middleware');
 
 const orderFieldFilter = createFieldAccessMiddleware([
   {
@@ -39,6 +40,7 @@ const canOperateAssignedOrder = (req, user) => {
 router.get(
   '/all',
   authenticate,
+  requireActiveShiftForStaff,
   authorizePermission('orders_rent.order.list'),
   orderFieldFilter,
   rentOrderController.getAllRentOrders
@@ -48,6 +50,7 @@ router.get(
 router.get(
   '/customers/search',
   authenticate,
+  requireActiveShiftForStaff,
   authorizeWithCondition('orders_rent.order.list', canOperateAssignedOrder),
   rentOrderController.searchCustomers
 );
@@ -56,6 +59,7 @@ router.get(
 router.post(
   '/customers/guest',
   authenticate,
+  requireActiveShiftForStaff,
   authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
   rentOrderController.createGuestCustomer
 );
@@ -64,12 +68,13 @@ router.post(
 router.post(
   '/walk-in',
   authenticate,
+  requireActiveShiftForStaff,
   authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
   rentOrderController.createWalkInOrder
 );
 
-router.post('/', authenticate, rentOrderController.createRentOrder);
-router.get('/my', authenticate, rentOrderController.getMyRentOrders);
+router.post('/', authenticate, requireActiveShiftForStaff, rentOrderController.createRentOrder);
+router.get('/my', authenticate, requireActiveShiftForStaff, rentOrderController.getMyRentOrders);
 
 // Guest rent flow (không yêu cầu đăng nhập; cần guestVerificationToken email OTP)
 router.post('/guest', rentOrderController.createGuestRentOrder);
@@ -79,13 +84,14 @@ router.get('/guest/:id', rentOrderController.getGuestRentOrderById);
 // Guest tự hủy đơn khi còn PendingDeposit (xác thực bằng magic-link token hoặc email)
 router.put('/guest/:id/cancel', rentOrderController.cancelGuestRentOrder);
 
-router.get('/:id', authenticate, orderFieldFilter, rentOrderController.getRentOrderById);
-router.post('/:id/deposit', authenticate, rentOrderController.payDeposit);
-router.put('/:id/cancel', authenticate, rentOrderController.cancelRentOrder);
+router.get('/:id', authenticate, requireActiveShiftForStaff, orderFieldFilter, rentOrderController.getRentOrderById);
+router.post('/:id/deposit', authenticate, requireActiveShiftForStaff, rentOrderController.payDeposit);
+router.put('/:id/cancel', authenticate, requireActiveShiftForStaff, rentOrderController.cancelRentOrder);
 
 router.put(
   '/:id/collect-deposit',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
   rentOrderController.staffCollectDeposit
@@ -94,6 +100,7 @@ router.put(
 router.put(
   '/:id/confirm',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
   rentOrderController.confirmRentOrder
@@ -102,6 +109,7 @@ router.put(
 router.put(
   '/:id/pickup',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.pickup.complete', canOperateAssignedOrder),
   rentOrderController.confirmPickup
@@ -110,6 +118,7 @@ router.put(
 router.get(
   '/:id/items/:itemId/swap-candidates',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
   rentOrderController.getSwapCandidates
@@ -118,6 +127,7 @@ router.get(
 router.put(
   '/:id/swap-item',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
   rentOrderController.swapOrderItem
@@ -126,6 +136,7 @@ router.put(
 router.put(
   '/:id/waiting-pickup',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.order.confirm', canOperateAssignedOrder),
   rentOrderController.markWaitingPickup
@@ -134,6 +145,7 @@ router.put(
 router.put(
   '/:id/waiting-return',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.return.process', canOperateAssignedOrder),
   rentOrderController.markWaitingReturn
@@ -142,6 +154,7 @@ router.put(
 router.put(
   '/:id/return',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition(
     'orders_rent.return.process',
@@ -159,6 +172,7 @@ router.put(
 router.put(
   '/:id/no-show',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.no_show.mark', canOperateAssignedOrder),
   rentOrderController.markNoShow
@@ -167,6 +181,7 @@ router.put(
 router.put(
   '/:id/finalize',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizeWithCondition('orders_rent.order.finalize', canOperateAssignedOrder),
   rentOrderController.finalizeRentOrder
@@ -175,6 +190,7 @@ router.put(
 router.put(
   '/:id/complete',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizePermission('orders_rent.return.finalize'),
   rentOrderController.completeRentOrder
@@ -183,6 +199,7 @@ router.put(
 router.put(
   '/:id/complete-washing',
   authenticate,
+  requireActiveShiftForStaff,
   loadRentOrderAccessContext,
   authorizePermission('orders_rent.washing.complete'),
   rentOrderController.completeWashing

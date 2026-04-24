@@ -495,62 +495,62 @@ const normalizePayload = (body = {}) => {
 const ensureOwnerProductRequired = (payload) => {
   if (payload.isDraft) {
     if (Number.isNaN(payload.baseRentPrice) || Number.isNaN(payload.baseSalePrice)) {
-      return 'baseRentPrice and baseSalePrice must be valid numbers';
+      return 'Giá thuê và giá bán phải là số hợp lệ.';
     }
     if (payload.baseRentPrice < 0 || payload.baseSalePrice < 0) {
-      return 'baseRentPrice and baseSalePrice must be >= 0';
+      return 'Giá thuê và giá bán phải lớn hơn hoặc bằng 0.';
     }
     if (Number.isNaN(payload.depositAmount) || Number.isNaN(payload.buyoutValue)) {
-      return 'depositAmount and buyoutValue must be valid numbers';
+      return 'Tiền cọc và giá mua đứt phải là số hợp lệ.';
     }
     if (payload.depositAmount < 0 || payload.buyoutValue < 0) {
-      return 'depositAmount and buyoutValue must be >= 0';
+      return 'Tiền cọc và giá mua đứt phải lớn hơn hoặc bằng 0.';
     }
     return null;
   }
 
   if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
-    return 'name, category, color are required';
+    return 'Tên sản phẩm, danh mục và màu sắc là bắt buộc.';
   }
 
   if (payload.hasSizes) {
     if (!Array.isArray(payload.sizes) || payload.sizes.length === 0) {
-      return 'sizes are required when hasSizes=true';
+      return 'Vui lòng thêm ít nhất một size khi bật chế độ quản lý theo size.';
     }
     const uniqueSizes = new Set((payload.sizes || []).map((item) => normalizeSizeToken(item?.size)));
     if (uniqueSizes.size !== (payload.sizes || []).length) {
-      return 'sizes must not contain duplicates';
+      return 'Danh sách size không được trùng nhau.';
     }
     const hasInvalidSizeQty = (payload.sizes || []).some((item) => !Number.isInteger(item?.quantity) || item.quantity < 0);
     if (hasInvalidSizeQty) {
-      return 'sizes.quantity must be integer >= 0';
+      return 'Số lượng của mỗi size phải là số nguyên và lớn hơn hoặc bằng 0.';
     }
   } else {
     if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
-      return 'quantity must be integer >= 0 when hasSizes=false';
+      return 'Số lượng phải là số nguyên và lớn hơn hoặc bằng 0.';
     }
   }
 
   const colorNames = (payload.colorVariants || []).map((item) => normalizeColorName(item.name).toLowerCase()).filter(Boolean);
   const uniqueColors = new Set(colorNames);
   if (uniqueColors.size !== colorNames.length) {
-    return 'colors must not contain duplicates';
+    return 'Danh sách màu sắc không được trùng nhau.';
   }
 
   if (Number.isNaN(payload.baseRentPrice) || Number.isNaN(payload.baseSalePrice)) {
-    return 'baseRentPrice and baseSalePrice must be valid numbers';
+    return 'Giá thuê và giá bán phải là số hợp lệ.';
   }
 
   if (payload.baseRentPrice < 0 || payload.baseSalePrice < 0) {
-    return 'baseRentPrice and baseSalePrice must be >= 0';
+    return 'Giá thuê và giá bán phải lớn hơn hoặc bằng 0.';
   }
 
   if (Number.isNaN(payload.depositAmount) || Number.isNaN(payload.buyoutValue)) {
-    return 'depositAmount and buyoutValue must be valid numbers';
+    return 'Tiền cọc và giá mua đứt phải là số hợp lệ.';
   }
 
   if (payload.depositAmount < 0 || payload.buyoutValue < 0) {
-    return 'depositAmount and buyoutValue must be >= 0';
+    return 'Tiền cọc và giá mua đứt phải lớn hơn hoặc bằng 0.';
   }
 
   return null;
@@ -1163,7 +1163,7 @@ const createProduct = async (req, res) => {
     if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
       return res.status(400).json({
         success: false,
-        message: 'name, category, color are required',
+        message: 'Tên sản phẩm, danh mục và màu sắc là bắt buộc.',
       });
     }
 
@@ -1175,7 +1175,7 @@ const createProduct = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Error creating product',
+      message: 'Không thể tạo sản phẩm lúc này.',
       error: error.message,
     });
   }
@@ -1202,7 +1202,7 @@ const createOwnerProduct = async (req, res) => {
     if (!Array.isArray(payload.images) || payload.images.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'at least one product image is required',
+        message: 'Vui lòng thêm ít nhất một hình ảnh sản phẩm.',
       });
     }
 
@@ -1232,7 +1232,7 @@ const createOwnerProduct = async (req, res) => {
       await Product.findByIdAndDelete(pid);
       return res.status(500).json({
         success: false,
-        message: 'Error creating product inventory',
+        message: 'Không thể tạo tồn kho sản phẩm lúc này.',
         error: syncError,
       });
     }
@@ -1245,7 +1245,7 @@ const createOwnerProduct = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Error creating owner product',
+      message: 'Không thể tạo sản phẩm lúc này.',
       error: error.message,
     });
   }
@@ -1257,7 +1257,7 @@ const updateProduct = async (req, res) => {
     if (!hasLocalizedText(payload.name) || !hasLocalizedText(payload.category) || !payload.color) {
       return res.status(400).json({
         success: false,
-        message: 'name, category, color are required',
+        message: 'Tên sản phẩm, danh mục và màu sắc là bắt buộc.',
       });
     }
 
@@ -1316,7 +1316,7 @@ const updateOwnerProduct = async (req, res) => {
     if (!Array.isArray(nextPayload.images) || nextPayload.images.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'at least one product image is required',
+        message: 'Vui lòng thêm ít nhất một hình ảnh sản phẩm.',
       });
     }
 

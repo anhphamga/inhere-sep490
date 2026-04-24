@@ -18,7 +18,6 @@ import {
 } from 'lucide-react'
 import Header from '../components/common/Header'
 import { useAuth } from '../contexts/AuthContext'
-import { useBuyCart } from '../contexts/BuyCartContext'
 import { cancelMySaleOrderApi, getMySaleOrdersApi } from '../services/order.service'
 import { cancelRentOrderApi, getMyRentOrdersApi } from '../services/rent-order.service'
 import { UI_IMAGE_FALLBACKS } from '../constants/ui'
@@ -205,9 +204,6 @@ function calculateRentalDays(startDate, endDate) {
 }
 
 function mapBuyStatus(status) {
-  // #region agent log
-  fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H2', location: 'FE/src/pages/OrderHistoryPage.jsx:mapBuyStatus', message: 'Map buy raw status to UI status', data: { rawStatus: String(status || '') }, timestamp: Date.now() }) }).catch(() => { });
-  // #endregion
   switch (status) {
     case 'Completed':
       return 'completed'
@@ -399,6 +395,7 @@ function normalizeRentOrders(orders = []) {
 
         return {
           id: item._id,
+          productId: product?._id,
           image: getImageUrl(product?.images),
           name: getProductName(product),
           variant: `${item.size || 'FREE SIZE'} / ${item.color || 'Mặc định'}`,
@@ -754,7 +751,6 @@ function ErrorState({ message }) {
 
 export default function OrderHistoryPage() {
   const navigate = useNavigate()
-  const { addItem: addBuyItem } = useBuyCart()
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [activeTab, setActiveTab] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -783,9 +779,6 @@ export default function OrderHistoryPage() {
         getMySaleOrdersApi(),
         getMyRentOrdersApi({ limit: 50 }),
       ])
-      // #region agent log
-      fetch('http://127.0.0.1:7425/ingest/cae20d9c-252c-4f1d-b775-43cdb8f5040c', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '23dab3' }, body: JSON.stringify({ sessionId: '23dab3', runId: 'order-status-sync', hypothesisId: 'H4', location: 'FE/src/pages/OrderHistoryPage.jsx:fetchOrders', message: 'Fetched orders before normalize', data: { buyCount: Array.isArray(buyResponse?.data) ? buyResponse.data.length : 0, buyStatuses: Array.isArray(buyResponse?.data) ? buyResponse.data.map((o) => ({ id: String(o?._id || ''), status: String(o?.status || ''), statusLabel: String(o?.statusLabel || ''), userStatus: String(o?.userStatus || '') })) : [] }, timestamp: Date.now() }) }).catch(() => { });
-      // #endregion
 
       const normalizedOrders = [
         ...normalizeBuyOrders(buyResponse?.data || []),
@@ -843,34 +836,18 @@ export default function OrderHistoryPage() {
     }
 
     if (actionKey !== 'reorder') return
-    if (order?.type !== 'buy') return
+    if (order?.type !== 'buy' && order?.type !== 'rent') return
 
     const buyItems = Array.isArray(order?.items) ? order.items : []
     if (!buyItems.length) return
 
-    buyItems.forEach((item) => {
-      if (!item?.productId) return
-      addBuyItem(
-        {
-          _id: item.productId,
-          name: item.name || 'Sản phẩm',
-          images: item.image ? [item.image] : [],
-          availableQuantity: Math.max(Number(item.quantity || 1), 1),
-          baseSalePrice: Number(item.unitPrice || 0),
-        },
-        {
-          color: item.color || 'Mặc định',
-          size: item.size || 'FREE SIZE',
-          salePrice: Number(item.unitPrice || 0),
-          quantity: Math.max(Number(item.quantity || 1), 1),
-          conditionLevel: item.conditionLevel === 'Used' ? 'Used' : 'New',
-        }
-      )
-    })
+    const targetProductId = buyItems.find((item) => item?.productId)?.productId
+    if (!targetProductId) {
+      setError('Không tìm thấy sản phẩm để mua lại.')
+      return
+    }
 
-    setActionMessage('Đã thêm lại sản phẩm vào giỏ mua')
-    setTimeout(() => setActionMessage(''), 1800)
-    navigate('/cart')
+    navigate(`/products/${targetProductId}`)
   }
 
   if (!authLoading && !isAuthenticated) {

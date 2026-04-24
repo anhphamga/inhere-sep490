@@ -13,6 +13,11 @@ const saleOrderSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  shiftId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Shift',
+    default: null
+  },
   status: {
     type: String,
     enum: ['Draft', 'PendingPayment', 'PendingConfirmation', 'Paid', 'Confirmed', 'Shipping', 'Completed', 'Cancelled', 'Returned', 'Unpaid', 'Failed', 'Refunded'],
